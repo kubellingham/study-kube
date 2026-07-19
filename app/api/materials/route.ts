@@ -75,8 +75,11 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: message }, { status: 500 });
   }
 
-  // Best-effort: keep the original PDF in Cloud Storage.
-  if (pdfBytes) {
+  // Optional: keep the original PDF in Cloud Storage. Storage requires the
+  // Firebase Blaze plan, so this is skipped entirely unless a bucket is
+  // configured. The app never reads the original back — all features run off
+  // the extracted text in Firestore — so skipping it costs nothing.
+  if (pdfBytes && process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET) {
     try {
       await adminBucket()
         .file(`materials/${uid}/${ref.id}.pdf`)

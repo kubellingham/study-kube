@@ -98,9 +98,12 @@ export default function DashboardClient({ uid }: { uid: string }) {
     if (!confirm("Delete this material and its summary?")) return;
     await deleteDoc(doc(db(), "materials", id));
     await deleteDoc(doc(db(), "summaries", id)).catch(() => {});
-    await deleteObject(ref(storage(), `materials/${uid}/${id}.pdf`)).catch(
-      () => {}
-    );
+    // Only touch Storage if it's configured (Blaze plan). Safe to skip otherwise.
+    if (process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET) {
+      await deleteObject(ref(storage(), `materials/${uid}/${id}.pdf`)).catch(
+        () => {}
+      );
+    }
     setMaterials((m) => m.filter((x) => x.id !== id));
   }
 

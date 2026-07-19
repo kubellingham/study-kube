@@ -18,9 +18,11 @@ Storage) saving your materials and progress.
 - **Next.js 16** (App Router) + React 19 + TypeScript + Tailwind CSS 4
 - **Claude API** (`@anthropic-ai/sdk`, model `claude-opus-4-8`) — called only on
   the server, so your API key never reaches the browser
-- **Firebase** — Firestore (data), Firebase Auth (login), Cloud Storage (PDFs),
-  with security rules so each user only sees their own data. Firebase's
-  first-class Android/iOS SDKs make the planned mobile apps a natural next step.
+- **Firebase** — Firestore (data) + Firebase Auth (login) on the free Spark
+  plan, with security rules so each user only sees their own data. Cloud Storage
+  (for retaining PDF originals) is optional and requires the Blaze plan.
+  Firebase's first-class Android/iOS SDKs make the planned mobile apps a natural
+  next step.
 
 Server API routes verify a Firebase **ID token** (`Authorization: Bearer …`) and
 use the Firebase **Admin SDK**; the browser reads/writes Firestore directly
@@ -44,18 +46,24 @@ npm install
    Enable.** (For the smoothest local testing you can leave email verification
    off.)
 3. **Build → Firestore Database → Create database** (production mode).
-4. **Build → Storage → Get started.**
-5. Add a **Web app** (Project settings → General → Your apps → `</>`). Copy the
+4. Add a **Web app** (Project settings → General → Your apps → `</>`). Copy the
    config values into `.env.local` (next step).
-6. **Service account:** Project settings → **Service accounts** → *Generate new
+5. **Service account:** Project settings → **Service accounts** → *Generate new
    private key*. You'll use `project_id`, `client_email`, and `private_key` from
    the downloaded JSON in `.env.local`.
+6. **(Optional) Storage** — Cloud Storage only keeps a copy of uploaded PDF
+   originals, which the app never reads back, and it now requires the paid
+   **Blaze** plan. **You can skip it and stay on the free Spark plan** — leave
+   `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` blank and everything still works (PDF
+   text is extracted and stored in Firestore). Only enable **Build → Storage**
+   (and publish `storage.rules`) if you specifically want to retain originals.
 
 ### 3. Publish the security rules
 
-Copy [`firestore.rules`](firestore.rules) into **Firestore → Rules → Publish**,
-and [`storage.rules`](storage.rules) into **Storage → Rules → Publish**. These
-restrict every document/file to its owner.
+Copy [`firestore.rules`](firestore.rules) into **Firestore → Rules → Publish**.
+These restrict every document to its owner. (If — and only if — you enabled
+Storage above, also publish [`storage.rules`](storage.rules) under **Storage →
+Rules**.)
 
 (If you use the Firebase CLI, `firebase deploy --only firestore:rules,storage`
 works too.)
