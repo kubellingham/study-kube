@@ -1,8 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/browser";
-import type { Material, Flashcard, FlashcardDeck } from "@/lib/types";
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  doc,
+  updateDoc,
+} from "firebase/firestore";
+import { db } from "@/lib/firebase/client";
+import { authedFetch } from "@/lib/authed-fetch";
+import type { Material, Flashcard, Deck } from "@/lib/types";
 import { Skeleton, Empty } from "./SummaryPanel";
 
 type Grade = "again" | "good" | "easy";
@@ -10,7 +19,7 @@ type Grade = "again" | "good" | "easy";
 // SM-2 lite: adjust ease + next interval based on how well the card was recalled.
 function schedule(card: Flashcard, grade: Grade) {
   let ease = card.ease;
-  let interval = card.interval_days;
+  let interval = card.intervalDays;
   if (grade === "again") {
     ease = Math.max(1.3, ease - 0.2);
     interval = 0;
@@ -19,56 +28,69 @@ function schedule(card: Flashcard, grade: Grade) {
     else interval = Math.round(interval * ease * (grade === "easy" ? 1.3 : 1));
     if (grade === "easy") ease += 0.15;
   }
-  const due_at = new Date(Date.now() + interval * 86_400_000).toISOString();
-  return { ease, interval_days: interval, due_at };
+  const dueAt = Date.now() + interval * 86_400_000;
+  return { ease, intervalDays: interval, dueAt };
 }
 
-export default function FlashcardsPanel({ material }: { material: Material }) {
-  const [deck, setDeck] = useState<FlashcardDeck | null>(null);
+export default function FlashcardsPanel({
+  material,
+  uid,
+}: {
+  material: Material;
+  uid: string;
+}) {
+  const [deck, setDeck] = useState<Deck | null>(null);
   const [cards, setCards] = useState<Flashcard[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Review state
   const [index, setIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
 
   useEffect(() => {
-    const supabase = createClient();
     (async () => {
-      const { data: decks } = await supabase
-        .from("flashcard_decks")
-        .select("*")
-        .eq("material_id", material.id)
-        .order("created_at", { ascending: false })
-        .limit(1);
-      const latest = (decks as FlashcardDeck[])?.[0] ?? null;
+      const deckSnap = await getDocs(
+        query(
+          collection(db(), "decks"),
+          where("userId", "==", uid),
+          where("materialId", "==", material.id)
+        )
+      );
+      const decks = deckSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Deck);
+      decks.sort((a, b) => b.createdAt - a.createdAt);
+      const latest = decks[0] ?? null;
       setDeck(latest);
       if (latest) {
-        const { data: cs } = await supabase
-          .from("flashcards")
-          .select("*")
-          .eq("deck_id", latest.id)
-          .order("created_at", { ascending: true });
-        setCards((cs as Flashcard[]) ?? []);
+        const cardSnap = await getDocs(
+          query(
+            collection(db(), "cards"),
+            where("userId", "==", uid),
+            where("deckId", "==", latest.id)
+          )
+        );
+        const cs = cardSnap.docs.map(
+          (d) => ({ id: d.id, ...d.data() }) as Flashcard
+        );
+        cs.sort((a, b) => a.createdAt - b.createdAt);
+        setCards(cs);
       }
       setLoading(false);
     })();
-  }, [material.id]);
+  }, [material.id, uid]);
 
   async function generate() {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch("/api/flashcards", {
+      const res = await authedFetch("/api/flashcards", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ material_id: material.id }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to generate.");
-      setDeck(data.deck as FlashcardDeck);
+      setDeck(data.deck as Deck);
       setCards(data.cards as Flashcard[]);
       setIndex(0);
       setFlipped(false);
@@ -83,11 +105,8 @@ export default function FlashcardsPanel({ material }: { material: Material }) {
     const card = cards[index];
     if (!card) return;
     const next = schedule(card, g);
-    const supabase = createClient();
-    await supabase.from("flashcards").update(next).eq("id", card.id);
-    setCards((cs) =>
-      cs.map((c) => (c.id === card.id ? { ...c, ...next } : c))
-    );
+    await updateDoc(doc(db(), "cards", card.id), next);
+    setCards((cs) => cs.map((c) => (c.id === card.id ? { ...c, ...next } : c)));
     setFlipped(false);
     setIndex((i) => i + 1);
   }

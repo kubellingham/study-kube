@@ -1,12 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/browser";
+import { signOut } from "firebase/auth";
+import { auth } from "@/lib/firebase/client";
+import { useUser } from "@/lib/use-user";
 
-export default function Header({ email }: { email?: string | null }) {
-  async function signOut() {
-    const supabase = createClient();
-    await supabase.auth.signOut();
+export default function Header() {
+  const { user } = useUser();
+
+  async function handleSignOut() {
+    await signOut(auth());
     window.location.assign("/login");
   }
 
@@ -17,13 +20,13 @@ export default function Header({ email }: { email?: string | null }) {
           Studying <span className="text-indigo-600">Kube</span>
         </Link>
         <div className="flex items-center gap-3 text-sm">
-          {email && (
+          {user?.email && (
             <span className="hidden text-slate-500 sm:inline dark:text-slate-400">
-              {email}
+              {user.email}
             </span>
           )}
           <button
-            onClick={signOut}
+            onClick={handleSignOut}
             className="rounded-lg border border-slate-300 px-3 py-1.5 font-medium hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
           >
             Sign out

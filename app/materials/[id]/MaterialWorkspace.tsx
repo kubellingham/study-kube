@@ -17,7 +17,13 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "tutor", label: "Tutor" },
 ];
 
-export default function MaterialWorkspace({ material }: { material: Material }) {
+export default function MaterialWorkspace({
+  material,
+  uid,
+}: {
+  material: Material;
+  uid: string;
+}) {
   const [tab, setTab] = useState<Tab>("summary");
 
   return (
@@ -49,9 +55,9 @@ export default function MaterialWorkspace({ material }: { material: Material }) 
       </div>
 
       {tab === "summary" && <SummaryPanel material={material} />}
-      {tab === "flashcards" && <FlashcardsPanel material={material} />}
-      {tab === "quiz" && <QuizPanel material={material} />}
-      {tab === "tutor" && <TutorPanel material={material} />}
+      {tab === "flashcards" && <FlashcardsPanel material={material} uid={uid} />}
+      {tab === "quiz" && <QuizPanel material={material} uid={uid} />}
+      {tab === "tutor" && <TutorPanel material={material} uid={uid} />}
     </main>
   );
 }

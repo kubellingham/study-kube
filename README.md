@@ -8,8 +8,8 @@ articles** into:
 - **Multiple-choice quizzes** that grade you and explain every answer
 - An **AI tutor** you can chat with, grounded in _your_ material
 
-Powered by your own **Claude API** key. Everything you add is saved to your
-Supabase account so your progress persists.
+Powered by your own **Claude API** key, with **Firebase** (Firestore + Auth +
+Storage) saving your materials and progress.
 
 ---
 
@@ -18,11 +18,13 @@ Supabase account so your progress persists.
 - **Next.js 16** (App Router) + React 19 + TypeScript + Tailwind CSS 4
 - **Claude API** (`@anthropic-ai/sdk`, model `claude-opus-4-8`) — called only on
   the server, so your API key never reaches the browser
-- **Supabase** — Postgres + Auth + Storage, with Row-Level Security so each user
-  only sees their own data
+- **Firebase** — Firestore (data), Firebase Auth (login), Cloud Storage (PDFs),
+  with security rules so each user only sees their own data. Firebase's
+  first-class Android/iOS SDKs make the planned mobile apps a natural next step.
 
-The backend is a plain JSON API (`app/api/*`), so a future mobile / desktop
-client can reuse it without a rewrite.
+Server API routes verify a Firebase **ID token** (`Authorization: Bearer …`) and
+use the Firebase **Admin SDK**; the browser reads/writes Firestore directly
+under the security rules.
 
 ---
 
@@ -34,17 +36,31 @@ client can reuse it without a rewrite.
 npm install
 ```
 
-### 2. Create a Supabase project
+### 2. Create a Firebase project
 
-Create a free project at [supabase.com](https://supabase.com/). Then apply the
-schema:
+1. Go to the [Firebase Console](https://console.firebase.google.com/) → **Add
+   project** (free "Spark" plan is fine).
+2. **Build → Authentication → Get started → Sign-in method → Email/Password →
+   Enable.** (For the smoothest local testing you can leave email verification
+   off.)
+3. **Build → Firestore Database → Create database** (production mode).
+4. **Build → Storage → Get started.**
+5. Add a **Web app** (Project settings → General → Your apps → `</>`). Copy the
+   config values into `.env.local` (next step).
+6. **Service account:** Project settings → **Service accounts** → *Generate new
+   private key*. You'll use `project_id`, `client_email`, and `private_key` from
+   the downloaded JSON in `.env.local`.
 
-- Open **SQL Editor** in your Supabase dashboard, paste the contents of
-  [`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql), and
-  run it. This creates all tables, Row-Level-Security policies, and the private
-  `materials` storage bucket.
+### 3. Publish the security rules
 
-### 3. Configure environment variables
+Copy [`firestore.rules`](firestore.rules) into **Firestore → Rules → Publish**,
+and [`storage.rules`](storage.rules) into **Storage → Rules → Publish**. These
+restrict every document/file to its owner.
+
+(If you use the Firebase CLI, `firebase deploy --only firestore:rules,storage`
+works too.)
+
+### 4. Configure environment variables
 
 ```bash
 cp .env.example .env.local
@@ -55,16 +71,13 @@ Fill in `.env.local`:
 | Variable | Where to find it |
 | --- | --- |
 | `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com/) → API Keys |
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase → Project Settings → API |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase → Project Settings → API (anon public) |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API (service_role) |
+| `NEXT_PUBLIC_FIREBASE_*` | Firebase → Project settings → General → Web app config |
+| `FIREBASE_PROJECT_ID` / `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY` | the service-account JSON you downloaded |
 
-`.env.local` is gitignored — never commit real keys.
+> **`FIREBASE_PRIVATE_KEY`** must keep its `\n` escapes and be wrapped in double
+> quotes — see `.env.example`. `.env.local` is gitignored; never commit it.
 
-> **Tip:** In Supabase → Authentication → Providers → Email, you can turn **off**
-> "Confirm email" for the smoothest local testing (sign up → straight in).
-
-### 4. Run it
+### 5. Run it
 
 ```bash
 npm run dev
@@ -78,17 +91,21 @@ your first material.
 ## How it works
 
 1. **Add material** (`POST /api/materials`) — a PDF (text extracted with
-   `unpdf`), pasted text, a YouTube link (transcript via `youtube-transcript`),
-   or an article URL (readable text via `@extractus/article-extractor`). The
-   normalized text is stored in the `materials` table.
-2. **Generate** — the Summary / Flashcards / Quiz tabs call
-   `/api/summary`, `/api/flashcards`, `/api/quiz`. These use Claude
-   **structured outputs** so the JSON is always valid, then persist the result.
+   `unpdf`, original saved to Cloud Storage), pasted text, a YouTube link
+   (transcript via `youtube-transcript`), or an article URL (readable text via
+   `@extractus/article-extractor`). The normalized text is stored as a
+   `materials` document in Firestore.
+2. **Generate** — the Summary / Flashcards / Quiz tabs call `/api/summary`,
+   `/api/flashcards`, `/api/quiz`. These use Claude **structured outputs** so the
+   JSON is always valid, then persist the result to Firestore.
 3. **Tutor** (`/api/tutor`) — streams Claude's reply token-by-token. Your
    material is placed in a **cached** system block so multi-turn chat over one
    document stays cheap.
 4. **Reads** (lists, existing summaries/decks/quizzes/chat) happen directly from
-   the browser via the RLS-protected Supabase client — fast and secure.
+   the browser via the Firestore SDK, guarded by the security rules.
+
+Firestore collections: `materials`, `summaries` (doc id = material id), `decks`,
+`cards`, `quizzes`, `attempts`, `messages`.
 
 ---
 
@@ -98,24 +115,24 @@ your first material.
    **YouTube link** + an **article URL**.
 2. Open a material and generate its **Summary**, **Flashcards** (flip + grade a
    card), and **Quiz** (take it, check the graded results + explanations).
-3. Open the **Tutor** tab and ask a question answered from the material — you
-   should see the reply stream in, and the conversation persists on reload.
-4. Sign in as a second user — you should not see the first user's materials
-   (Row-Level Security).
+3. Open the **Tutor** tab and ask a question answered from the material — the
+   reply should stream in, and the conversation should persist on reload.
+4. Sign in as a second account — you should not see the first user's materials
+   (Firestore security rules).
 
 ---
 
 ## Roadmap / not yet built
 
-- **Public multi-user release:** this version uses your single server-side key.
-  Before going public, add per-user keys or metered billing + rate limits.
+- **Public multi-user release:** this version uses your single server-side Claude
+  key. Before going public, add per-user keys or metered billing + rate limits.
 - **Lecture audio → transcript** (needs a speech-to-text step).
-- **pgvector RAG** for very large document libraries.
-- **Native mobile / desktop apps** reusing this same API.
+- **Vector search / RAG** for very large document libraries.
+- **Native mobile / desktop apps** reusing this same API + Firebase project.
 
 ---
 
 ## Deploy
 
-Deploys cleanly to [Vercel](https://vercel.com/new). Add the four environment
+Deploys cleanly to [Vercel](https://vercel.com/new). Add the environment
 variables from `.env.example` in the Vercel project settings.

@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/browser";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase/client";
+import { authedFetch } from "@/lib/authed-fetch";
 import type { Material, SummaryContent } from "@/lib/types";
 
 export default function SummaryPanel({ material }: { material: Material }) {
@@ -11,23 +13,18 @@ export default function SummaryPanel({ material }: { material: Material }) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase
-      .from("summaries")
-      .select("content")
-      .eq("material_id", material.id)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (data) setContent(data.content as SummaryContent);
-        setLoading(false);
-      });
+    (async () => {
+      const snap = await getDoc(doc(db(), "summaries", material.id));
+      if (snap.exists()) setContent(snap.get("content") as SummaryContent);
+      setLoading(false);
+    })();
   }, [material.id]);
 
   async function generate() {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch("/api/summary", {
+      const res = await authedFetch("/api/summary", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ material_id: material.id }),

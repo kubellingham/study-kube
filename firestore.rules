@@ -1,0 +1,21 @@
+rules_version = '2';
+
+// Studying Kube — every document carries a `userId`. A user may only read or
+// write documents they own. Applies uniformly to all top-level collections:
+// materials, summaries, decks, cards, quizzes, attempts, messages.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+    function owns(data) {
+      return signedIn() && data.userId == request.auth.uid;
+    }
+
+    match /{collection}/{docId} {
+      allow read, delete: if owns(resource.data);
+      allow create: if owns(request.resource.data);
+      allow update: if owns(resource.data) && owns(request.resource.data);
+    }
+  }
+}

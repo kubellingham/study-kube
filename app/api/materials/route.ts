@@ -1,18 +1,18 @@
 import { NextRequest } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { getUid } from "@/lib/api-helpers";
+import { adminDb, adminBucket } from "@/lib/firebase/admin";
 import { ingestText, ingestPdf, ingestLink } from "@/lib/ingest";
 import type { IngestResult } from "@/lib/types";
 
 export const runtime = "nodejs";
 
 const MAX_PDF_BYTES = 25 * 1024 * 1024; // 25 MB
+// Firestore documents are capped at ~1 MiB; keep raw text comfortably under.
+const MAX_STORED_CHARS = 800_000;
 
 export async function POST(req: NextRequest) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
+  const uid = await getUid(req);
+  if (!uid) {
     return Response.json({ error: "Not signed in." }, { status: 401 });
   }
 
@@ -58,35 +58,33 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: message }, { status: 400 });
   }
 
-  const { data: material, error } = await supabase
-    .from("materials")
-    .insert({
-      user_id: user.id,
-      title: ingest.title,
-      source_type: ingest.source_type,
-      source_url: ingest.source_url,
-      raw_text: ingest.raw_text,
-    })
-    .select()
-    .single();
+  const doc = {
+    userId: uid,
+    title: ingest.title,
+    sourceType: ingest.source_type,
+    sourceUrl: ingest.source_url,
+    rawText: ingest.raw_text.slice(0, MAX_STORED_CHARS),
+    createdAt: Date.now(),
+  };
 
-  if (error || !material) {
-    return Response.json(
-      { error: error?.message || "Could not save material." },
-      { status: 500 }
-    );
+  let ref;
+  try {
+    ref = await adminDb().collection("materials").add(doc);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Could not save material.";
+    return Response.json({ error: message }, { status: 500 });
   }
 
-  // Best-effort: keep the original PDF in storage. Failure here shouldn't
-  // block the material (we already have the extracted text).
+  // Best-effort: keep the original PDF in Cloud Storage.
   if (pdfBytes) {
-    await supabase.storage
-      .from("materials")
-      .upload(`${user.id}/${material.id}.pdf`, pdfBytes, {
-        contentType: "application/pdf",
-        upsert: true,
-      });
+    try {
+      await adminBucket()
+        .file(`materials/${uid}/${ref.id}.pdf`)
+        .save(Buffer.from(pdfBytes), { contentType: "application/pdf" });
+    } catch {
+      // Non-fatal — we already stored the extracted text.
+    }
   }
 
-  return Response.json({ material });
+  return Response.json({ material: { id: ref.id, ...doc } });
 }

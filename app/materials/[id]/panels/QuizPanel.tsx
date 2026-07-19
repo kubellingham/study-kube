@@ -1,11 +1,25 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/browser";
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  addDoc,
+} from "firebase/firestore";
+import { db } from "@/lib/firebase/client";
+import { authedFetch } from "@/lib/authed-fetch";
 import type { Material, Quiz, QuizAttempt } from "@/lib/types";
 import { Skeleton, Empty } from "./SummaryPanel";
 
-export default function QuizPanel({ material }: { material: Material }) {
+export default function QuizPanel({
+  material,
+  uid,
+}: {
+  material: Material;
+  uid: string;
+}) {
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [attempts, setAttempts] = useState<QuizAttempt[]>([]);
   const [answers, setAnswers] = useState<number[]>([]);
@@ -15,25 +29,30 @@ export default function QuizPanel({ material }: { material: Material }) {
   const [error, setError] = useState<string | null>(null);
 
   async function loadAttempts(quizId: string) {
-    const supabase = createClient();
-    const { data } = await supabase
-      .from("quiz_attempts")
-      .select("*")
-      .eq("quiz_id", quizId)
-      .order("taken_at", { ascending: false });
-    setAttempts((data as QuizAttempt[]) ?? []);
+    const snap = await getDocs(
+      query(
+        collection(db(), "attempts"),
+        where("userId", "==", uid),
+        where("quizId", "==", quizId)
+      )
+    );
+    const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as QuizAttempt);
+    list.sort((a, b) => b.takenAt - a.takenAt);
+    setAttempts(list);
   }
 
   useEffect(() => {
-    const supabase = createClient();
     (async () => {
-      const { data } = await supabase
-        .from("quizzes")
-        .select("*")
-        .eq("material_id", material.id)
-        .order("created_at", { ascending: false })
-        .limit(1);
-      const latest = (data as Quiz[])?.[0] ?? null;
+      const snap = await getDocs(
+        query(
+          collection(db(), "quizzes"),
+          where("userId", "==", uid),
+          where("materialId", "==", material.id)
+        )
+      );
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Quiz);
+      list.sort((a, b) => b.createdAt - a.createdAt);
+      const latest = list[0] ?? null;
       setQuiz(latest);
       if (latest) {
         setAnswers(new Array(latest.questions.length).fill(-1));
@@ -41,13 +60,14 @@ export default function QuizPanel({ material }: { material: Material }) {
       }
       setLoading(false);
     })();
-  }, [material.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [material.id, uid]);
 
   async function generate() {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch("/api/quiz", {
+      const res = await authedFetch("/api/quiz", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ material_id: material.id }),
@@ -74,20 +94,14 @@ export default function QuizPanel({ material }: { material: Material }) {
     );
     const score = correct / quiz.questions.length;
     setSubmitted(true);
-
-    const supabase = createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (user) {
-      await supabase.from("quiz_attempts").insert({
-        quiz_id: quiz.id,
-        user_id: user.id,
-        score,
-        answers,
-      });
-      await loadAttempts(quiz.id);
-    }
+    await addDoc(collection(db(), "attempts"), {
+      quizId: quiz.id,
+      userId: uid,
+      score,
+      answers,
+      takenAt: Date.now(),
+    });
+    await loadAttempts(quiz.id);
   }
 
   function retake() {

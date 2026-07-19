@@ -1,46 +1,32 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/browser";
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+} from "firebase/auth";
+import { auth } from "@/lib/firebase/client";
 
 export default function LoginPage() {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    setNotice(null);
     setBusy(true);
-    const supabase = createClient();
     try {
       if (mode === "signup") {
-        const { data, error } = await supabase.auth.signUp({ email, password });
-        if (error) throw error;
-        if (data.session) {
-          window.location.assign("/dashboard");
-          return;
-        }
-        setNotice(
-          "Account created. If email confirmation is on, check your inbox, then sign in."
-        );
-        setMode("signin");
+        await createUserWithEmailAndPassword(auth(), email, password);
       } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-        if (error) throw error;
-        window.location.assign("/dashboard");
-        return;
+        await signInWithEmailAndPassword(auth(), email, password);
       }
+      window.location.assign("/dashboard");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
-    } finally {
+      setError(friendlyError(err));
       setBusy(false);
     }
   }
@@ -108,11 +94,6 @@ export default function LoginPage() {
           {error && (
             <p className="mb-3 text-sm text-red-600 dark:text-red-400">{error}</p>
           )}
-          {notice && (
-            <p className="mb-3 text-sm text-emerald-600 dark:text-emerald-400">
-              {notice}
-            </p>
-          )}
 
           <button
             type="submit"
@@ -129,4 +110,25 @@ export default function LoginPage() {
       </div>
     </main>
   );
+}
+
+function friendlyError(err: unknown): string {
+  const code =
+    typeof err === "object" && err && "code" in err
+      ? String((err as { code: string }).code)
+      : "";
+  switch (code) {
+    case "auth/invalid-credential":
+    case "auth/wrong-password":
+    case "auth/user-not-found":
+      return "Invalid email or password.";
+    case "auth/email-already-in-use":
+      return "That email already has an account — try signing in.";
+    case "auth/weak-password":
+      return "Password should be at least 6 characters.";
+    case "auth/invalid-email":
+      return "That doesn't look like a valid email.";
+    default:
+      return err instanceof Error ? err.message : "Something went wrong.";
+  }
 }

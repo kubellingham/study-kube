@@ -1,8 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/browser";
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  doc,
+  deleteDoc,
+} from "firebase/firestore";
+import { ref, deleteObject } from "firebase/storage";
+import { db, storage } from "@/lib/firebase/client";
+import { authedFetch } from "@/lib/authed-fetch";
 import type { Material, SourceType } from "@/lib/types";
 
 const SOURCE_LABEL: Record<SourceType, string> = {
@@ -21,12 +31,9 @@ const SOURCE_BADGE: Record<SourceType, string> = {
 
 type Tab = "pdf" | "text" | "link";
 
-export default function DashboardClient({
-  initialMaterials,
-}: {
-  initialMaterials: Material[];
-}) {
-  const [materials, setMaterials] = useState<Material[]>(initialMaterials);
+export default function DashboardClient({ uid }: { uid: string }) {
+  const [materials, setMaterials] = useState<Material[]>([]);
+  const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>("text");
   const [text, setText] = useState("");
   const [title, setTitle] = useState("");
@@ -34,6 +41,20 @@ export default function DashboardClient({
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      const snap = await getDocs(
+        query(collection(db(), "materials"), where("userId", "==", uid))
+      );
+      const list = snap.docs.map(
+        (d) => ({ id: d.id, ...d.data() }) as Material
+      );
+      list.sort((a, b) => b.createdAt - a.createdAt);
+      setMaterials(list);
+      setLoading(false);
+    })();
+  }, [uid]);
 
   async function addMaterial(e: React.FormEvent) {
     e.preventDefault();
@@ -45,15 +66,15 @@ export default function DashboardClient({
         if (!file) throw new Error("Choose a PDF file first.");
         const form = new FormData();
         form.append("file", file);
-        res = await fetch("/api/materials", { method: "POST", body: form });
+        res = await authedFetch("/api/materials", { method: "POST", body: form });
       } else if (tab === "text") {
-        res = await fetch("/api/materials", {
+        res = await authedFetch("/api/materials", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ kind: "text", text, title }),
         });
       } else {
-        res = await fetch("/api/materials", {
+        res = await authedFetch("/api/materials", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ kind: "link", url }),
@@ -74,16 +95,12 @@ export default function DashboardClient({
   }
 
   async function remove(id: string) {
-    if (!confirm("Delete this material and everything generated from it?"))
-      return;
-    const supabase = createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    await supabase.from("materials").delete().eq("id", id);
-    if (user) {
-      await supabase.storage.from("materials").remove([`${user.id}/${id}.pdf`]);
-    }
+    if (!confirm("Delete this material and its summary?")) return;
+    await deleteDoc(doc(db(), "materials", id));
+    await deleteDoc(doc(db(), "summaries", id)).catch(() => {});
+    await deleteObject(ref(storage(), `materials/${uid}/${id}.pdf`)).catch(
+      () => {}
+    );
     setMaterials((m) => m.filter((x) => x.id !== id));
   }
 
@@ -101,7 +118,7 @@ export default function DashboardClient({
               key={t}
               type="button"
               onClick={() => setTab(t)}
-              className={`flex-1 rounded-md py-1.5 font-medium capitalize ${
+              className={`flex-1 rounded-md py-1.5 font-medium ${
                 tab === t
                   ? "bg-white shadow dark:bg-slate-700"
                   : "text-slate-500"
@@ -162,7 +179,9 @@ export default function DashboardClient({
       </section>
 
       <h2 className="mb-3 text-lg font-semibold">Your materials</h2>
-      {materials.length === 0 ? (
+      {loading ? (
+        <p className="text-sm text-slate-400">Loading…</p>
+      ) : materials.length === 0 ? (
         <p className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500 dark:border-slate-700">
           Nothing yet. Add your first material above to generate summaries,
           flashcards, quizzes and start tutoring.
@@ -177,15 +196,15 @@ export default function DashboardClient({
               <div className="flex items-start justify-between gap-2">
                 <Link href={`/materials/${m.id}`} className="min-w-0 flex-1">
                   <span
-                    className={`mb-2 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${SOURCE_BADGE[m.source_type]}`}
+                    className={`mb-2 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${SOURCE_BADGE[m.sourceType]}`}
                   >
-                    {SOURCE_LABEL[m.source_type]}
+                    {SOURCE_LABEL[m.sourceType]}
                   </span>
                   <p className="truncate font-medium group-hover:text-indigo-600">
                     {m.title}
                   </p>
                   <p className="mt-1 text-xs text-slate-400">
-                    {new Date(m.created_at).toLocaleDateString()}
+                    {new Date(m.createdAt).toLocaleDateString()}
                   </p>
                 </Link>
                 <button

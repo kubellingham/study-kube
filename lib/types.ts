@@ -1,15 +1,17 @@
-// Shared TypeScript types mirroring the Supabase schema and AI payloads.
+// Shared TypeScript types mirroring the Firestore documents and AI payloads.
+// Firestore collections: materials, summaries, decks, cards, quizzes, attempts,
+// messages. Every doc carries `userId` and is guarded by security rules.
 
 export type SourceType = "pdf" | "text" | "youtube" | "article";
 
 export interface Material {
   id: string;
-  user_id: string;
+  userId: string;
   title: string;
-  source_type: SourceType;
-  source_url: string | null;
-  raw_text: string;
-  created_at: string;
+  sourceType: SourceType;
+  sourceUrl: string | null;
+  rawText: string;
+  createdAt: number; // epoch millis
 }
 
 export interface SummaryContent {
@@ -17,31 +19,33 @@ export interface SummaryContent {
   key_concepts: { term: string; explanation: string }[];
 }
 
-export interface SummaryRow {
-  id: string;
-  material_id: string;
+export interface SummaryDoc {
+  id: string; // == materialId (one summary per material)
+  materialId: string;
+  userId: string;
   content: SummaryContent;
-  created_at: string;
+  createdAt: number;
 }
 
-export interface FlashcardDeck {
+export interface Deck {
   id: string;
-  material_id: string;
-  user_id: string;
+  materialId: string;
+  userId: string;
   title: string;
-  created_at: string;
+  createdAt: number;
 }
 
 export interface Flashcard {
   id: string;
-  deck_id: string;
+  deckId: string;
+  userId: string;
   front: string;
   back: string;
   // SM-2 lite spaced-repetition state
   ease: number;
-  interval_days: number;
-  due_at: string;
-  created_at: string;
+  intervalDays: number;
+  dueAt: number; // epoch millis
+  createdAt: number;
 }
 
 export interface QuizQuestionContent {
@@ -53,29 +57,29 @@ export interface QuizQuestionContent {
 
 export interface Quiz {
   id: string;
-  material_id: string;
-  user_id: string;
+  materialId: string;
+  userId: string;
   title: string;
   questions: QuizQuestionContent[];
-  created_at: string;
+  createdAt: number;
 }
 
 export interface QuizAttempt {
   id: string;
-  quiz_id: string;
-  user_id: string;
+  quizId: string;
+  userId: string;
   score: number; // 0..1 fraction correct
   answers: number[]; // chosen option index per question (-1 = skipped)
-  taken_at: string;
+  takenAt: number;
 }
 
 export interface ChatMessage {
   id: string;
-  material_id: string;
-  user_id: string;
+  materialId: string;
+  userId: string;
   role: "user" | "assistant";
   content: string;
-  created_at: string;
+  createdAt: number;
 }
 
 // Normalized output every ingester returns before we persist a Material.

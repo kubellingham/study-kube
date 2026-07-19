@@ -1,25 +1,31 @@
-import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+"use client";
+
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useUser } from "@/lib/use-user";
 import Header from "@/app/components/Header";
 import DashboardClient from "./DashboardClient";
-import type { Material } from "@/lib/types";
 
-export default async function DashboardPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+export default function DashboardPage() {
+  const { user, loading } = useUser();
+  const router = useRouter();
 
-  const { data: materials } = await supabase
-    .from("materials")
-    .select("*")
-    .order("created_at", { ascending: false });
+  useEffect(() => {
+    if (!loading && !user) router.replace("/login");
+  }, [user, loading, router]);
+
+  if (loading || !user) {
+    return (
+      <div className="flex-1 grid place-items-center text-sm text-slate-400">
+        Loading…
+      </div>
+    );
+  }
 
   return (
     <>
-      <Header email={user.email} />
-      <DashboardClient initialMaterials={(materials as Material[]) ?? []} />
+      <Header />
+      <DashboardClient uid={user.uid} />
     </>
   );
 }

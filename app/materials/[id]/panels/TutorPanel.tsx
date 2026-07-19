@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { createClient } from "@/lib/supabase/browser";
+import { collection, query, where, getDocs } from "firebase/firestore";
+import { db } from "@/lib/firebase/client";
+import { authedFetch } from "@/lib/authed-fetch";
 import type { Material, ChatMessage } from "@/lib/types";
 
 interface Turn {
@@ -9,7 +11,13 @@ interface Turn {
   content: string;
 }
 
-export default function TutorPanel({ material }: { material: Material }) {
+export default function TutorPanel({
+  material,
+  uid,
+}: {
+  material: Material;
+  uid: string;
+}) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -18,20 +26,20 @@ export default function TutorPanel({ material }: { material: Material }) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase
-      .from("chat_messages")
-      .select("role, content")
-      .eq("material_id", material.id)
-      .order("created_at", { ascending: true })
-      .then(({ data }) => {
-        setTurns(((data as ChatMessage[]) ?? []).map((m) => ({
-          role: m.role,
-          content: m.content,
-        })));
-        setLoading(false);
-      });
-  }, [material.id]);
+    (async () => {
+      const snap = await getDocs(
+        query(
+          collection(db(), "messages"),
+          where("userId", "==", uid),
+          where("materialId", "==", material.id)
+        )
+      );
+      const msgs = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as ChatMessage);
+      msgs.sort((a, b) => a.createdAt - b.createdAt);
+      setTurns(msgs.map((m) => ({ role: m.role, content: m.content })));
+      setLoading(false);
+    })();
+  }, [material.id, uid]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -51,7 +59,7 @@ export default function TutorPanel({ material }: { material: Material }) {
     setStreaming(true);
 
     try {
-      const res = await fetch("/api/tutor", {
+      const res = await authedFetch("/api/tutor", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ material_id: material.id, message }),
@@ -77,10 +85,7 @@ export default function TutorPanel({ material }: { material: Material }) {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Tutor failed.");
-      // Drop the empty assistant placeholder on error.
-      setTurns((t) =>
-        t[t.length - 1]?.content === "" ? t.slice(0, -1) : t
-      );
+      setTurns((t) => (t[t.length - 1]?.content === "" ? t.slice(0, -1) : t));
     } finally {
       setStreaming(false);
     }
