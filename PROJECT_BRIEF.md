@@ -15,7 +15,7 @@
 
 Everything a user creates is saved to their account and only visible to them.
 
-**Status: LIVE and working in production** at **https://studying-kube.vercel.app** (flashcards, quiz, and tutor verified end-to-end by the owner on real study material; summary works but is the slowest operation — see §8).
+**Status: LIVE and working in production** at **https://studying-kube.vercel.app** — ingestion (PDF/text/link), flashcards, quiz, and tutor verified end-to-end by the owner on real study material. **One known defect: summary generation times out on large documents** (diagnosed, fix planned — see §8.1).
 
 ---
 
@@ -111,7 +111,7 @@ Fixed costs today: **$0** (Vercel Hobby + Firebase Spark + owner's existing Anth
 **Working (verified live by the owner):** signup/login, text + PDF + link ingestion, flashcard generation & review, quiz generation/taking/grading/history, streaming tutor chat. Firestore persistence and per-user isolation via security rules.
 
 **Known items:**
-1. **Summary latency** — the summary is one large Claude call at high effort over the whole document; 1–3 minutes is normal on big PDFs. `maxDuration = 300` is set on the routes, but Vercel plan limits may cap real execution time; if summaries time out on large documents, options: stream the summary like the tutor, lower effort, or use `claude-sonnet-5` for summaries.
+1. **Summary generation is currently BROKEN on large documents (top of the fix list).** Verified in production logs: on the owner's real PDF, `/api/materials`, `/api/flashcards`, and `/api/quiz` all returned 200, but the `/api/summary` request never completed — no response, no error, UI stuck on "loading". Diagnosis: the summary is the app's only heavyweight **non-streaming** Claude call (whole document, high effort, up to 16K output tokens); on large materials it exceeds the Vercel function execution window and is killed silently. **Planned fix (~small):** stream the summary token-by-token exactly like the already-working tutor route (first byte in seconds → no timeout), saving the parsed result to Firestore at stream end; secondary levers: lower effort or `claude-sonnet-5` for the summary route.
 2. **PDFs over ~4.5 MB** fail at the platform layer (see §6.4) with the generic JSON error. Mitigation not yet built.
 3. **Scanned/image PDFs** have no extractable text — the app returns a clear error; OCR not yet supported.
 4. **Vercel project is not git-linked** — deploys so far were pushed directly from the build session. Linking the GitHub repo in Vercel (Add New → Project → Import) would give automatic deploys on every push. Env vars are already configured and survive.
