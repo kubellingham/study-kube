@@ -1,10 +1,14 @@
 import { cert, getApps, initializeApp, type App } from "firebase-admin/app";
-import { getAuth, type Auth } from "firebase-admin/auth";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 
 // Server-side Firebase Admin SDK. Credentials come from a service account.
 // Provide FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY.
+//
+// NOTE: firebase-admin/auth is deliberately NOT imported here. Its jwks-rsa ->
+// jose require() chain crashes on Vercel's serverless runtime
+// (ERR_REQUIRE_ESM). ID tokens are verified with `jose` in lib/api-helpers.ts
+// instead.
 
 let app: App | undefined;
 
@@ -32,10 +36,6 @@ function getAdminApp(): App {
       process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || undefined,
   });
   return app;
-}
-
-export function adminAuth(): Auth {
-  return getAuth(getAdminApp());
 }
 
 export function adminDb(): Firestore {
