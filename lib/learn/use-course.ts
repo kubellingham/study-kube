@@ -11,7 +11,12 @@ import {
   getBuiltinBundle,
   type CourseBundle,
 } from "@/lib/course";
-import type { Section, ExamQuestion } from "@/lib/course/types";
+import type {
+  Section,
+  ExamQuestion,
+  SyllabusInfo,
+  IngestedFile,
+} from "@/lib/course/types";
 
 export interface FirestoreCourseDoc {
   userId: string;
@@ -19,6 +24,8 @@ export interface FirestoreCourseDoc {
   title: string;
   sections: Section[];
   examBank: ExamQuestion[];
+  syllabus?: SyllabusInfo | null;
+  files?: IngestedFile[];
   createdAt: number;
 }
 
@@ -54,6 +61,8 @@ export function useCourse(courseId: string) {
   const [status, setStatus] = useState<CourseStatus>("loading");
   const [bundle, setBundle] = useState<CourseBundle | null>(null);
   const [owned, setOwned] = useState(false);
+  const [syllabus, setSyllabus] = useState<SyllabusInfo | null>(null);
+  const [files, setFiles] = useState<IngestedFile[]>([]);
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
@@ -69,7 +78,10 @@ export function useCourse(courseId: string) {
       try {
         const snap = await getDoc(doc(db(), "courses", courseId));
         if (snap.exists() && snap.get("userId") === user.uid) {
-          setBundle(bundleFromDoc(snap.id, snap.data() as FirestoreCourseDoc));
+          const data = snap.data() as FirestoreCourseDoc;
+          setBundle(bundleFromDoc(snap.id, data));
+          setSyllabus(data.syllabus ?? null);
+          setFiles(data.files ?? []);
           setOwned(true);
           setStatus("ready");
         } else {
@@ -88,6 +100,8 @@ export function useCourse(courseId: string) {
     status,
     bundle,
     owned,
+    syllabus,
+    files,
     reload: () => setReloadKey((k) => k + 1),
   };
 }

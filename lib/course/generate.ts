@@ -5,7 +5,7 @@
 import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { getAnthropic, MODEL } from "@/lib/anthropic";
-import type { Section, Topic, Step, ExamQuestion } from "./types";
+import type { Section, Topic, Step, ExamQuestion, SyllabusInfo } from "./types";
 
 // Steps are flattened (teach fields + check fields all optional) because a
 // single object schema is far more reliable for structured output than a
@@ -223,6 +223,159 @@ export function assembleUnit(
     },
     questions,
   };
+}
+
+/* ---- Silent auto-sort (KUBE_INTAKE_FLOW.md): every file's role is figured
+   out by Kube, never filed by hand. ---- */
+
+const classifySchema = z.object({
+  kind: z
+    .enum(["syllabus", "unit", "pastpaper", "notes"])
+    .describe(
+      "syllabus = course outline/curriculum defining units and Course Outcomes; unit = teaching material for one unit; pastpaper = an exam/question paper; notes = supplementary handout/notes"
+    ),
+  unit: z
+    .number()
+    .int()
+    .nullable()
+    .describe("The unit number this material teaches, if stated or inferable; else null"),
+  label: z
+    .string()
+    .describe(
+      "Short human label for the receipt, e.g. 'Unit 3 — Stack Organization' or 'End-term past paper (CO-tagged)'"
+    ),
+});
+
+export type Classification = z.infer<typeof classifySchema>;
+
+export function classifyStream(courseTitle: string, rawText: string) {
+  const client = getAnthropic();
+  return client.messages.stream({
+    model: MODEL,
+    max_tokens: 2000,
+    output_config: { effort: "low", format: zodOutputFormat(classifySchema) },
+    system:
+      "Classify what role a file plays in a university course. A syllabus/course outline is the driving file (defines units + Course Outcomes). Unit material teaches. Past papers show how the course is tested. Everything else is notes.",
+    messages: [
+      {
+        role: "user",
+        content: `Course: ${courseTitle}\n\n--- FILE CONTENT (start) ---\n${rawText.slice(0, 10_000)}`,
+      },
+    ],
+  });
+}
+
+export function parseClassification(jsonText: string): Classification {
+  return classifySchema.parse(JSON.parse(jsonText));
+}
+
+const syllabusSchema = z.object({
+  units: z
+    .array(z.object({ unit: z.number().int(), title: z.string() }))
+    .describe("Every unit the syllabus defines, in order, with its title"),
+  cos: z
+    .array(z.object({ id: z.string().describe("e.g. CO1"), text: z.string() }))
+    .describe("The Course Outcomes, if listed; empty array if none"),
+});
+
+export function syllabusStream(courseTitle: string, rawText: string) {
+  const client = getAnthropic();
+  return client.messages.stream({
+    model: MODEL,
+    max_tokens: 6000,
+    output_config: { effort: "low", format: zodOutputFormat(syllabusSchema) },
+    system:
+      "Extract the skeleton of a course from its syllabus/outline: the numbered units with their titles, and the Course Outcomes (COs). Faithful to the document — do not invent units it doesn't define.",
+    messages: [
+      {
+        role: "user",
+        content: `Course: ${courseTitle}\n\n--- SYLLABUS ---\n${rawText.slice(0, 40_000)}`,
+      },
+    ],
+  });
+}
+
+export function parseSyllabus(jsonText: string): SyllabusInfo {
+  return syllabusSchema.parse(JSON.parse(jsonText));
+}
+
+const pastPaperSchema = z.object({
+  questions: z
+    .array(
+      z.object({
+        topicId: z
+          .string()
+          .describe("The id of the existing ladder topic this question belongs to (from the provided list)"),
+        prompt: z.string(),
+        code: z.string().optional(),
+        options: z.array(z.string()).describe("exactly 4 options"),
+        answer: z.number().int().describe("index of the correct option"),
+        hint: z.string().describe("nudges toward the idea WITHOUT giving the answer"),
+        explanation: z.string(),
+        co: z.string().nullable().describe("Course Outcome tag if printed, e.g. 'CO3'"),
+        level: z.string().nullable().describe("Bloom's/RBT level if printed, e.g. 'L2'"),
+      })
+    )
+    .describe("Every usable question from the paper, converted to MCQ form"),
+});
+
+export function pastPaperStream(
+  courseTitle: string,
+  rawText: string,
+  existingTopics: ExistingTopicRef[]
+) {
+  const client = getAnthropic();
+  return client.messages.stream({
+    model: MODEL,
+    max_tokens: 24000,
+    thinking: { type: "adaptive" },
+    output_config: { effort: "high", format: zodOutputFormat(pastPaperSchema) },
+    system:
+      "You convert a real past exam paper into Kube assessment questions. Keep each question's substance and difficulty faithful to the paper — these show how the course is actually tested. Convert non-MCQ questions into fair 4-option MCQs testing the same idea. Preserve printed CO and Bloom's/RBT level tags per question (null if absent). Map every question onto the closest topic id from the provided ladder; skip questions that fit no topic.",
+    messages: [
+      {
+        role: "user",
+        content: `Course: ${courseTitle}\n\nLadder topics (map each question to one of these ids):\n${existingTopics
+          .map((t) => `- ${t.id}: ${t.title}`)
+          .join("\n")}\n\n--- PAST PAPER ---\n${rawText.slice(0, MAX_UNIT_CHARS)}`,
+      },
+    ],
+  });
+}
+
+export function parsePastPaper(jsonText: string) {
+  return pastPaperSchema.parse(JSON.parse(jsonText));
+}
+
+/** Sanitize past-paper questions against the ladder and tag their source. */
+export function assemblePastPaperQuestions(
+  parsed: z.infer<typeof pastPaperSchema>,
+  topics: { id: string; unit: number }[],
+  fileId: string
+): ExamQuestion[] {
+  const unitOf = new Map(topics.map((t) => [t.id, t.unit]));
+  return parsed.questions
+    .filter(
+      (q) =>
+        unitOf.has(q.topicId) &&
+        q.options.length >= 2 &&
+        q.answer >= 0 &&
+        q.answer < q.options.length
+    )
+    .map((q, i) => ({
+      id: `pp-${fileId}-${i + 1}`,
+      topicId: q.topicId,
+      unit: unitOf.get(q.topicId)!,
+      prompt: q.prompt,
+      code: q.code,
+      options: q.options,
+      answer: q.answer,
+      hint: q.hint,
+      explanation: q.explanation,
+      co: q.co ?? null,
+      level: q.level ?? null,
+      source: "pastpaper" as const,
+    }));
 }
 
 /** Re-letter sections A, B, C… in unit order and drop deps that point at

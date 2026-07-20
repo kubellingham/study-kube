@@ -69,4 +69,31 @@ export interface ExamQuestion {
   hint: string;
   /** Shown on the analysis screen review. */
   explanation: string;
+  /** Course Outcome tag from a past paper, e.g. "CO3". */
+  co?: string | null;
+  /** Bloom's / RBT level from a past paper, e.g. "L2". */
+  level?: string | null;
+  /** Where the question came from. */
+  source?: "generated" | "pastpaper";
+}
+
+/* ---- Intake flow (KUBE_INTAKE_FLOW.md) ---- */
+
+/** Parsed from the driving file (syllabus): the course skeleton. */
+export interface SyllabusInfo {
+  units: { unit: number; title: string }[];
+  cos: { id: string; text: string }[];
+}
+
+/** Durable per-file memory — the "quiet receipt". One record per ingested
+ *  file; its id is a content hash so the same file is never re-processed. */
+export interface IngestedFile {
+  id: string; // sha256 prefix of the extracted text
+  name: string;
+  kind: "syllabus" | "unit" | "pastpaper" | "notes";
+  unit: number | null;
+  label: string; // human line, e.g. "Unit 3 — Stack Organization"
+  topics: number;
+  questions: number;
+  digestedAt: number;
 }

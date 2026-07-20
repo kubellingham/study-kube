@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import type { Topic } from "@/lib/course/types";
 import { useCourse } from "@/lib/learn/use-course";
 import { loadProgress, type LearnProgress } from "@/lib/learn/progress";
-import AddUnit from "@/app/learn/components/AddUnit";
+import AddMaterial from "@/app/learn/components/AddMaterial";
 
 type NodeState = "completed" | "current" | "available" | "locked";
 
@@ -156,9 +156,8 @@ function LadderNode({
 
 export default function CourseLadderPage() {
   const params = useParams<{ courseId: string }>();
-  const { user, userLoading, status, bundle, owned, reload } = useCourse(
-    params.courseId
-  );
+  const { user, userLoading, status, bundle, owned, syllabus, files, reload } =
+    useCourse(params.courseId);
   const router = useRouter();
   const [progress, setProgress] = useState<LearnProgress | null>(null);
 
@@ -204,7 +203,9 @@ export default function CourseLadderPage() {
       <h1 className="text-3xl">{course.title}</h1>
       <p className="mt-2 text-sm" style={{ color: "var(--ink-soft)" }}>
         {ladder.length === 0
-          ? "No units digested yet — feed Kube the first one below."
+          ? syllabus
+            ? `Kube knows the shape: ${syllabus.units.length} units. Feed them in below and watch the skeleton fill.`
+            : "A blank ladder, waiting for its course."
           : `One ladder, ${ladder.length} small steps. You've climbed ${done}.`}
       </p>
 
@@ -237,46 +238,80 @@ export default function CourseLadderPage() {
         </div>
       )}
 
-      {course.sections.map((section) => (
-        <section key={section.id} className="mt-12">
-          <div className="k-card px-5 py-4">
-            <span className="k-eyebrow">
-              Section {section.letter} · Unit {section.unit}
-            </span>
-            <h2 className="mt-1 text-xl">{section.title}</h2>
-            <p className="mt-1 text-sm" style={{ color: "var(--ink-soft)" }}>
-              {section.tagline}
-            </p>
-          </div>
-          <div className="mt-8 flex flex-col gap-9">
-            {section.topics.map((topic) => {
-              const side = nodeIdx % 2 === 0 ? "left" : "right";
-              nodeIdx += 1;
-              return (
-                <LadderNode
-                  key={topic.id}
-                  courseId={course.id}
-                  topic={topic}
-                  state={states[topic.id]}
-                  side={side}
-                  number={bundle.topicPosition(topic.id) + 1}
-                />
-              );
-            })}
-          </div>
-        </section>
-      ))}
+      {(() => {
+        // Course skeleton (KUBE_INTAKE_FLOW.md): fed units render their full
+        // sections; syllabus units not yet fed render as named, expectant
+        // placeholders — the whole mountain visible before it's climbed.
+        const fedUnits = new Set(course.sections.map((s) => s.unit));
+        const rows: (
+          | { type: "section"; unit: number; section: (typeof course.sections)[number] }
+          | { type: "skeleton"; unit: number; title: string }
+        )[] = [
+          ...course.sections.map((s) => ({
+            type: "section" as const,
+            unit: s.unit,
+            section: s,
+          })),
+          ...(syllabus?.units ?? [])
+            .filter((u) => !fedUnits.has(u.unit))
+            .map((u) => ({ type: "skeleton" as const, unit: u.unit, title: u.title })),
+        ].sort((a, b) => a.unit - b.unit);
+
+        return rows.map((row) =>
+          row.type === "skeleton" ? (
+            <section key={`skeleton-${row.unit}`} className="mt-12">
+              <div
+                className="rounded-2xl border-2 border-dashed px-5 py-4"
+                style={{ borderColor: "var(--line)" }}
+              >
+                <span className="k-eyebrow">Unit {row.unit} · not fed yet</span>
+                <h2 className="mt-1 text-xl" style={{ color: "var(--faint)" }}>
+                  {row.title}
+                </h2>
+                <p className="mt-1 text-sm" style={{ color: "var(--faint)" }}>
+                  Kube&apos;s expecting this here — add its PDF below and the
+                  node lights up.
+                </p>
+              </div>
+            </section>
+          ) : (
+            <section key={row.section.id} className="mt-12">
+              <div className="k-card px-5 py-4" style={{ borderColor: "var(--amber-soft)" }}>
+                <span className="k-eyebrow" style={{ color: "var(--amber)" }}>
+                  Section {row.section.letter} · Unit {row.section.unit} · digested
+                </span>
+                <h2 className="mt-1 text-xl">{row.section.title}</h2>
+                <p className="mt-1 text-sm" style={{ color: "var(--ink-soft)" }}>
+                  {row.section.tagline}
+                </p>
+              </div>
+              <div className="mt-8 flex flex-col gap-9">
+                {row.section.topics.map((topic) => {
+                  const side = nodeIdx % 2 === 0 ? "left" : "right";
+                  nodeIdx += 1;
+                  return (
+                    <LadderNode
+                      key={topic.id}
+                      courseId={course.id}
+                      topic={topic}
+                      state={states[topic.id]}
+                      side={side}
+                      number={bundle.topicPosition(topic.id) + 1}
+                    />
+                  );
+                })}
+              </div>
+            </section>
+          )
+        );
+      })()}
 
       {owned && (
-        <AddUnit
+        <AddMaterial
           courseId={course.id}
-          suggestedUnit={
-            bundle.availableUnits.length
-              ? Math.max(...bundle.availableUnits) + 1
-              : 1
-          }
-          existingUnits={bundle.availableUnits}
+          files={files}
           onDone={reload}
+          invitation={ladder.length === 0 && !syllabus}
         />
       )}
     </main>

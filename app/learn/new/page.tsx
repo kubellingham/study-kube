@@ -55,8 +55,9 @@ export default function NewCoursePage() {
       </div>
       <h1 className="text-3xl">Add a subject</h1>
       <p className="mt-2 text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>
-        Name the course first. Then, on its page, feed Kube the unit PDFs one at
-        a time — each is digested into topics, gentle checks, and exam questions.
+        Name the course first. Then start with your syllabus so Kube learns the
+        shape of the whole course — and add units, past papers, and notes in as
+        many batches as you like. Kube files each one automatically.
       </p>
 
       <form onSubmit={create} className="k-card mt-6 px-6 py-6">
