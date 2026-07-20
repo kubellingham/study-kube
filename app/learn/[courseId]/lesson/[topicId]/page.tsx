@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useUser } from "@/lib/use-user";
-import { getTopic, ladder, topicPosition, sectionOfTopic } from "@/lib/course";
+import { getCourseBundle } from "@/lib/course";
 import type { CheckStep, TeachStep } from "@/lib/course/types";
 import { loadProgress, markTopicComplete } from "@/lib/learn/progress";
 import Rich from "@/app/learn/components/Rich";
@@ -44,13 +44,7 @@ function TeachCard({ step, onNext }: { step: TeachStep; onNext: () => void }) {
   );
 }
 
-function CheckCard({
-  step,
-  onPass,
-}: {
-  step: CheckStep;
-  onPass: () => void;
-}) {
+function CheckCard({ step, onPass }: { step: CheckStep; onPass: () => void }) {
   const [shaking, setShaking] = useState<number | null>(null);
   const [passed, setPassed] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -124,8 +118,9 @@ function CheckCard({
 }
 
 export default function LessonPage() {
-  const params = useParams<{ topicId: string }>();
-  const topic = getTopic(params.topicId);
+  const params = useParams<{ courseId: string; topicId: string }>();
+  const bundle = getCourseBundle(params.courseId);
+  const topic = bundle?.getTopic(params.topicId);
   const { user, loading } = useUser();
   const router = useRouter();
   const [stepIdx, setStepIdx] = useState(0);
@@ -134,21 +129,21 @@ export default function LessonPage() {
 
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
-    if (user && topic) {
-      loadProgress(user.uid).then((p) => {
+    if (user && bundle && topic) {
+      loadProgress(user.uid, bundle.course.id).then((p) => {
         const done = !!p.completed[topic.id];
         setAlreadyDone(done);
         setPhase(done ? "review" : "lesson");
       });
     }
-  }, [user, loading, router, topic]);
+  }, [user, loading, router, bundle, topic]);
 
-  if (!topic) {
+  if (!bundle || !topic) {
     return (
       <main className="mx-auto max-w-lg flex-1 px-4 py-16 text-center">
         <p style={{ color: "var(--faint)" }}>That topic isn&apos;t on the ladder.</p>
         <Link href="/learn" className="mt-4 inline-block text-sm font-semibold" style={{ color: "var(--kube)" }}>
-          ← back to the path
+          ← back to Kube
         </Link>
       </main>
     );
@@ -162,19 +157,18 @@ export default function LessonPage() {
     );
   }
 
-  const section = sectionOfTopic(topic.id);
-  const pos = topicPosition(topic.id);
-  const next = ladder[pos + 1];
+  const courseId = bundle.course.id;
+  const section = bundle.sectionOfTopic(topic.id);
+  const pos = bundle.topicPosition(topic.id);
+  const next = bundle.ladder[pos + 1];
   const steps = topic.steps;
-  const checksOnly = steps
-    .map((s, i) => ({ s, i }))
-    .filter(({ s }) => s.kind === "check");
+  const firstCheckIdx = steps.findIndex((s) => s.kind === "check");
 
   async function finish() {
     setPhase("done");
     if (user && !alreadyDone) {
       try {
-        await markTopicComplete(user.uid, topic!.id);
+        await markTopicComplete(user.uid, courseId, topic!.id);
       } catch {
         // Progress write failing shouldn't block the learner mid-celebration.
       }
@@ -187,7 +181,7 @@ export default function LessonPage() {
         <span className="k-eyebrow">
           Section {section?.letter} · {topic.title}
         </span>
-        <Link href="/learn" className="text-xs" style={{ color: "var(--faint)" }}>
+        <Link href={`/learn/${courseId}`} className="text-xs" style={{ color: "var(--faint)" }}>
           ← path
         </Link>
       </div>
@@ -225,7 +219,7 @@ export default function LessonPage() {
           <div className="mt-6 flex flex-col gap-3">
             <button
               onClick={() => {
-                setStepIdx(checksOnly[0]?.i ?? 0);
+                setStepIdx(firstCheckIdx >= 0 ? firstCheckIdx : 0);
                 setPhase("lesson");
               }}
               className="rounded-2xl py-3 text-sm font-semibold text-white"
@@ -264,7 +258,7 @@ export default function LessonPage() {
           <div className="mt-7 flex w-full flex-col gap-3">
             {next ? (
               <Link
-                href={`/learn/lesson/${next.id}`}
+                href={`/learn/${courseId}/lesson/${next.id}`}
                 onClick={() => {
                   setStepIdx(0);
                   setPhase("loading");
@@ -276,7 +270,7 @@ export default function LessonPage() {
               </Link>
             ) : (
               <Link
-                href="/learn/exam"
+                href={`/learn/${courseId}/exam`}
                 className="rounded-2xl py-3 text-sm font-semibold text-white"
                 style={{ background: "var(--amber)" }}
               >
@@ -284,7 +278,7 @@ export default function LessonPage() {
               </Link>
             )}
             <Link
-              href="/learn"
+              href={`/learn/${courseId}`}
               className="rounded-2xl border py-3 text-sm font-semibold"
               style={{ borderColor: "var(--line)", color: "var(--ink-soft)" }}
             >

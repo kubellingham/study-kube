@@ -6,14 +6,9 @@
 // honest verdict read from the shape of the misses, and a targeted plan.
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useUser } from "@/lib/use-user";
-import {
-  availableUnits,
-  getTopic,
-  questionsForTopics,
-  questionsForUnit,
-} from "@/lib/course";
+import { getCourseBundle, type CourseBundle } from "@/lib/course";
 import type { ExamQuestion } from "@/lib/course/types";
 import { saveExamAttempt } from "@/lib/learn/progress";
 
@@ -42,7 +37,12 @@ function diagnose(questions: ExamQuestion[], answers: (number | null)[]): TopicR
   });
 }
 
-function verdict(results: TopicResult[], score: number, total: number): string {
+function verdict(
+  bundle: CourseBundle,
+  results: TopicResult[],
+  score: number,
+  total: number
+): string {
   if (score === total) {
     return "A clean sweep. Every topic held. Rest well tonight — you've earned it, and tomorrow you get to prove it.";
   }
@@ -50,7 +50,7 @@ function verdict(results: TopicResult[], score: number, total: number): string {
   if (weak.length === 0) {
     return "You dropped a question or two, but no topic actually wobbled — everything reads solid. A light review of what you missed below and you're done.";
   }
-  const weakNames = weak.map((r) => getTopic(r.topicId)?.title ?? r.topicId);
+  const weakNames = weak.map((r) => bundle.getTopic(r.topicId)?.title ?? r.topicId);
   if (weak.length <= 2) {
     return `Here's the good news hiding in this score: your misses aren't scattered — they cluster in ${weakNames.join(" and ")}. That's a clear target, not a vague "revise everything." Close that and this score jumps.`;
   }
@@ -64,6 +64,8 @@ const STATUS_META: Record<TopicStatus, { label: string; color: string; soft: str
 };
 
 export default function ExamPage() {
+  const params = useParams<{ courseId: string }>();
+  const bundle = getCourseBundle(params.courseId);
   const { user, loading } = useUser();
   const router = useRouter();
 
@@ -86,6 +88,17 @@ export default function ExamPage() {
     [phase, questions, answers]
   );
 
+  if (!bundle) {
+    return (
+      <main className="mx-auto max-w-lg flex-1 px-4 py-16 text-center">
+        <p style={{ color: "var(--faint)" }}>That course isn&apos;t in Kube yet.</p>
+        <Link href="/learn" className="mt-4 inline-block text-sm font-semibold" style={{ color: "var(--kube)" }}>
+          ← your subjects
+        </Link>
+      </main>
+    );
+  }
+
   if (loading || !user) {
     return (
       <div className="flex-1 grid place-items-center text-sm" style={{ color: "var(--faint)" }}>
@@ -93,6 +106,8 @@ export default function ExamPage() {
       </div>
     );
   }
+
+  const courseId = bundle.course.id;
 
   function begin(qs: ExamQuestion[], label: string, m: Mode) {
     setQuestions(qs);
@@ -115,6 +130,7 @@ export default function ExamPage() {
     );
     if (user) {
       saveExamAttempt(user.uid, {
+        courseId,
         mode,
         scope: scopeLabel,
         score,
@@ -135,8 +151,8 @@ export default function ExamPage() {
     return (
       <main className="mx-auto w-full max-w-lg flex-1 px-4 pb-20 pt-10">
         <div className="mb-6 flex items-center justify-between">
-          <span className="k-eyebrow">mock exam</span>
-          <Link href="/learn" className="text-xs" style={{ color: "var(--faint)" }}>
+          <span className="k-eyebrow">{bundle.course.code} · mock exam</span>
+          <Link href={`/learn/${courseId}`} className="text-xs" style={{ color: "var(--faint)" }}>
             ← path
           </Link>
         </div>
@@ -149,7 +165,7 @@ export default function ExamPage() {
         <div className="k-card mt-6 px-5 py-5">
           <span className="k-eyebrow">coverage</span>
           <div className="mt-3 flex flex-wrap gap-2">
-            {[...availableUnits.map((u) => ({ v: u as number | "all", label: `Unit ${u}` })), { v: "all" as const, label: "Whole course" }].map(
+            {[...bundle.availableUnits.map((u) => ({ v: u as number | "all", label: `Unit ${u}` })), { v: "all" as const, label: "Whole course" }].map(
               ({ v, label }) => (
                 <button
                   key={label}
@@ -205,13 +221,13 @@ export default function ExamPage() {
 
           <button
             onClick={() => {
-              const qs = questionsForUnit(scope);
+              const qs = bundle.questionsForUnit(scope);
               begin(qs, scope === "all" ? "whole course" : `unit-${scope}`, mode);
             }}
             className="mt-6 w-full rounded-2xl py-3 text-sm font-semibold text-white"
             style={{ background: "var(--kube)" }}
           >
-            Start · {questionsForUnit(scope).length} questions
+            Start · {bundle.questionsForUnit(scope).length} questions
           </button>
         </div>
       </main>
@@ -229,7 +245,7 @@ export default function ExamPage() {
           <span className="k-eyebrow">
             {mode} book · {qIdx + 1} / {questions.length}
           </span>
-          <Link href="/learn" className="text-xs" style={{ color: "var(--faint)" }}>
+          <Link href={`/learn/${courseId}`} className="text-xs" style={{ color: "var(--faint)" }}>
             abandon
           </Link>
         </div>
@@ -311,7 +327,7 @@ export default function ExamPage() {
                 className="flex-1 rounded-2xl py-3 text-sm font-semibold text-white disabled:opacity-40"
                 style={{ background: "var(--amber)" }}
               >
-                Submit & diagnose
+                Submit &amp; diagnose
               </button>
             )}
           </div>
@@ -333,7 +349,7 @@ export default function ExamPage() {
     <main className="mx-auto w-full max-w-lg flex-1 px-4 pb-24 pt-10">
       <div className="mb-6 flex items-center justify-between">
         <span className="k-eyebrow">diagnosis · {scopeLabel}</span>
-        <Link href="/learn" className="text-xs" style={{ color: "var(--faint)" }}>
+        <Link href={`/learn/${courseId}`} className="text-xs" style={{ color: "var(--faint)" }}>
           ← path
         </Link>
       </div>
@@ -352,7 +368,7 @@ export default function ExamPage() {
           </p>
         )}
         <p className="mx-auto mt-4 max-w-md text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>
-          {verdict(results, score, questions.length)}
+          {verdict(bundle, results, score, questions.length)}
         </p>
       </div>
 
@@ -360,7 +376,7 @@ export default function ExamPage() {
       <div className="mt-3 flex flex-col gap-3">
         {results.map((r) => {
           const meta = STATUS_META[r.status];
-          const topic = getTopic(r.topicId);
+          const topic = bundle.getTopic(r.topicId);
           return (
             <div key={r.topicId} className="k-card px-5 py-4">
               <div className="flex items-center justify-between">
@@ -405,17 +421,17 @@ export default function ExamPage() {
             {weak.map((r) => (
               <Link
                 key={r.topicId}
-                href={`/learn/lesson/${r.topicId}`}
+                href={`/learn/${courseId}/lesson/${r.topicId}`}
                 className="k-card flex items-center justify-between px-5 py-3 text-sm font-semibold"
                 style={{ color: "var(--kube)" }}
               >
-                <span>Revise: {getTopic(r.topicId)?.title}</span>
+                <span>Revise: {bundle.getTopic(r.topicId)?.title}</span>
                 <span aria-hidden>→</span>
               </Link>
             ))}
             <button
               onClick={() => {
-                const qs = questionsForTopics(weak.map((r) => r.topicId));
+                const qs = bundle.questionsForTopics(weak.map((r) => r.topicId));
                 begin(qs, "retest of weak topics", "closed");
               }}
               className="mt-2 rounded-2xl py-3 text-sm font-semibold text-white"

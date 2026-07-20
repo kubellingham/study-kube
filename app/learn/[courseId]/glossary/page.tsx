@@ -3,14 +3,31 @@
 // Notes & glossary — brief §1.5. A calm reference view of every topic's key
 // lines, like Duolingo's "Tips" article. No interaction, just the facts.
 import Link from "next/link";
-import { course } from "@/lib/course";
+import { useParams } from "next/navigation";
+import { getCourseBundle } from "@/lib/course";
 
 export default function GlossaryPage() {
+  const params = useParams<{ courseId: string }>();
+  const bundle = getCourseBundle(params.courseId);
+
+  if (!bundle) {
+    return (
+      <main className="mx-auto max-w-lg flex-1 px-4 py-16 text-center">
+        <p style={{ color: "var(--faint)" }}>That course isn&apos;t in Kube yet.</p>
+        <Link href="/learn" className="mt-4 inline-block text-sm font-semibold" style={{ color: "var(--kube)" }}>
+          ← your subjects
+        </Link>
+      </main>
+    );
+  }
+
+  const { course } = bundle;
+
   return (
     <main className="mx-auto w-full max-w-2xl flex-1 px-4 pb-24 pt-10">
       <div className="mb-2 flex items-center justify-between">
-        <span className="k-eyebrow">notes & glossary</span>
-        <Link href="/learn" className="text-xs" style={{ color: "var(--faint)" }}>
+        <span className="k-eyebrow">{course.code} · notes &amp; glossary</span>
+        <Link href={`/learn/${course.id}`} className="text-xs" style={{ color: "var(--faint)" }}>
           ← path
         </Link>
       </div>
@@ -34,7 +51,7 @@ export default function GlossaryPage() {
                     {topic.title}
                   </h3>
                   <Link
-                    href={`/learn/lesson/${topic.id}`}
+                    href={`/learn/${course.id}/lesson/${topic.id}`}
                     className="whitespace-nowrap text-xs font-semibold"
                     style={{ color: "var(--kube)" }}
                   >
