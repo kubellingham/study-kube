@@ -269,8 +269,9 @@ export default function CourseLadderPage() {
                   {row.title}
                 </h2>
                 <p className="mt-1 text-sm" style={{ color: "var(--faint)" }}>
-                  Kube&apos;s expecting this here — add its PDF below and the
-                  node lights up.
+                  {owned
+                    ? "Kube's expecting this here — add its file below and the node lights up."
+                    : "Kube's expecting this here — it lights up when its material is fed in."}
                 </p>
               </div>
             </section>

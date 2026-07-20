@@ -9,6 +9,7 @@ import { useUser } from "@/lib/use-user";
 import {
   buildCourseBundle,
   getBuiltinBundle,
+  getBuiltinSyllabus,
   type CourseBundle,
 } from "@/lib/course";
 import type {
@@ -70,6 +71,7 @@ export function useCourse(courseId: string) {
     const builtin = getBuiltinBundle(courseId, user.email);
     if (builtin) {
       setBundle(builtin);
+      setSyllabus(getBuiltinSyllabus(courseId));
       setOwned(false);
       setStatus("ready");
       return;
