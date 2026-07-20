@@ -309,6 +309,7 @@ export default function CourseLadderPage() {
       {owned && (
         <AddMaterial
           courseId={course.id}
+          uid={user.uid}
           files={files}
           onDone={reload}
           invitation={ladder.length === 0 && !syllabus}

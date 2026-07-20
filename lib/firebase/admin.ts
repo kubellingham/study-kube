@@ -38,8 +38,16 @@ function getAdminApp(): App {
   return app;
 }
 
+let dbInstance: Firestore | undefined;
+
 export function adminDb(): Firestore {
-  return getFirestore(getAdminApp());
+  if (!dbInstance) {
+    dbInstance = getFirestore(getAdminApp());
+    // Optional fields (e.g. a teach step with no code block) may arrive as
+    // undefined; Firestore rejects undefined outright without this setting.
+    dbInstance.settings({ ignoreUndefinedProperties: true });
+  }
+  return dbInstance;
 }
 
 export function adminBucket() {

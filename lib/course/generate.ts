@@ -109,10 +109,10 @@ export function generateUnitStream(
   const client = getAnthropic();
   const existing =
     existingTopics.length > 0
-      ? `Topics already on this course's ladder (you may list their ids as dependencies):\n${existingTopics
+      ? `Topics already on this course's ladder (you may list their ids as dependencies — and do NOT recreate any of them; produce only topics genuinely new in this material):\n${existingTopics
           .map((t) => `- ${t.id}: ${t.title}`)
           .join("\n")}`
-      : "This is the first unit — the ladder is empty so far.";
+      : "This is the first material — the ladder is empty so far.";
 
   return client.messages.stream({
     model: MODEL,
@@ -156,8 +156,15 @@ export function assembleUnit(
     if (known.has(id)) continue; // still colliding — drop rather than corrupt
     const steps: Step[] = [];
     for (const s of t.steps) {
+      // Optional fields are added only when present — Firestore rejects
+      // undefined values, so absent must mean absent.
       if (s.kind === "teach" && s.body) {
-        steps.push({ kind: "teach", title: s.title, body: s.body, code: s.code });
+        steps.push({
+          kind: "teach",
+          body: s.body,
+          ...(s.title ? { title: s.title } : {}),
+          ...(s.code ? { code: s.code } : {}),
+        });
       } else if (
         s.kind === "check" &&
         s.prompt &&
@@ -170,10 +177,10 @@ export function assembleUnit(
         steps.push({
           kind: "check",
           prompt: s.prompt,
-          code: s.code,
           options: s.options,
           answer: s.answer,
           praise: s.praise || "That's exactly the idea — locked in.",
+          ...(s.code ? { code: s.code } : {}),
         });
       }
     }
@@ -205,11 +212,11 @@ export function assembleUnit(
       topicId: q.topicId,
       unit: unitNumber,
       prompt: q.prompt,
-      code: q.code,
       options: q.options,
       answer: q.answer,
       hint: q.hint,
       explanation: q.explanation,
+      ...(q.code ? { code: q.code } : {}),
     }));
 
   return {
@@ -255,7 +262,7 @@ export function classifyStream(courseTitle: string, rawText: string) {
     max_tokens: 2000,
     output_config: { effort: "low", format: zodOutputFormat(classifySchema) },
     system:
-      "Classify what role a file plays in a university course. A syllabus/course outline is the driving file (defines units + Course Outcomes). Unit material teaches. Past papers show how the course is tested. Everything else is notes.",
+      "Classify what role a file plays in a university course. A syllabus/course outline is the driving file (defines units + Course Outcomes, usually with little teaching content). Past papers are exam/question papers. Lecture slide decks and teaching documents are 'unit' — even when they cover only PART of a unit (e.g. a single lecture); infer the unit number from the title or content. Reserve 'notes' for supplementary handouts that clearly aren't the main teaching material.",
     messages: [
       {
         role: "user",
@@ -367,7 +374,6 @@ export function assemblePastPaperQuestions(
       topicId: q.topicId,
       unit: unitOf.get(q.topicId)!,
       prompt: q.prompt,
-      code: q.code,
       options: q.options,
       answer: q.answer,
       hint: q.hint,
@@ -375,6 +381,7 @@ export function assemblePastPaperQuestions(
       co: q.co ?? null,
       level: q.level ?? null,
       source: "pastpaper" as const,
+      ...(q.code ? { code: q.code } : {}),
     }));
 }
 

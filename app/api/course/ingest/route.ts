@@ -1,5 +1,5 @@
 import { createHash } from "crypto";
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { getUid } from "@/lib/api-helpers";
 import { adminDb } from "@/lib/firebase/admin";
 import { extractDocumentText } from "@/lib/ingest/office";
@@ -21,45 +21,58 @@ import type { Section, ExamQuestion, IngestedFile } from "@/lib/course/types";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-const MAX_PDF_BYTES = 25 * 1024 * 1024;
+const MAX_FILE_BYTES = 4 * 1024 * 1024; // fallback multipart path only
+const MAX_TEXT_CHARS = 400_000;
 
-/** The single intake endpoint (KUBE_INTAKE_FLOW.md): accepts ANY course file,
- *  silently classifies it (syllabus / unit / past paper / notes), routes it to
- *  the right digestion, and records durable per-file memory keyed by content
- *  hash so nothing already learned is ever re-processed. Streams heartbeat
- *  bytes throughout, then a final RESULT line. */
+/** Intake endpoint (KUBE_INTAKE_FLOW.md), background-job edition. The client
+ *  extracts text in the browser and POSTs JSON {courseId, name, text}; this
+ *  handler classifies-and-digests AFTER responding, writing progress to an
+ *  ingestJobs doc the client watches. Closing the tab is safe — the job
+ *  finishes on its own and the course updates when it's done. */
 export async function POST(req: NextRequest) {
   const uid = await getUid(req);
   if (!uid) {
     return Response.json({ error: "Not signed in." }, { status: 401 });
   }
 
-  let courseId: string;
+  let courseId = "";
   let fileName = "pasted text";
   let rawText = "";
 
   try {
-    const form = await req.formData();
-    courseId = (form.get("courseId") || "").toString();
-    const pasted = (form.get("text") || "").toString().trim();
-    const file = form.get("file");
-
+    const contentType = req.headers.get("content-type") || "";
+    if (contentType.includes("application/json")) {
+      const body = await req.json();
+      courseId = (body.courseId || "").toString();
+      fileName = (body.name || "pasted text").toString().slice(0, 200);
+      rawText = (body.text || "").toString();
+    } else {
+      // Fallback for clients that couldn't extract locally (small files only).
+      const form = await req.formData();
+      courseId = (form.get("courseId") || "").toString();
+      const pasted = (form.get("text") || "").toString().trim();
+      const file = form.get("file");
+      if (file instanceof File && file.size > 0) {
+        if (file.size > MAX_FILE_BYTES) {
+          return Response.json(
+            { error: "File is too large to upload directly — the app extracts text on your device for big files; try again from the app." },
+            { status: 400 }
+          );
+        }
+        fileName = file.name;
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        rawText = await extractDocumentText(bytes, file.name);
+      } else {
+        rawText = pasted;
+      }
+    }
     if (!courseId) {
       return Response.json({ error: "Missing course." }, { status: 400 });
     }
-    if (file instanceof File && file.size > 0) {
-      if (file.size > MAX_PDF_BYTES) {
-        return Response.json({ error: "File is too large (max 25 MB)." }, { status: 400 });
-      }
-      fileName = file.name;
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      rawText = await extractDocumentText(bytes, file.name);
-    } else if (pasted) {
-      rawText = pasted;
-    }
-    if (rawText.trim().length < 100) {
+    rawText = rawText.slice(0, MAX_TEXT_CHARS).trim();
+    if (rawText.length < 100) {
       return Response.json(
-        { error: "Please upload a PDF (or paste text) with enough material to work from." },
+        { error: "That file had too little readable text to work from." },
         { status: 400 }
       );
     }
@@ -74,210 +87,218 @@ export async function POST(req: NextRequest) {
   if (!snap.exists || snap.get("userId") !== uid) {
     return Response.json({ error: "Course not found." }, { status: 404 });
   }
-
   const courseTitle = snap.get("title") as string;
-  const sections = ((snap.get("sections") as Section[]) ?? []).slice();
-  const examBank = ((snap.get("examBank") as ExamQuestion[]) ?? []).slice();
-  const files = ((snap.get("files") as IngestedFile[]) ?? []).slice();
+  const priorFiles = ((snap.get("files") as IngestedFile[]) ?? []).slice();
 
-  // Durable per-file memory: same content already digested → skip entirely.
+  // Durable per-file memory: same content already digested → nothing to do.
   const fileId = createHash("sha256").update(rawText).digest("hex").slice(0, 16);
-  const already = files.find((f) => f.id === fileId);
+  const already = priorFiles.find((f) => f.id === fileId);
+  if (already) {
+    return Response.json({
+      skipped: true,
+      note: `Kube already learned "${already.label}" — nothing re-processed.`,
+    });
+  }
 
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      const say = (s: string) => controller.enqueue(encoder.encode(s));
-      const finish = (result: object) =>
-        say(`\nRESULT ${JSON.stringify(result)}\n`);
+  // Create the job doc, respond immediately, digest in the background.
+  const jobRef = db.collection("ingestJobs").doc();
+  await jobRef.set({
+    userId: uid,
+    courseId,
+    fileName,
+    status: "working",
+    note: "Kube is reading it…",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  });
 
-      // Run a Claude stream to completion, emitting heartbeat bytes. The
-      // four stream helpers have different parsed-output generics, so accept
-      // the raw event iterable shape via the SDK's own event union.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      async function run(claude: AsyncIterable<any>): Promise<string> {
-        let jsonText = "";
-        let ticks = 0;
-        for await (const event of claude) {
-          if (event.type === "content_block_delta" && event.delta?.type === "text_delta") {
-            jsonText += (event.delta.text as string) ?? "";
-          }
-          ticks += 1;
-          if (ticks % 20 === 0) say(".");
+  after(async () => {
+    const setJob = (fields: Record<string, unknown>) =>
+      jobRef.update({ ...fields, updatedAt: Date.now() }).catch(() => {});
+
+    async function runToText(
+      claude: AsyncIterable<{ type: string; delta?: { type: string; text?: string } }>
+    ): Promise<string> {
+      let jsonText = "";
+      for await (const event of claude) {
+        if (event.type === "content_block_delta" && event.delta?.type === "text_delta") {
+          jsonText += event.delta.text ?? "";
         }
-        return jsonText;
       }
+      return jsonText;
+    }
 
-      try {
-        if (already) {
-          finish({
-            ok: true,
-            skipped: true,
-            kind: already.kind,
-            label: already.label,
-            message: `Kube already learned "${already.label}" — nothing re-processed.`,
-          });
-          return;
-        }
+    try {
+      const classification = parseClassification(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await runToText(classifyStream(courseTitle, rawText) as AsyncIterable<any>)
+      );
+      await setJob({ note: `Filed as: ${classification.label}. Digesting…`, label: classification.label, kind: classification.kind });
 
-        say(`Kube is reading ${fileName}…\n`);
-        const classification = parseClassification(
-          await run(classifyStream(courseTitle, rawText))
+      const record: IngestedFile = {
+        id: fileId,
+        name: fileName,
+        kind: classification.kind,
+        unit: classification.unit ?? null,
+        label: classification.label,
+        topics: 0,
+        questions: 0,
+        digestedAt: Date.now(),
+      };
+
+      if (classification.kind === "syllabus") {
+        const parsed = parseSyllabus(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await runToText(syllabusStream(courseTitle, rawText) as AsyncIterable<any>)
         );
-        say(`\nFiled as: ${classification.label}\n`);
-
-        const record: IngestedFile = {
-          id: fileId,
-          name: fileName,
-          kind: classification.kind,
-          unit: classification.unit ?? null,
-          label: classification.label,
-          topics: 0,
-          questions: 0,
-          digestedAt: Date.now(),
-        };
-
-        if (classification.kind === "syllabus") {
-          say("Reading the shape of the whole course…\n");
-          const parsed = parseSyllabus(await run(syllabusStream(courseTitle, rawText)));
-          await courseRef.update({
+        await db.runTransaction(async (tx) => {
+          const fresh = await tx.get(courseRef);
+          const files = ((fresh.get("files") as IngestedFile[]) ?? []).filter(
+            (f) => f.id !== fileId
+          );
+          tx.update(courseRef, {
             syllabus: parsed,
             files: [...files, record],
             updatedAt: Date.now(),
           });
-          finish({
-            ok: true,
-            kind: "syllabus",
-            label: classification.label,
-            units: parsed.units.length,
-            cos: parsed.cos.length,
-          });
-          return;
-        }
+        });
+        await setJob({
+          status: "done",
+          note: `Syllabus read — ${parsed.units.length} units${parsed.cos.length ? `, ${parsed.cos.length} Course Outcomes` : ""}. The course skeleton is up.`,
+        });
+        return;
+      }
 
-        if (classification.kind === "unit") {
-          const fed = sections.map((s) => s.unit);
-          const unitNumber =
-            classification.unit ?? (fed.length ? Math.max(...fed) + 1 : 1);
-          say(`Teaching itself Unit ${unitNumber}…\n`);
+      if (classification.kind === "unit") {
+        const preSections = (snap.get("sections") as Section[]) ?? [];
+        const fed = preSections.map((s) => s.unit);
+        const unitNumber =
+          classification.unit ?? (fed.length ? Math.max(...fed) + 1 : 1);
+        const existingTopics = preSections
+          .flatMap((s) => s.topics)
+          .map((t) => ({ id: t.id, title: t.title }));
 
-          // Re-digesting a unit replaces it.
-          const keptSections = sections.filter((s) => s.unit !== unitNumber);
-          const keptBank = examBank.filter((q) => q.unit !== unitNumber);
-          const existingTopics = keptSections
-            .flatMap((s) => s.topics)
-            .map((t) => ({ id: t.id, title: t.title }));
+        const generated = parseGeneratedUnit(
+          await runToText(
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            generateUnitStream(courseTitle, unitNumber, rawText, existingTopics) as AsyncIterable<any>
+          )
+        );
 
-          const generated = parseGeneratedUnit(
-            await run(
-              generateUnitStream(courseTitle, unitNumber, rawText, existingTopics)
-            )
+        let added = 0;
+        let addedQ = 0;
+        await db.runTransaction(async (tx) => {
+          const fresh = await tx.get(courseRef);
+          const sections = ((fresh.get("sections") as Section[]) ?? []).slice();
+          const examBank = ((fresh.get("examBank") as ExamQuestion[]) ?? []).slice();
+          const files = ((fresh.get("files") as IngestedFile[]) ?? []).filter(
+            (f) => f.id !== fileId
           );
-          const { section, questions } = assembleUnit(
-            generated,
-            unitNumber,
-            existingTopics.map((t) => t.id)
-          );
-          if (section.topics.length === 0) {
-            throw new Error("The model returned no usable topics — try again.");
-          }
-          record.unit = unitNumber;
-          record.topics = section.topics.length;
-          record.questions = questions.length;
 
-          await courseRef.update({
-            sections: normalizeCourse([...keptSections, section]),
-            examBank: [...keptBank, ...questions],
-            files: [...files.filter((f) => f.unit !== unitNumber || f.kind !== "unit"), record],
-            updatedAt: Date.now(),
-          });
-          finish({
-            ok: true,
-            kind: "unit",
-            label: classification.label,
-            unit: unitNumber,
-            topics: section.topics.length,
-            questions: questions.length,
-          });
-          return;
-        }
-
-        if (classification.kind === "pastpaper") {
-          const topics = sections.flatMap((s) => s.topics);
-          if (topics.length === 0) {
-            // Don't record memory — the paper should be re-added once the
-            // ladder exists so its questions can attach to topics.
-            finish({
-              ok: true,
-              kind: "pastpaper",
-              deferred: true,
-              label: classification.label,
-              message:
-                "Kube can see this is a past paper, but the ladder is empty — add unit material first, then add this paper again so its questions can attach to topics.",
-            });
-            return;
-          }
-          say("Reading how this course gets tested…\n");
-          const parsed = parsePastPaper(
-            await run(
-              pastPaperStream(
-                courseTitle,
-                rawText,
-                topics.map((t) => ({ id: t.id, title: t.title }))
-              )
-            )
-          );
-          const questions = assemblePastPaperQuestions(
-            parsed,
-            topics.map((t) => ({ id: t.id, unit: t.unit })),
-            fileId
-          );
-          if (questions.length === 0) {
+          const allIds = sections.flatMap((s) => s.topics).map((t) => t.id);
+          const { section, questions } = assembleUnit(generated, unitNumber, allIds);
+          if (section.topics.length === 0 && questions.length === 0) {
             throw new Error(
-              "No questions could be mapped onto the ladder — try again after adding more units."
+              "This material didn't add anything new — its topics are already on the ladder."
             );
           }
-          record.questions = questions.length;
-          await courseRef.update({
+
+          // Multiple files can feed one unit (lecture decks): APPEND new
+          // topics to an existing section instead of replacing it.
+          const existing = sections.find((s) => s.unit === unitNumber);
+          if (existing) {
+            existing.topics = [...existing.topics, ...section.topics];
+          } else {
+            sections.push(section);
+          }
+          added = section.topics.length;
+          addedQ = questions.length;
+          record.unit = unitNumber;
+          record.topics = added;
+          record.questions = addedQ;
+
+          tx.update(courseRef, {
+            sections: normalizeCourse(sections),
             examBank: [...examBank, ...questions],
             files: [...files, record],
             updatedAt: Date.now(),
           });
-          finish({
-            ok: true,
-            kind: "pastpaper",
-            label: classification.label,
-            questions: questions.length,
+        });
+        await setJob({
+          status: "done",
+          note: `Unit ${unitNumber} digested — ${added} new topic${added === 1 ? "" : "s"}, ${addedQ} exam question${addedQ === 1 ? "" : "s"}.`,
+        });
+        return;
+      }
+
+      if (classification.kind === "pastpaper") {
+        const topics = ((snap.get("sections") as Section[]) ?? []).flatMap(
+          (s) => s.topics
+        );
+        if (topics.length === 0) {
+          await setJob({
+            status: "skipped",
+            note: "This is a past paper, but the ladder is empty — add unit material first, then add this paper again so its questions can attach to topics.",
           });
           return;
         }
-
-        // notes / anything else: remember it, honestly report what happened.
-        await courseRef.update({
-          files: [...files, record],
-          updatedAt: Date.now(),
+        const parsed = parsePastPaper(
+          await runToText(
+            pastPaperStream(
+              courseTitle,
+              rawText,
+              topics.map((t) => ({ id: t.id, title: t.title }))
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            ) as AsyncIterable<any>
+          )
+        );
+        const questions = assemblePastPaperQuestions(
+          parsed,
+          topics.map((t) => ({ id: t.id, unit: t.unit })),
+          fileId
+        );
+        if (questions.length === 0) {
+          throw new Error(
+            "No questions could be mapped onto the ladder — try again after adding more units."
+          );
+        }
+        record.questions = questions.length;
+        await db.runTransaction(async (tx) => {
+          const fresh = await tx.get(courseRef);
+          const examBank = ((fresh.get("examBank") as ExamQuestion[]) ?? []).slice();
+          const files = ((fresh.get("files") as IngestedFile[]) ?? []).filter(
+            (f) => f.id !== fileId
+          );
+          tx.update(courseRef, {
+            examBank: [...examBank, ...questions],
+            files: [...files, record],
+            updatedAt: Date.now(),
+          });
         });
-        finish({
-          ok: true,
-          kind: "notes",
-          label: classification.label,
-          message:
-            "Filed as notes and remembered. Kube doesn't teach from notes yet — units and past papers drive the ladder.",
+        await setJob({
+          status: "done",
+          note: `Past paper read — ${questions.length} exam-realistic questions added${questions.some((q) => q.co) ? " with their CO tags" : ""}.`,
         });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Digestion failed.";
-        finish({ ok: false, error: message });
-      } finally {
-        controller.close();
+        return;
       }
-    },
+
+      // notes / anything else: remember it, honestly report what happened.
+      await db.runTransaction(async (tx) => {
+        const fresh = await tx.get(courseRef);
+        const files = ((fresh.get("files") as IngestedFile[]) ?? []).filter(
+          (f) => f.id !== fileId
+        );
+        tx.update(courseRef, { files: [...files, record], updatedAt: Date.now() });
+      });
+      await setJob({
+        status: "done",
+        note: "Filed as notes and remembered. Kube doesn't teach from notes yet — units and past papers drive the ladder.",
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Digestion failed.";
+      await setJob({ status: "error", note: message });
+    }
   });
 
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/plain; charset=utf-8",
-      "Cache-Control": "no-store",
-      "X-Accel-Buffering": "no",
-    },
-  });
+  return Response.json({ jobId: jobRef.id });
 }

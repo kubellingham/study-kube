@@ -1,136 +1,181 @@
 "use client";
 
 // The persistent "Add material" surface (KUBE_INTAKE_FLOW.md Phase 2).
-// Accepts any files in any number of batches — Kube silently classifies each
-// (syllabus / unit / past paper / notes) and folds it into the ladder.
-// Already-digested files are recognised by content hash and never re-processed.
-import { useState } from "react";
+// Drag in any files, any number of batches. Text is extracted ON THIS DEVICE
+// (so big files are fine), then Kube classifies and digests each one as a
+// BACKGROUND job — closing the tab is safe; progress reattaches on return.
+import { useEffect, useRef, useState } from "react";
+import {
+  collection,
+  doc,
+  getDocs,
+  onSnapshot,
+  query,
+  where,
+} from "firebase/firestore";
+import { db } from "@/lib/firebase/client";
 import { authedFetch } from "@/lib/authed-fetch";
+import { extractFileTextInBrowser } from "@/lib/ingest/client-extract";
 import type { IngestedFile } from "@/lib/course/types";
 
-interface BatchLine {
+interface JobLine {
+  key: string;
   name: string;
-  state: "waiting" | "working" | "done" | "skipped" | "error";
+  state: "extracting" | "working" | "done" | "skipped" | "error";
   note: string;
 }
 
+const KIND_LABEL: Record<IngestedFile["kind"], string> = {
+  syllabus: "syllabus",
+  unit: "unit",
+  pastpaper: "past paper",
+  notes: "notes",
+};
+
 export default function AddMaterial({
   courseId,
+  uid,
   files,
   onDone,
   invitation,
 }: {
   courseId: string;
+  uid: string;
   files: IngestedFile[];
   onDone: () => void;
-  /** Phase 1 syllabus-first copy vs the ongoing Phase 2 copy. */
   invitation: boolean;
 }) {
-  const [picked, setPicked] = useState<File[]>([]);
   const [text, setText] = useState("");
-  const [tab, setTab] = useState<"pdf" | "text">("pdf");
-  const [busy, setBusy] = useState(false);
-  const [lines, setLines] = useState<BatchLine[]>([]);
+  const [tab, setTab] = useState<"files" | "text">("files");
+  const [lines, setLines] = useState<JobLine[]>([]);
+  const [dragOver, setDragOver] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
+  const unsubs = useRef<(() => void)[]>([]);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  async function ingestOne(form: FormData): Promise<{ note: string; state: BatchLine["state"] }> {
-    const res = await authedFetch("/api/course/ingest", { method: "POST", body: form });
-    if (!res.ok || !res.body) {
-      const data = await res.json().catch(() => ({}));
-      return { state: "error", note: data.error || "Digestion failed." };
-    }
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let all = "";
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      all += decoder.decode(value, { stream: true });
-    }
-    const match = all.match(/RESULT (\{.*\})/);
-    if (!match) return { state: "error", note: "Interrupted — please try this file again." };
-    const r = JSON.parse(match[1]) as {
-      ok: boolean;
-      error?: string;
-      skipped?: boolean;
-      deferred?: boolean;
-      kind?: string;
-      label?: string;
-      unit?: number;
-      topics?: number;
-      questions?: number;
-      units?: number;
-      cos?: number;
-      message?: string;
-    };
-    if (!r.ok) return { state: "error", note: r.error || "Digestion failed." };
-    if (r.skipped) return { state: "skipped", note: r.message || "Already learned — not re-processed." };
-    if (r.kind === "syllabus")
-      return {
-        state: "done",
-        note: `Syllabus read — ${r.units} units${r.cos ? `, ${r.cos} Course Outcomes` : ""}. The course skeleton is up.`,
-      };
-    if (r.kind === "unit")
-      return {
-        state: "done",
-        note: `Unit ${r.unit} digested — ${r.topics} topics, ${r.questions} exam questions.`,
-      };
-    if (r.kind === "pastpaper")
-      return {
-        state: r.deferred ? "skipped" : "done",
-        note: r.message || `Past paper read — ${r.questions} exam-realistic questions added.`,
-      };
-    return { state: "done", note: r.message || `Filed as ${r.label}.` };
+  useEffect(() => {
+    const subs = unsubs.current;
+    return () => subs.forEach((u) => u());
+  }, []);
+
+  function updateLine(key: string, patch: Partial<JobLine>) {
+    setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
   }
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    try {
-      if (tab === "text") {
-        setLines([{ name: "pasted text", state: "working", note: "Kube is reading…" }]);
-        const form = new FormData();
-        form.append("courseId", courseId);
-        form.append("text", text);
-        const r = await ingestOne(form);
-        setLines([{ name: "pasted text", state: r.state, note: r.note }]);
-        if (r.state === "done") setText("");
-      } else {
-        if (picked.length === 0) {
-          setLines([{ name: "—", state: "error", note: "Choose one or more files first." }]);
-          setBusy(false);
-          return;
+  function watchJob(jobId: string, key: string) {
+    const unsub = onSnapshot(
+      doc(db(), "ingestJobs", jobId),
+      (snap) => {
+        if (!snap.exists()) return;
+        const status = snap.get("status") as JobLine["state"];
+        const note = (snap.get("note") as string) ?? "";
+        updateLine(key, { state: status === "working" ? "working" : status, note });
+        if (status === "done") {
+          onDone();
+          unsub();
+        } else if (status === "error" || status === "skipped") {
+          unsub();
         }
-        const batch: BatchLine[] = picked.map((f) => ({
-          name: f.name,
-          state: "waiting",
-          note: "Waiting…",
-        }));
-        setLines(batch);
-        for (let i = 0; i < picked.length; i++) {
-          batch[i] = { ...batch[i], state: "working", note: "Kube is reading & digesting…" };
-          setLines([...batch]);
-          const form = new FormData();
-          form.append("courseId", courseId);
-          form.append("file", picked[i]);
-          const r = await ingestOne(form);
-          batch[i] = { ...batch[i], state: r.state, note: r.note };
-          setLines([...batch]);
-        }
-        setPicked([]);
+      },
+      () => {
+        // Snapshot listener failing shouldn't kill the page; the job still
+        // finishes server-side and a reload will show the result.
       }
-      onDone();
-    } finally {
-      setBusy(false);
+    );
+    unsubs.current.push(unsub);
+  }
+
+  // Reattach to any job still running for this course (e.g. after the user
+  // closed the tab mid-digestion — the job kept going without them).
+  useEffect(() => {
+    (async () => {
+      try {
+        const snap = await getDocs(
+          query(
+            collection(db(), "ingestJobs"),
+            where("userId", "==", uid),
+            where("courseId", "==", courseId),
+            where("status", "==", "working")
+          )
+        );
+        if (snap.empty) return;
+        setLines((prev) => [
+          ...prev,
+          ...snap.docs.map((d) => ({
+            key: d.id,
+            name: (d.get("fileName") as string) ?? "file",
+            state: "working" as const,
+            note: (d.get("note") as string) ?? "Kube is working…",
+          })),
+        ]);
+        snap.docs.forEach((d) => watchJob(d.id, d.id));
+      } catch {
+        // No running jobs visible — fine.
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [courseId, uid]);
+
+  async function submitOne(key: string, name: string, extracted: string) {
+    try {
+      const res = await authedFetch("/api/course/ingest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ courseId, name, text: extracted }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Digestion failed.");
+      if (data.skipped) {
+        updateLine(key, { state: "skipped", note: data.note });
+        return;
+      }
+      updateLine(key, { state: "working", note: "Kube is reading it…" });
+      watchJob(data.jobId as string, key);
+    } catch (err) {
+      updateLine(key, {
+        state: "error",
+        note: err instanceof Error ? err.message : "Digestion failed.",
+      });
     }
   }
 
-  const KIND_LABEL: Record<IngestedFile["kind"], string> = {
-    syllabus: "syllabus",
-    unit: "unit",
-    pastpaper: "past paper",
-    notes: "notes",
-  };
+  async function ingestFiles(picked: File[]) {
+    if (picked.length === 0) return;
+    const batch: JobLine[] = picked.map((f, i) => ({
+      key: `${Date.now()}-${i}-${f.name}`,
+      name: f.name,
+      state: "extracting",
+      note: "Reading the file on your device…",
+    }));
+    setLines((prev) => [...prev, ...batch]);
+    for (let i = 0; i < picked.length; i++) {
+      const key = batch[i].key;
+      try {
+        const extracted = await extractFileTextInBrowser(picked[i]);
+        updateLine(key, { note: "Sending the text to Kube…" });
+        await submitOne(key, picked[i].name, extracted);
+      } catch (err) {
+        updateLine(key, {
+          state: "error",
+          note: err instanceof Error ? err.message : "Could not read this file.",
+        });
+      }
+    }
+  }
+
+  async function submitText(e: React.FormEvent) {
+    e.preventDefault();
+    if (text.trim().length < 100) return;
+    const key = `${Date.now()}-pasted`;
+    setLines((prev) => [
+      ...prev,
+      { key, name: "pasted text", state: "working", note: "Sending to Kube…" },
+    ]);
+    await submitOne(key, "pasted text", text);
+    setText("");
+  }
+
+  const anyWorking = lines.some((l) => l.state === "working" || l.state === "extracting");
 
   return (
     <div className="k-card mt-8 px-6 py-6">
@@ -146,7 +191,7 @@ export default function AddMaterial({
           <p className="mt-2 text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>
             Upload the course outline / curriculum first and Kube builds the
             skeleton: every unit, named, waiting to be filled. Don&apos;t have it
-            handy? No problem — just add unit PDFs and Kube figures out the
+            handy? No problem — just add unit files and Kube figures out the
             structure as you go; the syllabus can join anytime.
           </p>
         </>
@@ -154,45 +199,73 @@ export default function AddMaterial({
         <p className="mt-2 text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>
           Add anything, anytime — units, past papers, the syllabus, notes, in as
           many batches as you like. Kube works out what each file is and slots
-          it in. It keeps what it&apos;s already learned: nothing is re-processed.
+          it in. Nothing already learned is ever re-processed.
         </p>
       )}
 
-      <form onSubmit={submit} className="mt-4">
-        <div className="flex gap-2">
-          {(["pdf", "text"] as const).map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setTab(t)}
-              className="rounded-full border px-4 py-1.5 text-xs font-semibold"
-              style={
-                tab === t
-                  ? { background: "var(--kube)", borderColor: "var(--kube)", color: "white" }
-                  : { borderColor: "var(--line)", color: "var(--ink-soft)" }
-              }
-            >
-              {t === "pdf" ? "Upload files" : "Paste text"}
-            </button>
-          ))}
-        </div>
+      <div className="mt-4 flex gap-2">
+        {(["files", "text"] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setTab(t)}
+            className="rounded-full border px-4 py-1.5 text-xs font-semibold"
+            style={
+              tab === t
+                ? { background: "var(--kube)", borderColor: "var(--kube)", color: "white" }
+                : { borderColor: "var(--line)", color: "var(--ink-soft)" }
+            }
+          >
+            {t === "files" ? "Upload files" : "Paste text"}
+          </button>
+        ))}
+      </div>
 
-        {tab === "pdf" ? (
-          <>
-            <input
-              type="file"
-              accept=".pdf,.pptx,.docx,.txt,.md,.ppt,.doc,application/pdf"
-              multiple
-              onChange={(e) => setPicked(Array.from(e.target.files ?? []))}
-              className="mt-3 block w-full text-sm"
-              style={{ color: "var(--ink-soft)" }}
-            />
-            <p className="mt-1 text-xs" style={{ color: "var(--faint)" }}>
-              PDF, PPTX, DOCX, TXT and MD all work. (Old .ppt/.doc need a quick
-              Save-As to the newer format first.)
-            </p>
-          </>
-        ) : (
+      {tab === "files" ? (
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragOver(true);
+          }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOver(false);
+            void ingestFiles(Array.from(e.dataTransfer.files ?? []));
+          }}
+          onClick={() => inputRef.current?.click()}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") inputRef.current?.click();
+          }}
+          className="mt-3 cursor-pointer rounded-2xl border-2 border-dashed px-6 py-8 text-center transition-colors"
+          style={{
+            borderColor: dragOver ? "var(--kube)" : "var(--kube-line)",
+            background: dragOver ? "var(--kube-soft)" : "transparent",
+          }}
+        >
+          <p className="text-sm font-semibold" style={{ color: "var(--kube)" }}>
+            Drop files here — or tap to choose
+          </p>
+          <p className="mt-1 text-xs" style={{ color: "var(--faint)" }}>
+            PDF, PPTX, DOCX, TXT, MD · any size — text is read on your device.
+            Old .ppt/.doc need a quick Save-As first.
+          </p>
+          <input
+            ref={inputRef}
+            type="file"
+            accept=".pdf,.pptx,.docx,.txt,.md,.ppt,.doc,application/pdf"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              void ingestFiles(Array.from(e.target.files ?? []));
+              e.target.value = "";
+            }}
+          />
+        </div>
+      ) : (
+        <form onSubmit={submitText}>
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -201,56 +274,53 @@ export default function AddMaterial({
             className="mt-3 w-full rounded-xl border px-4 py-3 text-sm outline-none"
             style={{ borderColor: "var(--line)", background: "var(--card)", color: "var(--ink)" }}
           />
-        )}
+          <button
+            type="submit"
+            className="mt-3 w-full rounded-2xl py-3 text-sm font-semibold text-white disabled:opacity-50"
+            style={{ background: "var(--kube)" }}
+            disabled={text.trim().length < 100}
+          >
+            Feed Kube
+          </button>
+        </form>
+      )}
 
-        {lines.length > 0 && (
-          <ul className="mt-4 space-y-2">
-            {lines.map((l, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm">
-                <span aria-hidden>
-                  {l.state === "done"
-                    ? "✓"
-                    : l.state === "error"
-                      ? "✕"
-                      : l.state === "skipped"
-                        ? "▸"
-                        : "…"}
-                </span>
-                <span
-                  style={{
-                    color:
-                      l.state === "error"
-                        ? "var(--red)"
-                        : l.state === "done"
-                          ? "var(--kube)"
-                          : "var(--ink-soft)",
-                  }}
-                >
-                  <span className="font-semibold">{l.name}:</span> {l.note}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        <button
-          type="submit"
-          disabled={busy}
-          className="mt-4 w-full rounded-2xl py-3 text-sm font-semibold text-white disabled:opacity-50"
-          style={{ background: "var(--kube)" }}
-        >
-          {busy
-            ? "Kube is learning…"
-            : picked.length > 1
-              ? `Feed Kube ${picked.length} files`
-              : "Feed Kube"}
-        </button>
-        {busy && (
-          <p className="mt-2 text-center text-xs" style={{ color: "var(--faint)" }}>
-            A unit or past paper takes a couple of minutes — leave this page open.
-          </p>
-        )}
-      </form>
+      {lines.length > 0 && (
+        <ul className="mt-4 space-y-2">
+          {lines.map((l) => (
+            <li key={l.key} className="flex items-start gap-2 text-sm">
+              <span aria-hidden>
+                {l.state === "done"
+                  ? "✓"
+                  : l.state === "error"
+                    ? "✕"
+                    : l.state === "skipped"
+                      ? "▸"
+                      : "…"}
+              </span>
+              <span
+                style={{
+                  color:
+                    l.state === "error"
+                      ? "var(--red)"
+                      : l.state === "done"
+                        ? "var(--kube)"
+                        : "var(--ink-soft)",
+                }}
+              >
+                <span className="font-semibold">{l.name}:</span> {l.note}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {anyWorking && (
+        <p className="mt-3 text-xs" style={{ color: "var(--faint)" }}>
+          Digestion runs on Kube&apos;s side — a unit takes a couple of minutes.
+          You can close this page or put your phone away; it finishes on its
+          own, and this list picks back up when you return.
+        </p>
+      )}
 
       {files.length > 0 && (
         <div className="mt-5 border-t pt-4" style={{ borderColor: "var(--line)" }}>
