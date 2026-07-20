@@ -317,6 +317,44 @@ const sectionA: Section = {
         },
       ],
     },
+    {
+      id: "ca-logic-gates",
+      title: "Logic gates essentials",
+      unit: 1,
+      weight: "light",
+      deps: [],
+      whyItMatters:
+        "Not in the decks — but the sample paper tests gates under CO1 (XNOR's expression, the universal gate, truth-table sizes), so it's on your paper.",
+      recap: [
+        "A truth table for n variables has 2ⁿ rows — 3 variables → 8 rows.",
+        "NAND (and NOR) are UNIVERSAL gates: any circuit can be built from them alone.",
+        "XOR = AB' + A'B (true when inputs differ). XNOR = AB + A'B' (true when inputs match).",
+        "AND = both, OR = either, NOT = invert.",
+      ],
+      steps: [
+        {
+          kind: "teach",
+          title: "The five-minute gate refresher",
+          body: "Your sample paper quizzes basic gates even though the slide decks skip them — so here's exactly what it asks:\n\n**Truth table size** — n input variables need **2ⁿ rows**: 3 variables → **8** rows.\n**Universal gate** — **NAND** (NOR too): every other gate can be built from it alone.\n**XOR vs XNOR** — XOR is true when inputs **differ**: `AB' + A'B`. **XNOR** is true when they **match**: `AB + A'B'`.\n\nThat's the whole exam surface: one size formula, one universal gate, two Boolean expressions.",
+        },
+        {
+          kind: "check",
+          prompt: "How many truth-table rows does a three-variable Boolean function need?",
+          options: ["4", "6", "8", "16"],
+          answer: 2,
+          praise:
+            "2³ = 8 — the formula is the answer, every time. This exact question is on your sample paper.",
+        },
+        {
+          kind: "check",
+          prompt: "The Boolean expression for an XNOR gate is…",
+          options: ["AB' + A'B", "AB + A'B'", "A + B", "A ⊕ B"],
+          answer: 1,
+          praise:
+            "Right — XNOR rewards agreement: both 1 (AB) or both 0 (A'B'). Its rival AB'+A'B is XOR, the disagreement detector — the paper loves this pair.",
+        },
+      ],
+    },
   ],
 };
 
@@ -535,9 +573,237 @@ const sectionB: Section = {
   ],
 };
 
+const sectionU3: Section = {
+  id: "ca-sec-u3",
+  letter: "C",
+  title: "Stack Organization",
+  tagline: "LIFO, postfix, and the shapes an instruction can take.",
+  unit: 3,
+  topics: [
+    {
+      id: "ca-stack-org",
+      title: "The stack & stack pointer",
+      unit: 3,
+      weight: "heavy",
+      deps: ["ca-cpu-instructions"],
+      whyItMatters:
+        "LIFO + push/pop + the SP is the foundation of everything in Unit 3 — and the reason zero-address instructions can exist at all.",
+      recap: [
+        "A stack is a LIFO (Last In, First Out) memory structure: the last item pushed is the first popped.",
+        "PUSH puts an item on top; POP removes the top item.",
+        "The Stack Pointer (SP) is a register holding the address of the top of the stack.",
+        "Used for: return addresses in subroutine calls, expression evaluation, and memory management.",
+        "The flags register (Zero, Carry, Sign, Overflow) stores condition codes used in conditional execution.",
+      ],
+      steps: [
+        {
+          kind: "teach",
+          title: "Last in, first out",
+          body: "A **stack** is a region of memory with one rule: **LIFO — Last In, First Out**. You only ever touch the top:\n\n**PUSH** — place a value on top.\n**POP** — take the top value off.\n\nThe **stack pointer (SP)** is a CPU register that always holds the **address of the top of the stack** — push and pop really just write/read memory at SP and move it.\n\nWhat's it for? The lecturer's list: **storing return addresses during subroutine calls**, evaluating expressions, and memory management. When CALL jumps away, the way home is sitting on the stack.",
+        },
+        {
+          kind: "check",
+          prompt: "You PUSH 5, then PUSH 9, then POP. What comes off?",
+          options: ["5", "9", "Both", "Neither"],
+          answer: 1,
+          praise:
+            "Last in, first out — 9 went on top, so 9 comes off first. Every stack question in this unit is that one rule wearing different clothes.",
+        },
+        {
+          kind: "check",
+          prompt: "The stack pointer (SP) holds…",
+          options: [
+            "the top value on the stack",
+            "the ADDRESS of the top of the stack",
+            "the number of items pushed",
+            "the program counter",
+          ],
+          answer: 1,
+          praise:
+            "Right — SP is a signpost to the top, not the top itself. Push moves it one way, pop the other; the stack lives in ordinary memory underneath.",
+        },
+        {
+          kind: "check",
+          prompt: "Which register stores condition codes like Zero, Carry, Sign, Overflow?",
+          options: ["The stack pointer", "The flags register", "The accumulator", "The instruction register"],
+          answer: 1,
+          praise:
+            "The flags register — the CPU's scratchpad of 'what just happened', which conditional jumps read in the program-control lesson ahead.",
+        },
+      ],
+    },
+    {
+      id: "ca-rpn",
+      title: "Reverse Polish Notation",
+      unit: 3,
+      weight: "medium",
+      deps: ["ca-stack-org"],
+      whyItMatters:
+        "RPN is how stack machines compute — and the PUSH-PUSH-ADD-POP trace is the sample paper's favourite way to test it.",
+      recap: [
+        "RPN (postfix) writes the operator AFTER its operands: A B + instead of A + B.",
+        "No parentheses needed — the order of evaluation is unambiguous.",
+        "Evaluate with a stack: push operands; an operator pops two, computes, pushes the result.",
+        "C = A + B as a stack program: PUSH A · PUSH B · ADD (pops both, pushes sum) · POP C.",
+        "Used by stack-based processors — e.g. the Java Virtual Machine and HP calculators.",
+      ],
+      steps: [
+        {
+          kind: "teach",
+          title: "Operators go last",
+          body: "**Reverse Polish Notation** (postfix) writes the operator **after** its operands: `A B +` means A + B, and `(A+B)×C` becomes `A B + C ×` — **no parentheses ever needed**.\n\nWhy do stack machines love it? Because RPN **is** stack choreography:",
+          code: "PUSH A   ; Push A onto stack\nPUSH B   ; Push B onto stack\nADD      ; Pop top two values, add them, push result back\nPOP C    ; Store result in C",
+        },
+        {
+          kind: "check",
+          prompt: "In RPN, the expression A + B is written…",
+          options: ["+ A B", "A + B", "A B +", "B + A"],
+          answer: 2,
+          praise:
+            "Operands first, operator last — that's the whole notation. Prefix (+AB) is its mirror-twin Polish notation; postfix is what stacks eat.",
+        },
+        {
+          kind: "check",
+          prompt: "When ADD executes on a stack machine, it…",
+          options: [
+            "reads two named registers",
+            "pops the top two stack values, adds them, and pushes the result",
+            "adds the SP to the PC",
+            "needs an address field",
+          ],
+          answer: 1,
+          praise:
+            "Exactly — two pops, one compute, one push. No operands in the instruction at all, which is precisely what makes it a ZERO-address instruction (next lesson).",
+        },
+      ],
+    },
+    {
+      id: "ca-instr-formats",
+      title: "Instruction formats: 0/1/2/3-address",
+      unit: 3,
+      weight: "heavy",
+      deps: ["ca-stack-org", "ca-addressing-modes"],
+      whyItMatters:
+        "This is on your paper TWICE — an MCQ ('which is NOT a valid format?') and a 10-mark Part B question explaining all four with examples.",
+      recap: [
+        "Zero-address: no explicit operands, everything implicit on the stack (ADD) — stack-based CPUs (JVM, HP calculators).",
+        "One-address: one operand, the other implied in the ACCUMULATOR (ADD A) — simple CPUs.",
+        "Two-address: two operands, result overwrites one (ADD A, B) — general-purpose register machines.",
+        "Three-address: two sources + separate destination (ADD A, B, C) — high-performance CPUs.",
+        "Single-address format works through the accumulator; general-register format (ADD R1, R2) uses registers to cut memory access.",
+        "Four-address is NOT a standard format — that's the paper's trick option.",
+      ],
+      steps: [
+        {
+          kind: "teach",
+          title: "How many operands fit in an instruction?",
+          body: "An **instruction format** is defined by how many addresses (operands) the instruction names. The lecturer's comparison table:\n\n**Zero-address** — `ADD` — operands implicit on the **stack** (LIFO). Used in stack-based CPUs: the **Java Virtual Machine**, HP calculators.\n**One-address** — `ADD A` — one named operand; the other lives in the **accumulator**. Simple CPUs.\n**Two-address** — `ADD A, B` — two operands, the result overwrites one. **General-purpose register** machines.\n**Three-address** — `ADD A, B, C` — two sources and a separate destination. High-performance CPUs.\n\nAnd the trick your sample paper plays: **four-address is not a valid standard format.**",
+        },
+        {
+          kind: "teach",
+          title: "Two named styles",
+          body: "Two format families get their own names in the material:\n\n**Single-address (accumulator) format** — everything routes through the accumulator: load it, operate on it, store it.\n**General register format** — `ADD R1, R2` adds R1 and R2 into R1, \"using multiple registers to **reduce memory access**.\"\n\nWorth connecting: zero-address instructions are the **implied addressing mode** from Unit 2, formalised — the format and the mode are two views of the same design choice.",
+        },
+        {
+          kind: "check",
+          prompt: "Which of the following is NOT a valid instruction format? (straight off your sample paper)",
+          options: ["Zero-address", "One-address", "Two-address", "Four-address"],
+          answer: 3,
+          praise:
+            "That's the paper's Q1, banked — zero through three are real; four-address is the imposter. One mark secured before you even sit down.",
+        },
+        {
+          kind: "check",
+          prompt: "ADD A (one operand named) implies the second operand is in…",
+          options: ["the stack", "the accumulator", "main memory", "the program counter"],
+          answer: 1,
+          praise:
+            "Right — one-address machines lean on the accumulator as the silent partner in every operation. Format ↔ hardware, one-to-one.",
+        },
+        {
+          kind: "check",
+          prompt: "ADD A, B, C — two sources and a separate destination — is which format?",
+          options: ["Zero-address", "One-address", "Two-address", "Three-address"],
+          answer: 3,
+          praise:
+            "Three named addresses, three-address format — count the operands and the question answers itself. That's the Part B answer's skeleton too.",
+        },
+      ],
+    },
+    {
+      id: "ca-program-control",
+      title: "Program control & interrupt types",
+      unit: 3,
+      weight: "medium",
+      deps: ["ca-instr-formats"],
+      whyItMatters:
+        "CO3's home topic: branches, CALL/RET and the interrupt taxonomy — definitions the paper asks for directly.",
+      recap: [
+        "Program control instructions change the SEQUENCE of execution instead of running top-to-bottom.",
+        "Conditional branches (e.g. JNZ) test the flags register (Zero, Carry, Sign, Overflow).",
+        "CALL saves the current address (on the stack) and jumps to a subroutine; RET returns to the saved address.",
+        "Loop control: MOV CX,10 · LOOP: DEC CX · JNZ LOOP — repeat until the counter hits zero.",
+        "Interrupt types: software (triggered by instructions, e.g. INT) vs hardware (external events); maskable (can be ignored) vs non-maskable (critical, e.g. power failure).",
+      ],
+      steps: [
+        {
+          kind: "teach",
+          title: "Changing the flow",
+          body: "**Program control instructions** are the third instruction category from Unit 2 — the ones that change *what runs next*:\n\n**Jumps & branches** — unconditional, or conditional on the **flags register** (Zero, Carry, Sign, Overflow) set by earlier operations.\n**Subroutine calls** — **CALL** saves the current address and jumps to the subroutine; **RET** returns to the saved address. Where is the address saved? On the **stack** — this is why Unit 3 taught you LIFO first.\n**Loop control** — the classic countdown:",
+          code: "MOV CX, 10    ; Load loop counter\nLOOP_LABEL:\n  DEC CX      ; Decrement counter\n  JNZ LOOP_LABEL ; Jump back if CX != 0",
+        },
+        {
+          kind: "teach",
+          title: "Interrupts, sorted into types",
+          body: "**Interrupts** are program control arriving from outside the running program:\n\n**Software interrupts** — triggered by **instructions** (e.g. `INT` in x86).\n**Hardware interrupts** — triggered by **external events**: keyboard input, hardware failure.\n\nAnd by urgency:\n\n**Maskable** — the CPU may temporarily ignore them.\n**Non-maskable** — critical events (e.g. **power failure**) that cannot be ignored.\n\nWhen one fires, the CPU saves where it was (stack again), services the interrupt, and returns — CALL/RET's involuntary cousin.",
+        },
+        {
+          kind: "check",
+          prompt: "CALL differs from a plain jump because it…",
+          options: [
+            "runs faster",
+            "saves the current address first, so RET can come back",
+            "only jumps backwards",
+            "clears the flags",
+          ],
+          answer: 1,
+          praise:
+            "That saved return address — parked on the stack — is the entire difference. Jump forgets home; CALL remembers it.",
+        },
+        {
+          kind: "check",
+          prompt: "A power-failure interrupt is best classified as…",
+          options: [
+            "software and maskable",
+            "hardware and non-maskable",
+            "software and non-maskable",
+            "not an interrupt",
+          ],
+          answer: 1,
+          praise:
+            "Both axes right — an external event (hardware) too critical to ignore (non-maskable). Classifying interrupts on those two axes is exactly how the marks are given.",
+        },
+        {
+          kind: "check",
+          prompt: "In the loop MOV CX,10 … DEC CX; JNZ LOOP — what makes the loop finally stop?",
+          options: [
+            "JNZ always stops after 10 jumps",
+            "DEC CX eventually makes CX zero, so JNZ stops jumping (Zero flag set)",
+            "MOV re-runs each pass",
+            "It never stops",
+          ],
+          answer: 1,
+          praise:
+            "Right — DEC drives CX to zero, the Zero flag rises, and JNZ ('jump if not zero') lets execution fall through. Flags steering branches: program control in one line.",
+        },
+      ],
+    },
+  ],
+};
+
 const sectionC: Section = {
   id: "ca-sec-c",
-  letter: "C",
+  letter: "D",
   title: "Computer Arithmetic",
   tagline: "Add, subtract and multiply — the way the circuit actually does it.",
   unit: 4,
@@ -698,6 +964,502 @@ const sectionC: Section = {
           answer: 1,
           praise:
             "Right — one cycle per bit, counted down to zero. Finiteness by construction: the count register is the algorithm's guarantee it stops.",
+        },
+      ],
+    },
+  ],
+};
+
+const sectionU5: Section = {
+  id: "ca-sec-u5",
+  letter: "E",
+  title: "Input-Output Organization",
+  tagline: "How the fast CPU talks to a slow, unruly outside world.",
+  unit: 5,
+  topics: [
+    {
+      id: "ca-peripherals",
+      title: "Peripheral devices",
+      unit: 5,
+      weight: "light",
+      deps: [],
+      whyItMatters:
+        "Quick CO5 definitions — and 'Note on peripheral devices' opens a 10-mark Part B question on your sample paper.",
+      recap: [
+        "A peripheral is any device connected to the computer but not part of the core architecture — it puts information in or gets it out.",
+        "Three types: input devices (keyboard, mouse), output devices (monitor, printer), storage devices (hard drive, flash drive).",
+        "Devices under the computer's direct control are said to be connected ONLINE.",
+        "Printers: impact vs non-impact. Monitors: CRT (old) vs LCD (modern). Hard disk: non-volatile secondary storage, magnetic platters.",
+      ],
+      steps: [
+        {
+          kind: "teach",
+          title: "Everything around the core",
+          body: "A **peripheral** is \"any auxiliary device that connects to and works with the computer to either put information into it or get information out of it\" — connected, but **not part of the core architecture**.\n\nThree families:\n\n**Input** — keyboard, mouse, optical readers (bar code, OMR), touch screens.\n**Output** — monitor (CRT then, LCD now), printers (**impact vs non-impact**), plotters.\n**Storage** — hard drives (non-volatile, magnetic platters, SATA/SCSI), flash drives.\n\nOne definition worth quoting: devices under the computer's direct control are **connected online**.",
+        },
+        {
+          kind: "check",
+          prompt: "Which trio correctly lists the three peripheral types?",
+          options: [
+            "input, output, storage",
+            "RAM, ROM, cache",
+            "CPU, ALU, registers",
+            "serial, parallel, wireless",
+          ],
+          answer: 0,
+          praise:
+            "Right — in, out, and keep. That's the frame for the Part B 'note on peripheral devices' answer too.",
+        },
+        {
+          kind: "check",
+          prompt: "A hard disk drive is best described as…",
+          options: [
+            "volatile main memory",
+            "a non-volatile secondary storage device using magnetic platters",
+            "a cache",
+            "an input-only device",
+          ],
+          answer: 1,
+          praise:
+            "Exactly — permanent, magnetic, secondary. 'Non-volatile' is the keyword the marker looks for.",
+        },
+      ],
+    },
+    {
+      id: "ca-io-interface",
+      title: "The I/O interface & I/O bus",
+      unit: 5,
+      weight: "heavy",
+      deps: ["ca-peripherals"],
+      whyItMatters:
+        "CO5's centrepiece: WHY an interface is needed, its functions, and the four I/O commands — asked as MCQ and 10-mark forms alike.",
+      recap: [
+        "The I/O interface transfers information between internal storage and external devices, resolving the DIFFERENCES between them.",
+        "Four differences: peripherals are electromechanical (CPU is electronic — signal conversion needed); slower (synchronisation needed); byte-oriented (CPU uses words); asynchronous (CPU is synchronous).",
+        "Main functions: data conversion, synchronization, device selection.",
+        "The I/O bus = data lines + address lines + control lines; the processor puts a device address on the bus to pick a peripheral.",
+        "Four I/O commands: control (activate/tell device what to do), status (test conditions), data output, data input.",
+        "Bus configurations: separate memory & I/O buses · one common bus with separate control lines · one common bus with common control lines.",
+      ],
+      steps: [
+        {
+          kind: "teach",
+          title: "Why an interface must exist",
+          body: "The CPU can't wire straight into a printer — they're **different species**. The interface exists to resolve four mismatches:\n\n**Nature of signals** — peripherals are electromechanical/electromagnetic; the CPU is electronic → signal **conversion** required.\n**Speed** — peripherals are much **slower** → synchronisation needed.\n**Unit of information** — peripherals speak **bytes**; CPU/memory speak **words**.\n**Operating mode** — peripherals are autonomous and **asynchronous**; the CPU is synchronous.\n\nSo interface units sit between the processor bus and each peripheral, doing **data conversion, synchronization, and device selection**.",
+        },
+        {
+          kind: "teach",
+          title: "The bus and its four commands",
+          body: "The **I/O bus** linking processor to peripherals carries **data lines, address lines and control lines**. To talk to one device, the processor places its **device address** on the address lines; each interface decodes the address, decodes the command, and supervises the transfer.\n\nThe control lines carry four **I/O commands**:\n\n**Control** — activate the peripheral, tell it what to do.\n**Status** — test conditions in the interface and device.\n**Data output** — interface takes data from the bus into its register.\n**Data input** — the reverse: device data onto the bus.\n\nAnd memory vs I/O can share wiring three ways: **two separate buses** · **one common bus, separate control lines** · **one common bus, common control lines**.",
+        },
+        {
+          kind: "check",
+          prompt: "Which is NOT a role of the I/O interface? (from your sample paper)",
+          options: [
+            "Data conversion between formats",
+            "Managing communication between devices",
+            "Connecting the CPU to RAM",
+            "Generating control signals for peripherals",
+          ],
+          answer: 2,
+          praise:
+            "Banked — CPU↔RAM is the MEMORY bus's job; the I/O interface faces peripherals. The other three are its actual functions, verbatim from the slides.",
+        },
+        {
+          kind: "check",
+          prompt: "Why does peripheral speed force an interface to exist?",
+          options: [
+            "Peripherals are faster than the CPU",
+            "Peripherals are much slower, so transfers need a synchronisation mechanism",
+            "Speed is irrelevant",
+            "The CPU has no clock",
+          ],
+          answer: 1,
+          praise:
+            "Right — a mismatch in pace needs a mediator. Being able to name all four mismatches (signals, speed, unit, mode) is the full-marks version.",
+        },
+        {
+          kind: "check",
+          prompt: "Which I/O command asks the interface about flag conditions in the device?",
+          options: ["Control", "Status", "Data output", "Data input"],
+          answer: 1,
+          praise:
+            "Status — the 'how are you doing?' command. You'll see it star in programmed I/O's polling loop, next lesson.",
+        },
+      ],
+    },
+    {
+      id: "ca-async-transfer",
+      title: "Asynchronous transfer: strobe & handshaking",
+      unit: 5,
+      weight: "heavy",
+      deps: ["ca-io-interface"],
+      whyItMatters:
+        "Strobe-vs-handshaking (and why handshaking wins) is CO5's classic compare-and-explain — the sample paper tests async transfer twice.",
+      recap: [
+        "Asynchronous transfer is used when device and processor speeds don't match and timing isn't predictable.",
+        "Key feature (per the paper): each data unit is sent with a start and stop signal — no shared clock.",
+        "STROBE: a single control line times each transfer; either source or destination can activate it.",
+        "Strobe's flaw: the initiator never knows whether the other side actually received/supplied the data.",
+        "HANDSHAKING fixes it with a second control line: data valid (source→dest) + data accepted / ready for data (dest→source).",
+        "Synchronous transfer, by contrast, requires a shared clock between sender and receiver.",
+      ],
+      steps: [
+        {
+          kind: "teach",
+          title: "One wire: the strobe",
+          body: "When CPU and device can't share a clock, transfers go **asynchronous** — each transfer is timed explicitly.\n\nThe simplest scheme is the **strobe**: a **single control line**. The source places data on the bus, waits for it to settle, then pulses the strobe; the destination grabs the data while the pulse is active. (Destination-initiated works too: it strobes to *request* data.)\n\nThe flaw the exam wants you to name: **the initiator has no way of knowing the other unit actually responded**. The source can't tell the destination received it; a requesting destination can't tell the source delivered.",
+        },
+        {
+          kind: "teach",
+          title: "Two wires: handshaking",
+          body: "**Handshaking** adds a **second control line that replies**:\n\n**Data valid** (source → destination): \"there is real data on the bus.\"\n**Data accepted / ready for data** (destination → source): \"I took it\" / \"I'm ready.\"\n\nSequence: source places data, raises *data valid*; destination accepts, raises *data accepted*; source drops its signal; system returns to start. Every transfer is **confirmed** — the strobe's blindness cured.\n\nContrast for the paper: **synchronous** transfer needs a **shared clock between sender and receiver**; asynchronous sends each unit with **start and stop signalling** instead.",
+        },
+        {
+          kind: "check",
+          prompt: "The key feature of asynchronous transfer (per your sample paper) is…",
+          options: [
+            "it requires a clock signal",
+            "each data unit is sent with a start and stop bit",
+            "data speed is fixed",
+            "it only works for memory",
+          ],
+          answer: 1,
+          praise:
+            "Straight off the paper — no shared clock, so each unit carries its own timing. Its twin question ('synchronous requires a shared clock') is now also yours.",
+        },
+        {
+          kind: "check",
+          prompt: "What problem does handshaking solve that the strobe has?",
+          options: [
+            "The strobe is too slow",
+            "The initiator never knows whether the other unit actually responded — handshaking adds a confirming reply line",
+            "The strobe needs three wires",
+            "Nothing — they're identical",
+          ],
+          answer: 1,
+          praise:
+            "That's the whole compare-and-contrast in one sentence — one line commands, the second line confirms. Ten-mark answer, compressed.",
+        },
+      ],
+    },
+    {
+      id: "ca-transfer-modes",
+      title: "Modes of transfer: programmed I/O, interrupts, DMA",
+      unit: 5,
+      weight: "heavy",
+      deps: ["ca-io-interface", "ca-program-control"],
+      whyItMatters:
+        "The three modes + DMA's bus-borrowing + daisy-chain priority are CO5's biggest block — and 'which is NOT a transfer mode' is literally on the paper.",
+      recap: [
+        "Three modes: Programmed I/O, Interrupt-initiated I/O, Direct Memory Access (DMA). ('Bus communication' is the paper's fake option.)",
+        "Programmed I/O: CPU polls — read status, check flag (loop if not set), read data. Drawback: CPU wastes time busy-waiting.",
+        "Interrupt-initiated: CPU works on; the device raises an interrupt when ready; CPU saves its place (stack), runs the service routine, returns.",
+        "Priority interrupts decide who's served first (fast devices higher); daisy chaining passes INTACK through PI/PO — the device with PI=1, PO=0 wins and puts its vector address (VAD) on the bus.",
+        "DMA: the controller temporarily borrows the address/data/control buses and moves data directly between device and memory, bypassing the CPU. An IOP is a processor dedicated to I/O.",
+      ],
+      steps: [
+        {
+          kind: "teach",
+          title: "Polling: programmed I/O",
+          body: "**Programmed I/O** puts the CPU in charge of everything. The transfer takes three instructions, on a loop:\n\n1. **Read the status register.**\n2. **Check the flag** — not set? branch back to step 1. Set? continue.\n3. **Read the data register.**\n\nThe drawback writes itself: the CPU **stays in that loop**, monitoring constantly — \"CPU time is wasted a lot keeping an eye on the interface.\" Fixing that waste is why interrupts exist.",
+        },
+        {
+          kind: "teach",
+          title: "Interrupts and priority",
+          body: "**Interrupt-initiated I/O** frees the CPU: it works on its task, **doesn't check any flag**, and when a device wants attention it raises an **interrupt**. The CPU stores the return address from the PC (on the stack), branches to the service routine, then returns.\n\nMany devices can interrupt — so a **priority interrupt** system (software or hardware) decides who's first; **fast devices get high priority**.\n\nHardware's elegant version is **daisy chaining**: highest-priority device sits first in line; the CPU's INTACK signal enters each device's **PI** (priority in). A device that requested attention keeps the signal (sets **PO = 0**) and puts its **vector address (VAD)** on the bus; otherwise it passes PI along. **The winner is the device with PI = 1 and PO = 0.**",
+        },
+        {
+          kind: "teach",
+          title: "DMA: get the CPU out of the way",
+          body: "For bulk data, even interrupts are too slow — **Direct Memory Access** hands the job to hardware. The **DMA controller** \"temporarily **borrows the address bus, data bus and control bus** from the microprocessor and transfers data bytes **directly** between an I/O port and memory.\"\n\nCPU and controller share the system bus; the CPU sets up the transfer, then steps aside.\n\nOne rung higher sits the **I/O Processor (IOP)** — a processor dedicated entirely to input-output, managing transfers so the CPU never has to.",
+        },
+        {
+          kind: "check",
+          prompt: "Which is NOT a mode of data transfer? (your sample paper's Q3)",
+          options: [
+            "Programmed I/O",
+            "Direct Memory Access (DMA)",
+            "Memory-mapped I/O",
+            "Bus communication",
+          ],
+          answer: 3,
+          praise:
+            "Banked — 'bus communication' is the invented option. Programmed, interrupt-initiated, and DMA are the canonical three.",
+        },
+        {
+          kind: "check",
+          prompt: "The main drawback of programmed I/O is that…",
+          options: [
+            "it needs a DMA controller",
+            "the CPU busy-waits in a polling loop, wasting time",
+            "data is lost",
+            "it can't read status",
+          ],
+          answer: 1,
+          praise:
+            "Right — the CPU becomes a full-time flag-watcher. Say 'busy-waiting' and then name interrupts as the cure: that's the full answer.",
+        },
+        {
+          kind: "check",
+          prompt: "In daisy chaining, the interrupting device that gets served is the one with…",
+          options: ["PI = 0, PO = 1", "PI = 1, PO = 0", "PI = PO = 1", "the largest VAD"],
+          answer: 1,
+          praise:
+            "Exactly — acknowledged (PI=1) and blocking those behind it (PO=0), with its vector address on the bus. That one condition is the whole circuit in four symbols.",
+        },
+        {
+          kind: "check",
+          prompt: "During a DMA transfer, data moves…",
+          options: [
+            "through the CPU's registers",
+            "directly between the I/O device and memory, over buses borrowed from the CPU",
+            "only into cache",
+            "one bit per interrupt",
+          ],
+          answer: 1,
+          praise:
+            "Right — the controller borrows the buses and the CPU steps aside. 'Independently of the CPU' is the phrase that defines DMA.",
+        },
+      ],
+    },
+  ],
+};
+
+const sectionU6: Section = {
+  id: "ca-sec-u6",
+  letter: "F",
+  title: "Memory Organization",
+  tagline: "From registers to disks — and the cache tricks that make it feel fast.",
+  unit: 6,
+  topics: [
+    {
+      id: "ca-mem-hierarchy",
+      title: "The memory hierarchy",
+      unit: 6,
+      weight: "heavy",
+      deps: [],
+      whyItMatters:
+        "CO6's anchor: the hierarchy's order, why it exists, and the access methods — the paper asks both 'purpose' and 'fastest level'.",
+      recap: [
+        "Volatile memory loses data at power-off; non-volatile keeps it.",
+        "Hierarchy (fast/small/costly → slow/big/cheap): CPU registers → cache → main memory → auxiliary memory.",
+        "Purpose: increase effective memory access speed at reasonable cost.",
+        "Auxiliary access time is ~1000× main memory's; main memory talks directly to CPU; cache holds what the CPU is using right now.",
+        "Access methods: random (any location, equal time — main memory), sequential (in order — tape), direct (tracks with read/write heads — disk).",
+        "Terms: access time (reach + get contents), seek time (position the head), transfer time (move the data).",
+      ],
+      steps: [
+        {
+          kind: "teach",
+          title: "A pyramid of trade-offs",
+          body: "Memory is a **hierarchy** because no single technology is fast, big AND cheap. From top to bottom:\n\n**CPU registers** — fastest, tiniest.\n**Cache** — small, very fast, holds what's executing right now.\n**Main memory (RAM)** — the central unit, talking **directly** to the CPU.\n**Auxiliary memory** — disks and tapes: huge, non-volatile, and about **1000× slower** than main memory.\n\nThe **purpose** (paper question): **increase effective memory access speed** — keep the hot data high in the pyramid. Programs not in use get pushed down to auxiliary; needed ones come up.",
+        },
+        {
+          kind: "teach",
+          title: "Three ways to reach data",
+          body: "**Access methods**, one per technology:\n\n**Random access** — every location has a unique address, reachable in the **same time, any order** (main memory).\n**Sequential access** — walk through in order until you arrive (magnetic tape).\n**Direct access** — jump to a track, then search within it; tracks have read/write heads (disks).\n\nAnd the timing vocabulary: **access time** (reach a location and get its contents), **seek time** (position the read/write head), **transfer time** (move the data).",
+        },
+        {
+          kind: "check",
+          prompt: "Fastest level of the memory hierarchy? (paper question)",
+          options: ["Main memory", "CPU registers", "Cache", "Auxiliary memory"],
+          answer: 1,
+          praise:
+            "Registers — inside the CPU itself, above even cache. The paper asks exactly this; the pyramid's order is the answer to half of CO6.",
+        },
+        {
+          kind: "check",
+          prompt: "The purpose of the memory hierarchy is to…",
+          options: [
+            "increase effective memory access speed",
+            "minimise data storage",
+            "reduce CPU processing",
+            "replace the CPU",
+          ],
+          answer: 0,
+          praise:
+            "Right — speed, delivered economically by layering fast-small over slow-big. Another verbatim paper question in the bank.",
+        },
+        {
+          kind: "check",
+          prompt: "Magnetic tape uses which access method?",
+          options: ["Random", "Sequential", "Direct", "Associative"],
+          answer: 1,
+          praise:
+            "Sequential — you fast-forward through everything before it. Match each method to its device and this whole question family falls.",
+        },
+      ],
+    },
+    {
+      id: "ca-main-memory",
+      title: "Main memory: RAM & ROM",
+      unit: 6,
+      weight: "medium",
+      deps: ["ca-mem-hierarchy"],
+      whyItMatters:
+        "The RAM-vs-ROM table and the chip diagrams (128×8 RAM, 512-byte ROM) are Unit 6's most concrete marks — and the paper asks where the boot program lives.",
+      recap: [
+        "Main memory = RAM: the central storage the CPU accesses directly; volatile; read AND write; holds OS, apps, working data.",
+        "RAM comes as Static RAM and Dynamic RAM.",
+        "ROM: non-volatile, read-only; holds the BOOTSTRAP LOADER — the program that boots the computer.",
+        "RAM chip 128×8: 128 words of 8 bits, 7-bit address bus (2⁷=128), bidirectional data bus, chip-select (CS) enables it, RD/WR lines.",
+        "ROM chip: output-only data bus, no write control; denser cells — 512 bytes needs 9 address lines (2⁹=512).",
+      ],
+      steps: [
+        {
+          kind: "teach",
+          title: "The working memory and the boot memory",
+          body: "**RAM** (random access memory) is main memory: the CPU reaches any location directly, **reads and writes**, and everything vanishes at power-off (**volatile**). Two builds: **Static RAM** and **Dynamic RAM**.\n\n**ROM** (read-only memory) is the opposite deal: **non-volatile**, read-only, and it holds the **bootstrap loader** — the program that brings the computer to life when switched on. That's the paper's trick: the boot program lives in **ROM**, not RAM.",
+        },
+        {
+          kind: "teach",
+          title: "Reading the chip diagrams",
+          body: "The slides' two chips, decoded:\n\n**RAM chip, 128 × 8** — 128 words of 8 bits each. Address bus: **7 bits** (2⁷ = 128). Data bus: **bidirectional** (read and write), with **RD/WR** control lines and **chip select (CS)** inputs that enable the chip only when the processor picks it.\n\n**ROM chip, 512 × 8** — data bus is **output-only** (no write line needed), and because ROM cells are **smaller than RAM cells**, the same-size chip holds more: 512 bytes, needing **9 address lines** (2⁹ = 512).",
+        },
+        {
+          kind: "check",
+          prompt: "Where are the boot files / bootstrap program held? (paper question)",
+          options: ["RAM", "ROM", "Cache", "A register"],
+          answer: 1,
+          praise:
+            "ROM — it must survive power-off to boot the machine, so volatile RAM can't hold it. 'Bootstrap loader in ROM' is the phrase to write.",
+        },
+        {
+          kind: "check",
+          prompt: "A 128×8 RAM chip needs how many address lines?",
+          options: ["8", "7", "128", "16"],
+          answer: 1,
+          praise:
+            "2⁷ = 128 — seven lines pick the word, eight data lines carry it. The same math gives ROM's 9 lines for 512 bytes; one formula, both chips.",
+        },
+        {
+          kind: "check",
+          prompt: "Why can a ROM chip store more than a RAM chip of the same size?",
+          options: [
+            "ROM is newer technology",
+            "ROM's internal binary cells occupy less space than RAM's",
+            "ROM uses 16-bit words",
+            "It can't — RAM is denser",
+          ],
+          answer: 1,
+          praise:
+            "Right — simpler cells, tighter packing: 512 bytes of ROM beside 128 of RAM. A one-line 'why' the slides state outright.",
+        },
+      ],
+    },
+    {
+      id: "ca-cache",
+      title: "Cache memory & mapping",
+      unit: 6,
+      weight: "heavy",
+      deps: ["ca-mem-hierarchy"],
+      whyItMatters:
+        "Cache + hit ratio + the three mappings is a 10-mark Part B question on your sample paper, word for word.",
+      recap: [
+        "Cache stores the main-memory contents the CPU uses again and again; CPU checks cache FIRST, then main memory on a miss (recent blocks get pulled in, old ones evicted).",
+        "Hit = word found in cache; miss = not found. Hit ratio = hits / (hits + misses).",
+        "Direct mapping: each memory block maps to exactly ONE cache line; address splits into tag (upper bits, stored) + index (lower bits, selects the line); compare tags to detect hit.",
+        "Fully associative: a block can sit in ANY line (cache stores address+data) — flexible but needs costly compare-all circuitry, plus replacement policies.",
+        "Set-associative: the compromise — cache divided into sets, K lines per set (K-way); direct-map to the set, search only within it.",
+      ],
+      steps: [
+        {
+          kind: "teach",
+          title: "The fast copy in front",
+          body: "**Cache** keeps \"the data or contents of main memory that are used **again and again** by the CPU.\" Every memory access checks the **cache first**; only a miss goes on to main memory — and recent blocks get copied in, old ones deleted to make room.\n\nPerformance has one number: the **hit ratio**.\n\n`Hit Ratio = Hits / (Hits + Misses)`\n\nFind the word in cache → **hit**. Don't → **miss**, and the slow trip to main memory happens.",
+        },
+        {
+          kind: "teach",
+          title: "Three ways to map memory onto cache",
+          body: "Where may a memory block sit in the cache? Three answers:\n\n**Direct mapping** — each block maps to exactly **one** line. The address splits into a **tag** (upper bits, stored with the data) and an **index** (lower bits, selects the line). Access: index picks the line, stored tag is compared with the address tag — equal = hit, else miss.\n\n**Fully associative** — a block can load into **any** line; the cache stores address + data together. Maximum flexibility, but it needs circuitry to compare **all tags simultaneously** — lots of hardware, high cost — plus a replacement policy.\n\n**Set-associative** — the compromise: cache divided into **sets** with **K lines each** (K-way). Direct-map to the set, then search just that set's K tags. Two lines per set = 2-way.",
+        },
+        {
+          kind: "check",
+          prompt: "With 80 hits out of 100 memory references, the hit ratio is…",
+          options: ["80/20", "0.8", "1.25", "20%"],
+          answer: 1,
+          praise:
+            "Hits over total references: 80/100 = 0.8. Plug-and-compute — the formula is the entire question.",
+        },
+        {
+          kind: "check",
+          prompt: "In DIRECT mapping, a given memory block can live in…",
+          options: [
+            "any cache line",
+            "exactly one specific cache line",
+            "any line of one set",
+            "the tag register",
+          ],
+          answer: 1,
+          praise:
+            "One block, one home — simplest and cheapest, at the price of collisions. Fully associative is 'anywhere', set-associative is 'anywhere within its set': that ladder is the Part B answer.",
+        },
+        {
+          kind: "check",
+          prompt: "Why is fully associative mapping expensive?",
+          options: [
+            "It wastes half the cache",
+            "It needs circuitry to compare all tags simultaneously",
+            "It can't store data",
+            "It requires two caches",
+          ],
+          answer: 1,
+          praise:
+            "Exactly — total freedom means searching everywhere at once, and that's silicon. Set-associative exists precisely to shrink that search to one set.",
+        },
+      ],
+    },
+    {
+      id: "ca-assoc-virtual",
+      title: "Associative & virtual memory",
+      unit: 6,
+      weight: "medium",
+      deps: ["ca-cache"],
+      whyItMatters:
+        "CAM's search-by-content and virtual memory's pages/page-fault story close out CO6 — definitions the exam asks straight.",
+      recap: [
+        "Associative memory = Content Addressable Memory (CAM): retrieved by matching CONTENT, not by address; slower than RAM, rarely mainstream.",
+        "CAM parts: argument register (word to search), key register (mask choosing which field to compare), match register (one bit per word, set to 1 on match), the m×n memory array compared in parallel.",
+        "Virtual memory gives the illusion of a very large memory using a small main memory — easing programming, enabling multiprogramming and protection.",
+        "OS divides memory into fixed-size PAGES (e.g. 4KB); some in RAM, others on disk (swap space); accessing a page not in RAM causes a PAGE FAULT and the OS loads it from disk.",
+      ],
+      steps: [
+        {
+          kind: "teach",
+          title: "Memory you search by content",
+          body: "**Associative memory** — also called **Content Addressable Memory (CAM)** — flips the usual deal: you retrieve items \"by matching some part of their **content**, rather than by specifying their address.\"\n\nIts machinery: the **argument register** holds the word to search for; the **key register** masks which field of it to compare; the array compares **all m words in parallel**; and the **match register** (one bit per word) sets a 1 for every match.\n\nHonesty note from the slides: CAM is much **slower than RAM** and rare in mainstream designs — but its parallel-compare idea is exactly what cache tag-matching borrows.",
+        },
+        {
+          kind: "teach",
+          title: "The illusion of infinite memory",
+          body: "**Virtual memory** \"gives programmers the illusion that they have a very large memory even though the computer has a small main memory.\" Why: run programs **bigger than RAM**, allow **multiprogramming**, provide **protection and isolation**, and free the programmer from worrying about physical memory.\n\nHow it works, in four beats:\n\n1. The OS divides memory into **pages** — fixed-size blocks, e.g. **4 KB**.\n2. Some pages live in RAM; the rest wait on disk (**swap space / page file**).\n3. A program touches a page not in RAM → **page fault**.\n4. The OS **loads that page from disk** into RAM and the program carries on, unaware.",
+        },
+        {
+          kind: "check",
+          prompt: "Content Addressable Memory is retrieved by…",
+          options: [
+            "its physical address",
+            "matching part of the stored content",
+            "sequential scanning",
+            "the program counter",
+          ],
+          answer: 1,
+          praise:
+            "That's the defining sentence — content in, matches out, address never mentioned. 'Also called associative memory/CAM' earns the alias mark.",
+        },
+        {
+          kind: "check",
+          prompt: "A page fault occurs when…",
+          options: [
+            "RAM is switched off",
+            "a program accesses a page that isn't currently in RAM",
+            "the cache misses",
+            "a page is printed",
+          ],
+          answer: 1,
+          praise:
+            "Right — the illusion briefly slips, the OS fetches the page from swap, and execution resumes. Fault → load → continue: the whole mechanism in three words.",
         },
       ],
     },
@@ -945,6 +1707,398 @@ const examBank: ExamQuestion[] = [
     hint: "Long multiplication, base 2.",
     explanation: "Each multiplier bit contributes a shifted copy of the multiplicand — shift-and-add is the whole method.",
   },
+  // ---- Unit 3 (CO3) ----
+  {
+    id: "ca-u3q1", topicId: "ca-stack-org", unit: 3, co: "CO3", level: "L1", source: "generated",
+    prompt: "A stack follows which order?",
+    options: ["FIFO", "LIFO", "Random", "Priority"], answer: 1,
+    hint: "Think of a stack of plates.",
+    explanation: "Last In, First Out — only the top is accessible, via PUSH and POP.",
+  },
+  {
+    id: "ca-u3q2", topicId: "ca-stack-org", unit: 3, co: "CO3", level: "L2", source: "generated",
+    prompt: "During a subroutine CALL, the return address is stored…",
+    options: ["in the ALU", "on the stack", "in ROM", "in the cache"], answer: 1,
+    hint: "It must come back off in LIFO order when RET runs.",
+    explanation: "CALL pushes the return address onto the stack; RET pops it — nested calls unwind correctly because of LIFO.",
+  },
+  {
+    id: "ca-u3q3", topicId: "ca-rpn", unit: 3, co: "CO3", level: "L2", source: "generated",
+    prompt: "The RPN (postfix) form of (A + B) is…",
+    options: ["+ A B", "A B +", "A + B", "B A -"], answer: 1,
+    hint: "Operator after the operands.",
+    explanation: "Postfix places the operator last: A B +. No parentheses are ever needed.",
+  },
+  {
+    id: "ca-u3q4", topicId: "ca-instr-formats", unit: 3, co: "CO3", level: "L2", source: "generated",
+    prompt: "ADD A, B (result overwrites A) is which instruction format?",
+    options: ["Zero-address", "One-address", "Two-address", "Three-address"], answer: 2,
+    hint: "Count the named operands.",
+    explanation: "Two named operands with the result replacing one — the two-address format of general-register machines.",
+  },
+  {
+    id: "ca-u3q5", topicId: "ca-instr-formats", unit: 3, co: "CO3", level: "L2", source: "generated",
+    prompt: "Zero-address instructions are natural on…",
+    options: [
+      "accumulator machines",
+      "stack-based CPUs like the JVM",
+      "three-address RISC machines",
+      "DMA controllers",
+    ], answer: 1,
+    hint: "Where do their operands implicitly come from?",
+    explanation: "With operands implicit on the stack, no addresses are needed — the JVM and HP calculators work this way.",
+  },
+  {
+    id: "ca-u3q6", topicId: "ca-program-control", unit: 3, co: "CO3", level: "L2", source: "generated",
+    prompt: "A conditional branch like JNZ decides using…",
+    options: ["the stack pointer", "the flags register", "the DMA controller", "ROM"], answer: 1,
+    hint: "Zero, Carry, Sign, Overflow.",
+    explanation: "Condition codes in the flags register, set by earlier operations, steer conditional jumps.",
+  },
+  {
+    id: "ca-u3q7", topicId: "ca-program-control", unit: 3, co: "CO3", level: "L1", source: "generated",
+    prompt: "An interrupt triggered by the INT instruction is…",
+    options: ["a hardware interrupt", "a software interrupt", "non-maskable", "a page fault"], answer: 1,
+    hint: "It came from code, not from a device.",
+    explanation: "Instruction-triggered interrupts are software interrupts; external events (keyboard, failures) raise hardware interrupts.",
+  },
+  // ---- Unit 5 (CO5) ----
+  {
+    id: "ca-u5q1", topicId: "ca-io-interface", unit: 5, co: "CO5", level: "L2", source: "generated",
+    prompt: "The main functions of the I/O interface are…",
+    options: [
+      "data conversion, synchronization, device selection",
+      "fetch, decode, execute",
+      "push, pop, call",
+      "paging, mapping, caching",
+    ], answer: 0,
+    hint: "It exists to resolve the CPU-peripheral mismatches.",
+    explanation: "The interface converts signals, synchronises speeds, and selects the addressed device — the slides' exact trio.",
+  },
+  {
+    id: "ca-u5q2", topicId: "ca-io-interface", unit: 5, co: "CO5", level: "L2", source: "generated",
+    prompt: "Which I/O command activates a peripheral and tells it what to do?",
+    options: ["Status", "Control", "Data input", "Data output"], answer: 1,
+    hint: "It commands; another one merely asks how things are going.",
+    explanation: "The control command activates and instructs; status tests conditions; data input/output move the data itself.",
+  },
+  {
+    id: "ca-u5q3", topicId: "ca-async-transfer", unit: 5, co: "CO5", level: "L2", source: "generated",
+    prompt: "The strobe method's weakness is that…",
+    options: [
+      "it needs too many wires",
+      "the initiating unit can't know whether the other unit actually responded",
+      "it only works for printers",
+      "it requires a shared clock",
+    ], answer: 1,
+    hint: "One control line commands — but who confirms?",
+    explanation: "With a single control line there is no acknowledgment; handshaking adds the reply line that confirms each transfer.",
+  },
+  {
+    id: "ca-u5q4", topicId: "ca-async-transfer", unit: 5, co: "CO5", level: "L2", source: "generated",
+    prompt: "In source-initiated handshaking, the destination replies with…",
+    options: ["a strobe pulse", "the data-accepted signal", "an interrupt", "a page fault"], answer: 1,
+    hint: "The second wire's whole purpose.",
+    explanation: "Source raises data-valid; destination confirms with data-accepted; then both reset — every transfer acknowledged.",
+  },
+  {
+    id: "ca-u5q5", topicId: "ca-transfer-modes", unit: 5, co: "CO5", level: "L2", source: "generated",
+    prompt: "Interrupt-initiated I/O improves on programmed I/O because…",
+    options: [
+      "the CPU polls faster",
+      "the CPU works on its task and is only interrupted when the device is ready",
+      "it removes the interface",
+      "data goes through the cache",
+    ], answer: 1,
+    hint: "Who watches the flag in each scheme?",
+    explanation: "No busy-wait loop: the device signals readiness itself, so CPU time isn't wasted monitoring flags.",
+  },
+  {
+    id: "ca-u5q6", topicId: "ca-transfer-modes", unit: 5, co: "CO5", level: "L2", source: "generated",
+    prompt: "In DMA, data moves between device and memory…",
+    options: [
+      "through CPU registers",
+      "directly, with the DMA controller borrowing the system buses",
+      "one word per interrupt",
+      "only at boot",
+    ], answer: 1,
+    hint: "The CPU steps aside entirely.",
+    explanation: "The controller takes the address/data/control buses and streams data directly — independent of the CPU.",
+  },
+  // ---- Unit 6 (CO6) ----
+  {
+    id: "ca-u6q1", topicId: "ca-mem-hierarchy", unit: 6, co: "CO6", level: "L2", source: "generated",
+    prompt: "Ordered fastest to slowest, the hierarchy is…",
+    options: [
+      "registers → cache → main memory → auxiliary",
+      "auxiliary → main → cache → registers",
+      "cache → registers → auxiliary → main",
+      "main → cache → registers → auxiliary",
+    ], answer: 0,
+    hint: "Smallest and closest to the CPU is fastest.",
+    explanation: "Registers, then cache, then RAM, then disks/tapes — speed falls and size grows down the pyramid.",
+  },
+  {
+    id: "ca-u6q2", topicId: "ca-mem-hierarchy", unit: 6, co: "CO6", level: "L1", source: "generated",
+    prompt: "Auxiliary memory access time compared to main memory is roughly…",
+    options: ["the same", "10× slower", "1000× slower", "1000× faster"], answer: 2,
+    hint: "It sits at the bottom of the hierarchy for a reason.",
+    explanation: "The slides put auxiliary access at about 1000 times main memory's — which is why it's the bottom layer.",
+  },
+  {
+    id: "ca-u6q3", topicId: "ca-main-memory", unit: 6, co: "CO6", level: "L2", source: "generated",
+    prompt: "Which is TRUE of ROM?",
+    options: [
+      "Volatile and writable",
+      "Non-volatile, read-only, holds the bootstrap loader",
+      "Faster than registers",
+      "Cleared on every reboot",
+    ], answer: 1,
+    hint: "It must survive power-off to do its one job.",
+    explanation: "ROM keeps its contents without power and only reads — which is why the boot program lives there.",
+  },
+  {
+    id: "ca-u6q4", topicId: "ca-cache", unit: 6, co: "CO6", level: "L2", source: "generated",
+    prompt: "Set-associative mapping is a compromise between…",
+    options: [
+      "RAM and ROM",
+      "direct mapping and fully associative mapping",
+      "cache and virtual memory",
+      "SRAM and DRAM",
+    ], answer: 1,
+    hint: "Direct-map to a set, then search only its K lines.",
+    explanation: "It keeps direct mapping's cheap indexing but allows K choices per set, avoiding full-search hardware costs.",
+  },
+  {
+    id: "ca-u6q5", topicId: "ca-assoc-virtual", unit: 6, co: "CO6", level: "L2", source: "generated",
+    prompt: "Virtual memory's core promise is…",
+    options: [
+      "faster registers",
+      "the illusion of a large memory despite a small physical RAM, via pages swapped from disk",
+      "eliminating the cache",
+      "read-only main memory",
+    ], answer: 1,
+    hint: "Pages, swap space, page faults.",
+    explanation: "The OS pages memory between RAM and disk on demand, so programs can exceed physical RAM safely.",
+  },
+  // ---- Sample end-term paper (CO/L tags as printed; source: pastpaper) ----
+  {
+    id: "ca-ppq1", topicId: "ca-instr-formats", unit: 3, co: "CO3", level: "L2", source: "pastpaper",
+    prompt: "Which of the following is NOT a valid instruction format?",
+    options: ["Zero-address", "One-address", "Two-address", "Four-address"], answer: 3,
+    hint: "Count how many formats the comparison table actually has.",
+    explanation: "The standard formats are zero through three address; four-address is the invented option.",
+  },
+  {
+    id: "ca-ppq2", topicId: "ca-logic-gates", unit: 1, co: "CO1", level: "L1", source: "pastpaper",
+    prompt: "The Boolean expression for an XNOR gate is:",
+    options: ["AB + A'B'", "AB' + A'B", "A + B", "A ⊕ B"], answer: 0,
+    hint: "XNOR is true when the inputs AGREE.",
+    explanation: "Both-1 (AB) or both-0 (A'B') — agreement. AB' + A'B is XOR, its opposite.",
+  },
+  {
+    id: "ca-ppq3", topicId: "ca-transfer-modes", unit: 5, co: "CO5", level: "L2", source: "pastpaper",
+    prompt: "Which of the following is not a mode of data transfer in computer systems?",
+    options: ["Programmed I/O", "Direct Memory Access (DMA)", "Memory-mapped I/O", "Bus communication"], answer: 3,
+    hint: "Three real modes plus one made-up phrase.",
+    explanation: "Programmed, interrupt-initiated/memory-mapped I/O and DMA are genuine; 'bus communication' is not a transfer mode.",
+  },
+  {
+    id: "ca-ppq4", topicId: "ca-addressing-modes", unit: 2, co: "CO2", level: "L2", source: "pastpaper",
+    prompt: "What addressing mode allows you to directly specify the memory address of an operand in the instruction?",
+    options: ["Immediate", "Register", "Direct", "Indirect"], answer: 2,
+    hint: "The address field IS the effective address.",
+    explanation: "Direct (absolute) addressing carries the operand's memory address in the instruction — one memory reference.",
+  },
+  {
+    id: "ca-ppq5", topicId: "ca-cpu-instructions", unit: 2, co: "CO1", level: "L2", source: "pastpaper",
+    prompt: "Who designed the computer's fundamental architecture?",
+    options: ["Pascal", "C. Babbage", "John von Neumann", "None of these"], answer: 2,
+    hint: "The stored-program architecture bears his name.",
+    explanation: "The von Neumann architecture — program and data in one memory — is the fundamental design.",
+  },
+  {
+    id: "ca-ppq6", topicId: "ca-logic-gates", unit: 1, co: "CO1", level: "L2", source: "pastpaper",
+    prompt: "How many truth table entries are required for a three-variable Boolean function?",
+    options: ["4", "6", "8", "16"], answer: 2,
+    hint: "2ⁿ.",
+    explanation: "2³ = 8 rows cover every combination of three inputs.",
+  },
+  {
+    id: "ca-ppq7", topicId: "ca-logic-gates", unit: 1, co: "CO1", level: "L2", source: "pastpaper",
+    prompt: "Which logic gate is known as a universal gate?",
+    options: ["AND", "OR", "XOR", "NAND"], answer: 3,
+    hint: "Every other gate can be built from it alone.",
+    explanation: "NAND (like NOR) is universal — combinations of NANDs implement any Boolean function.",
+  },
+  {
+    id: "ca-ppq8", topicId: "ca-io-interface", unit: 5, co: "CO5", level: "L2", source: "pastpaper",
+    prompt: "Which of the following is NOT a role of the I/O interface?",
+    options: [
+      "Data conversion between different formats",
+      "Managing communication between devices",
+      "Connecting the CPU to RAM",
+      "Generating control signals for peripherals",
+    ], answer: 2,
+    hint: "One option belongs to the memory bus, not I/O.",
+    explanation: "CPU↔RAM is the memory bus's job; the I/O interface faces peripherals.",
+  },
+  {
+    id: "ca-ppq9", topicId: "ca-base-conversions", unit: 1, co: "CO1", level: "L4", source: "pastpaper",
+    prompt: "Octal to binary conversion: (24)₈ = ?",
+    options: ["(111101)₂", "(010100)₂", "(111100)₂", "(101010)₂"], answer: 1,
+    hint: "Each octal digit becomes exactly 3 bits.",
+    explanation: "2 → 010, 4 → 100, so (24)₈ = 010100₂.",
+  },
+  {
+    id: "ca-ppq10", topicId: "ca-mem-hierarchy", unit: 6, co: "CO6", level: "L2", source: "pastpaper",
+    prompt: "The purpose of the memory hierarchy in a computer system is to:",
+    options: [
+      "Increase memory access speed",
+      "Minimize data storage",
+      "Reduce CPU processing",
+      "None of these",
+    ], answer: 0,
+    hint: "Why layer fast-small over slow-big at all?",
+    explanation: "The hierarchy exists to raise effective access speed at reasonable cost by keeping hot data in fast layers.",
+  },
+  {
+    id: "ca-ppq11", topicId: "ca-complements", unit: 1, co: "CO2", level: "L2", source: "pastpaper",
+    prompt: "The 1's complement of 1011001 is:",
+    options: ["0100110", "1100110", "1010110", "0100111"], answer: 0,
+    hint: "Flip every bit.",
+    explanation: "Inverting each bit of 1011001 gives 0100110 — no +1 for 1's complement.",
+  },
+  {
+    id: "ca-ppq12", topicId: "ca-main-memory", unit: 6, co: "CO1", level: "L4", source: "pastpaper",
+    prompt: "Which memory holds the boot sector files for the system?",
+    options: ["RAM", "ROM", "Cache", "Register"], answer: 1,
+    hint: "It must survive the power being off.",
+    explanation: "The bootstrap loader lives in non-volatile ROM — RAM is empty at power-on.",
+  },
+  {
+    id: "ca-ppq13", topicId: "ca-async-transfer", unit: 5, co: "CO5", level: "L2", source: "pastpaper",
+    prompt: "Which of the following is a key feature of asynchronous transfer?",
+    options: [
+      "Requires a clock signal",
+      "Data is transferred in bursts",
+      "Each data unit is sent with a start and stop bit",
+      "Data transfer speed is fixed",
+    ], answer: 2,
+    hint: "No shared clock — so each unit carries its own timing.",
+    explanation: "Asynchronous transfer frames each unit with start/stop signalling instead of a common clock.",
+  },
+  {
+    id: "ca-ppq14", topicId: "ca-async-transfer", unit: 5, co: "CO5", level: "L2", source: "pastpaper",
+    prompt: "Which of the following is true about synchronous data transfer?",
+    options: [
+      "Data is transferred without any timing coordination",
+      "It requires a shared clock signal between sender and receiver",
+      "It is slower than asynchronous transfer",
+      "It does not require synchronization signals",
+    ], answer: 1,
+    hint: "The word 'synchronous' is the clue.",
+    explanation: "Synchronous transfer runs sender and receiver off one shared clock — the opposite of start/stop framing.",
+  },
+  {
+    id: "ca-ppq15", topicId: "ca-cpu-instructions", unit: 2, co: "CO1", level: "L4", source: "pastpaper",
+    prompt: "The processor's \"heart,\" which carries out numerous functions, is the…",
+    options: ["Arithmetic and Logic Unit", "Circuit boards", "Control Unit", "Memory"], answer: 0,
+    hint: "It does the computing itself.",
+    explanation: "The ALU performs the arithmetic and logical operations — the computational heart of the CPU.",
+  },
+  {
+    id: "ca-ppq16", topicId: "ca-mem-hierarchy", unit: 6, co: "CO1", level: "L4", source: "pastpaper",
+    prompt: "In the memory hierarchy, which of the following has the fastest speed?",
+    options: ["Memory", "CPU register", "Primary memory", "Memory cache"], answer: 1,
+    hint: "Inside the CPU itself.",
+    explanation: "Registers top the hierarchy — faster even than cache.",
+  },
+  {
+    id: "ca-ppq17", topicId: "ca-cpu-instructions", unit: 2, co: "CO3", level: "L2", source: "pastpaper",
+    prompt: "Which of the following is a data transfer instruction?",
+    options: ["ADD", "MOV", "CMP", "SUB"], answer: 1,
+    hint: "Which one moves data without changing it?",
+    explanation: "MOV transfers data unchanged; ADD/SUB manipulate, CMP tests.",
+  },
+  {
+    id: "ca-ppq18", topicId: "ca-base-conversions", unit: 1, co: "CO2", level: "L2", source: "pastpaper",
+    prompt: "Which of the following is the correct binary representation of decimal 25?",
+    options: ["11001", "10101", "10011", "11111"], answer: 0,
+    hint: "16 + 8 + 1.",
+    explanation: "25 = 16+8+1 = 11001₂ — the repeated-division example from the lesson.",
+  },
+  {
+    id: "ca-ppq19", topicId: "ca-multiplication", unit: 4, co: "CO4", level: "L2", source: "pastpaper",
+    prompt: "The shift-and-add multiplication method is based on:",
+    options: [
+      "Bitwise shifting and addition",
+      "Repeated subtraction",
+      "Dividing and multiplying with powers of two",
+      "None of the above",
+    ], answer: 0,
+    hint: "Its name is the method.",
+    explanation: "Each multiplier bit adds a shifted copy of the multiplicand — shifting plus addition.",
+  },
+  {
+    id: "ca-ppq20", topicId: "ca-multiplication", unit: 4, co: "CO4", level: "L2", source: "pastpaper",
+    prompt: "Booth's multiplication algorithm is used for:",
+    options: [
+      "Efficient division",
+      "Efficient multiplication of binary numbers",
+      "Decimal addition",
+      "Floating-point multiplication",
+    ], answer: 1,
+    hint: "Signed 2's-complement operands, fewer additions.",
+    explanation: "Booth multiplies signed binary numbers efficiently using shift runs to skip additions.",
+  },
+  {
+    id: "ca-ppq21", topicId: "ca-main-memory", unit: 6, co: "CO1", level: "L4", source: "pastpaper",
+    prompt: "Which of the following memories is used in a digital camera?",
+    options: ["Virtual memory", "Flash memory", "Main memory", "Cache memory"], answer: 1,
+    hint: "Non-volatile, removable, solid-state.",
+    explanation: "Cameras store photos on flash memory cards — non-volatile solid-state storage.",
+  },
+  {
+    id: "ca-ppq22", topicId: "ca-addressing-modes", unit: 2, co: "CO2", level: "L6", source: "pastpaper",
+    prompt: "Which addressing mode calculates the effective address of the operand using the value in the program counter (PC)?",
+    options: ["Immediate", "PC-relative", "Indexed", "Base-indexed"], answer: 1,
+    hint: "Its name says which register anchors the address.",
+    explanation: "Relative (PC-relative) addressing adds an offset to the program counter — used for branches.",
+  },
+  {
+    id: "ca-ppq23", topicId: "ca-base-conversions", unit: 1, co: "CO1", level: "L4", source: "pastpaper",
+    prompt: "The octal number (651.124)₈ is equivalent to ______",
+    options: ["(1A9.2A)₁₆", "(1B0.10)₁₆", "(1A8.A3)₁₆", "(1B0.B0)₁₆"], answer: 0,
+    hint: "Octal → binary in 3s, regroup in 4s → hex.",
+    explanation: "651.124₈ = 110101001.001010100₂ = 0001 1010 1001 . 0010 1010₂ = 1A9.2A₁₆.",
+  },
+  {
+    id: "ca-ppq24", topicId: "ca-base-conversions", unit: 1, co: "CO1", level: "L2", source: "pastpaper",
+    prompt: "The hexadecimal number (1E.43)₁₆ is equivalent to…",
+    options: ["(36.506)₈", "(36.206)₈", "(35.506)₈", "(35.206)₈"], answer: 1,
+    hint: "Hex → binary in 4s, regroup in 3s → octal.",
+    explanation: "1E.43₁₆ = 00011110.01000011₂ → 011110.010000110₂ = 36.206₈.",
+  },
+  {
+    id: "ca-ppq25", topicId: "ca-multiplication", unit: 4, co: "CO4", level: "L6", source: "pastpaper",
+    prompt: "What is the main advantage of Booth's algorithm in binary multiplication?",
+    options: [
+      "Reduced number of additions",
+      "Reduced number of shifts",
+      "Reduced memory usage",
+      "Better precision",
+    ], answer: 0,
+    hint: "Runs of identical bits cost only shifts.",
+    explanation: "Booth's recoding turns runs of 1s into a subtract-and-add pair, cutting the number of additions.",
+  },
+  {
+    id: "ca-ppq26", topicId: "ca-codes", unit: 1, co: "CO2", level: "L2", source: "pastpaper",
+    prompt: "The BCD representation of the decimal number 13 is:",
+    options: ["0001 0011", "1101", "1100 0011", "1010 0011"], answer: 0,
+    hint: "Digit by digit — 1, then 3.",
+    explanation: "1 → 0001, 3 → 0011 → 0001 0011. Plain binary 1101 is the trap: BCD codes each digit separately.",
+  },
 ];
 
 export const cse46d = buildCourseBundle(
@@ -952,7 +2106,7 @@ export const cse46d = buildCourseBundle(
     id: "cse46d",
     code: "CSE46D",
     title: "Computer Architecture",
-    sections: [sectionA, sectionB, sectionC],
+    sections: [sectionA, sectionB, sectionU3, sectionC, sectionU5, sectionU6],
   },
   examBank
 );
