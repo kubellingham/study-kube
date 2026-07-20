@@ -20,6 +20,12 @@ export default function Header() {
           Studying <span className="text-indigo-600">Kube</span>
         </Link>
         <div className="flex items-center gap-3 text-sm">
+          <Link
+            href="/learn"
+            className="rounded-lg bg-teal-700 px-3 py-1.5 font-medium text-white hover:bg-teal-800"
+          >
+            Learn
+          </Link>
           {user?.email && (
             <span className="hidden text-slate-500 sm:inline dark:text-slate-400">
               {user.email}

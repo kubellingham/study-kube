@@ -1,0 +1,138 @@
+/* Kube design system — FIXED per the build brief §7. Do not restyle. */
+
+.kube {
+  --ink: #16202b;
+  --ink-soft: #46566a;
+  --faint: #8593a3;
+  --bg: #eef1f4;
+  --card: #ffffff;
+  --line: #dce2e8;
+  --kube: #1f6f6b;
+  --kube-soft: #e2f0ef;
+  --kube-line: #b4d8d5;
+  --amber: #d98a1f;
+  --amber-soft: #f8ecd7;
+  --red: #c9463a;
+  --red-soft: #f7e2df;
+  --radius: 16px;
+
+  --font-display: "Fraunces", Georgia, serif;
+  --font-body: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.kube h1,
+.kube h2,
+.kube .k-display {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.kube .k-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--faint);
+}
+
+.kube .k-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.kube .k-code {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  line-height: 1.7;
+  background: #f6f8fa;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  overflow-x: auto;
+  white-space: pre;
+  color: var(--ink);
+}
+
+.kube code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: var(--kube-soft);
+  border-radius: 5px;
+  padding: 0.1em 0.35em;
+  color: var(--kube);
+}
+
+/* ---- Motion (brief §7): shake on wrong, check drawing itself, bobbing
+   "start here", progress easing. All guarded by prefers-reduced-motion. ---- */
+
+@keyframes k-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-7px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(3px); }
+}
+
+.kube .k-shake {
+  animation: k-shake 0.45s ease-in-out;
+}
+
+@keyframes k-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+.kube .k-bob {
+  animation: k-bob 2.2s ease-in-out infinite;
+}
+
+@keyframes k-draw {
+  from { stroke-dashoffset: 48; }
+  to { stroke-dashoffset: 0; }
+}
+
+.kube .k-check-path {
+  stroke-dasharray: 48;
+  stroke-dashoffset: 48;
+  animation: k-draw 0.7s 0.15s ease-out forwards;
+}
+
+@keyframes k-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.kube .k-rise {
+  animation: k-rise 0.35s ease-out both;
+}
+
+.kube .k-bar {
+  transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kube .k-shake,
+  .kube .k-bob,
+  .kube .k-rise {
+    animation: none;
+  }
+  .kube .k-check-path {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+  .kube .k-bar {
+    transition: none;
+  }
+}
