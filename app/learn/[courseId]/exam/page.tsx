@@ -7,8 +7,8 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useUser } from "@/lib/use-user";
-import { getCourseBundle, type CourseBundle } from "@/lib/course";
+import { type CourseBundle } from "@/lib/course";
+import { useCourse } from "@/lib/learn/use-course";
 import type { ExamQuestion } from "@/lib/course/types";
 import { saveExamAttempt } from "@/lib/learn/progress";
 
@@ -65,8 +65,7 @@ const STATUS_META: Record<TopicStatus, { label: string; color: string; soft: str
 
 export default function ExamPage() {
   const params = useParams<{ courseId: string }>();
-  const bundle = getCourseBundle(params.courseId);
-  const { user, loading } = useUser();
+  const { user, userLoading: loading, status, bundle } = useCourse(params.courseId);
   const router = useRouter();
 
   const [phase, setPhase] = useState<"config" | "exam" | "analysis">("config");
@@ -88,7 +87,7 @@ export default function ExamPage() {
     [phase, questions, answers]
   );
 
-  if (!bundle) {
+  if (status === "notfound") {
     return (
       <main className="mx-auto max-w-lg flex-1 px-4 py-16 text-center">
         <p style={{ color: "var(--faint)" }}>That course isn&apos;t in Kube yet.</p>
@@ -99,7 +98,7 @@ export default function ExamPage() {
     );
   }
 
-  if (loading || !user) {
+  if (loading || !user || !bundle) {
     return (
       <div className="flex-1 grid place-items-center text-sm" style={{ color: "var(--faint)" }}>
         Loading…

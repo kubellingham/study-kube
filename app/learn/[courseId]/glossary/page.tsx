@@ -4,13 +4,13 @@
 // lines, like Duolingo's "Tips" article. No interaction, just the facts.
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { getCourseBundle } from "@/lib/course";
+import { useCourse } from "@/lib/learn/use-course";
 
 export default function GlossaryPage() {
   const params = useParams<{ courseId: string }>();
-  const bundle = getCourseBundle(params.courseId);
+  const { status, bundle } = useCourse(params.courseId);
 
-  if (!bundle) {
+  if (status === "notfound") {
     return (
       <main className="mx-auto max-w-lg flex-1 px-4 py-16 text-center">
         <p style={{ color: "var(--faint)" }}>That course isn&apos;t in Kube yet.</p>
@@ -18,6 +18,14 @@ export default function GlossaryPage() {
           ← your subjects
         </Link>
       </main>
+    );
+  }
+
+  if (!bundle) {
+    return (
+      <div className="flex-1 grid place-items-center text-sm" style={{ color: "var(--faint)" }}>
+        Loading…
+      </div>
     );
   }
 

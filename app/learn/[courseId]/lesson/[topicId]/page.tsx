@@ -5,8 +5,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useUser } from "@/lib/use-user";
-import { getCourseBundle } from "@/lib/course";
+import { useCourse } from "@/lib/learn/use-course";
 import type { CheckStep, TeachStep } from "@/lib/course/types";
 import { loadProgress, markTopicComplete } from "@/lib/learn/progress";
 import Rich from "@/app/learn/components/Rich";
@@ -119,16 +118,15 @@ function CheckCard({ step, onPass }: { step: CheckStep; onPass: () => void }) {
 
 export default function LessonPage() {
   const params = useParams<{ courseId: string; topicId: string }>();
-  const bundle = getCourseBundle(params.courseId);
+  const { user, userLoading, status, bundle } = useCourse(params.courseId);
   const topic = bundle?.getTopic(params.topicId);
-  const { user, loading } = useUser();
   const router = useRouter();
   const [stepIdx, setStepIdx] = useState(0);
   const [phase, setPhase] = useState<"loading" | "review" | "lesson" | "done">("loading");
   const [alreadyDone, setAlreadyDone] = useState(false);
 
   useEffect(() => {
-    if (!loading && !user) router.replace("/login");
+    if (!userLoading && !user) router.replace("/login");
     if (user && bundle && topic) {
       loadProgress(user.uid, bundle.course.id).then((p) => {
         const done = !!p.completed[topic.id];
@@ -136,9 +134,9 @@ export default function LessonPage() {
         setPhase(done ? "review" : "lesson");
       });
     }
-  }, [user, loading, router, bundle, topic]);
+  }, [user, userLoading, router, bundle, topic]);
 
-  if (!bundle || !topic) {
+  if (status === "notfound" || (status === "ready" && bundle && !topic)) {
     return (
       <main className="mx-auto max-w-lg flex-1 px-4 py-16 text-center">
         <p style={{ color: "var(--faint)" }}>That topic isn&apos;t on the ladder.</p>
@@ -149,7 +147,7 @@ export default function LessonPage() {
     );
   }
 
-  if (loading || !user || phase === "loading") {
+  if (userLoading || !user || !bundle || !topic || phase === "loading") {
     return (
       <div className="flex-1 grid place-items-center text-sm" style={{ color: "var(--faint)" }}>
         Loading…

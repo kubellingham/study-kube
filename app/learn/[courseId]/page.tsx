@@ -3,10 +3,10 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useUser } from "@/lib/use-user";
-import { getCourseBundle } from "@/lib/course";
 import type { Topic } from "@/lib/course/types";
+import { useCourse } from "@/lib/learn/use-course";
 import { loadProgress, type LearnProgress } from "@/lib/learn/progress";
+import AddUnit from "@/app/learn/components/AddUnit";
 
 type NodeState = "completed" | "current" | "available" | "locked";
 
@@ -156,19 +156,20 @@ function LadderNode({
 
 export default function CourseLadderPage() {
   const params = useParams<{ courseId: string }>();
-  const bundle = getCourseBundle(params.courseId);
-  const { user, loading } = useUser();
+  const { user, userLoading, status, bundle, owned, reload } = useCourse(
+    params.courseId
+  );
   const router = useRouter();
   const [progress, setProgress] = useState<LearnProgress | null>(null);
 
   useEffect(() => {
-    if (!loading && !user) router.replace("/login");
+    if (!userLoading && !user) router.replace("/login");
     if (user && bundle) {
       loadProgress(user.uid, bundle.course.id).then(setProgress);
     }
-  }, [user, loading, router, bundle]);
+  }, [user, userLoading, router, bundle]);
 
-  if (!bundle) {
+  if (status === "notfound") {
     return (
       <main className="mx-auto max-w-lg flex-1 px-4 py-16 text-center">
         <p style={{ color: "var(--faint)" }}>That course isn&apos;t in Kube yet.</p>
@@ -179,7 +180,7 @@ export default function CourseLadderPage() {
     );
   }
 
-  if (loading || !user || !progress) {
+  if (userLoading || !user || status === "loading" || !bundle || !progress) {
     return (
       <div className="flex-1 grid place-items-center text-sm" style={{ color: "var(--faint)" }}>
         Loading your path…
@@ -202,32 +203,39 @@ export default function CourseLadderPage() {
       </div>
       <h1 className="text-3xl">{course.title}</h1>
       <p className="mt-2 text-sm" style={{ color: "var(--ink-soft)" }}>
-        One ladder, {ladder.length} small steps. You&apos;ve climbed {done}.
+        {ladder.length === 0
+          ? "No units digested yet — feed Kube the first one below."
+          : `One ladder, ${ladder.length} small steps. You've climbed ${done}.`}
       </p>
 
       <div className="mt-4 h-2 w-full overflow-hidden rounded-full" style={{ background: "var(--line)" }}>
         <div
           className="k-bar h-full rounded-full"
-          style={{ width: `${(done / ladder.length) * 100}%`, background: "var(--kube)" }}
+          style={{
+            width: `${ladder.length ? (done / ladder.length) * 100 : 0}%`,
+            background: "var(--kube)",
+          }}
         />
       </div>
 
-      <div className="mt-6 flex gap-3">
-        <Link
-          href={`/learn/${course.id}/exam`}
-          className="flex-1 rounded-2xl px-4 py-3 text-center text-sm font-semibold text-white"
-          style={{ background: "var(--kube)" }}
-        >
-          Sit a mock exam
-        </Link>
-        <Link
-          href={`/learn/${course.id}/glossary`}
-          className="flex-1 rounded-2xl px-4 py-3 text-center text-sm font-semibold k-card"
-          style={{ color: "var(--kube)" }}
-        >
-          Notes &amp; glossary
-        </Link>
-      </div>
+      {ladder.length > 0 && (
+        <div className="mt-6 flex gap-3">
+          <Link
+            href={`/learn/${course.id}/exam`}
+            className="flex-1 rounded-2xl px-4 py-3 text-center text-sm font-semibold text-white"
+            style={{ background: "var(--kube)" }}
+          >
+            Sit a mock exam
+          </Link>
+          <Link
+            href={`/learn/${course.id}/glossary`}
+            className="flex-1 rounded-2xl px-4 py-3 text-center text-sm font-semibold k-card"
+            style={{ color: "var(--kube)" }}
+          >
+            Notes &amp; glossary
+          </Link>
+        </div>
+      )}
 
       {course.sections.map((section) => (
         <section key={section.id} className="mt-12">
@@ -258,6 +266,19 @@ export default function CourseLadderPage() {
           </div>
         </section>
       ))}
+
+      {owned && (
+        <AddUnit
+          courseId={course.id}
+          suggestedUnit={
+            bundle.availableUnits.length
+              ? Math.max(...bundle.availableUnits) + 1
+              : 1
+          }
+          existingUnits={bundle.availableUnits}
+          onDone={reload}
+        />
+      )}
     </main>
   );
 }
