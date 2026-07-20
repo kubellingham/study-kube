@@ -97,7 +97,7 @@ export default function AddMaterial({
         if (r.state === "done") setText("");
       } else {
         if (picked.length === 0) {
-          setLines([{ name: "—", state: "error", note: "Choose one or more PDFs first." }]);
+          setLines([{ name: "—", state: "error", note: "Choose one or more files first." }]);
           setBusy(false);
           return;
         }
@@ -172,20 +172,26 @@ export default function AddMaterial({
                   : { borderColor: "var(--line)", color: "var(--ink-soft)" }
               }
             >
-              {t === "pdf" ? "Upload PDFs" : "Paste text"}
+              {t === "pdf" ? "Upload files" : "Paste text"}
             </button>
           ))}
         </div>
 
         {tab === "pdf" ? (
-          <input
-            type="file"
-            accept="application/pdf"
-            multiple
-            onChange={(e) => setPicked(Array.from(e.target.files ?? []))}
-            className="mt-3 block w-full text-sm"
-            style={{ color: "var(--ink-soft)" }}
-          />
+          <>
+            <input
+              type="file"
+              accept=".pdf,.pptx,.docx,.txt,.md,.ppt,.doc,application/pdf"
+              multiple
+              onChange={(e) => setPicked(Array.from(e.target.files ?? []))}
+              className="mt-3 block w-full text-sm"
+              style={{ color: "var(--ink-soft)" }}
+            />
+            <p className="mt-1 text-xs" style={{ color: "var(--faint)" }}>
+              PDF, PPTX, DOCX, TXT and MD all work. (Old .ppt/.doc need a quick
+              Save-As to the newer format first.)
+            </p>
+          </>
         ) : (
           <textarea
             value={text}

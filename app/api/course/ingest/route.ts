@@ -2,7 +2,7 @@ import { createHash } from "crypto";
 import { NextRequest } from "next/server";
 import { getUid } from "@/lib/api-helpers";
 import { adminDb } from "@/lib/firebase/admin";
-import { ingestPdf } from "@/lib/ingest";
+import { extractDocumentText } from "@/lib/ingest/office";
 import {
   classifyStream,
   parseClassification,
@@ -49,11 +49,11 @@ export async function POST(req: NextRequest) {
     }
     if (file instanceof File && file.size > 0) {
       if (file.size > MAX_PDF_BYTES) {
-        return Response.json({ error: "PDF is too large (max 25 MB)." }, { status: 400 });
+        return Response.json({ error: "File is too large (max 25 MB)." }, { status: 400 });
       }
       fileName = file.name;
       const bytes = new Uint8Array(await file.arrayBuffer());
-      rawText = (await ingestPdf(bytes, file.name)).raw_text;
+      rawText = await extractDocumentText(bytes, file.name);
     } else if (pasted) {
       rawText = pasted;
     }
