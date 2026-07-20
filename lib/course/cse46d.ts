@@ -46,54 +46,160 @@ const sectionA: Section = {
         "MSB = leftmost bit (highest place value); LSB = rightmost bit (least place value).",
         "Hex wins over binary for readability: the same number in far fewer symbols — that's why microprocessors use it.",
       ],
-      steps: [
+      lessons: [
         {
-          kind: "teach",
-          title: "Base is everything",
-          body: "A **number system** is just a set of symbols plus a rule: each position is worth **base times** the position to its right. Digital electronics represents ALL information as numbers, so these four systems are the course's alphabet:\n\n**Decimal** — base 10, symbols 0–9. Yours.\n**Binary** — base 2, symbols 0 and 1. The machine's: every digital device runs on it.\n**Octal** — base 8, symbols 0–7.\n**Hexadecimal** — base 16, symbols 0–9 then **A=10, B=11, C=12, D=13, E=14, F=15**. Used heavily in microprocessors because it's **much shorter to write than binary** while converting to it trivially.",
-        },
-        {
-          kind: "teach",
-          title: "The vocabulary of bits",
-          body: "Four terms exams love to define-check:\n\n**Bit** — one binary digit (a 0 or a 1).\n**Nibble** — a group of **4 bits** (0101).\n**Byte** — a group of **8 bits** (01001011).\n\nAnd inside any binary number: the **MSB** (most significant bit) is the **leftmost** bit — highest place value; the **LSB** (least significant bit) is the **rightmost** — lowest place value.",
-        },
-        {
-          kind: "check",
-          prompt: "In hexadecimal, the symbol C stands for which decimal value?",
-          options: ["3", "11", "12", "16"],
-          answer: 2,
-          praise:
-            "Right — A starts at 10, so C is 12. Counting the letters from A is the fastest way to never trip on this.",
-        },
-        {
-          kind: "check",
-          prompt: "A nibble is…",
-          options: ["1 bit", "4 bits", "8 bits", "16 bits"],
-          answer: 1,
-          praise:
-            "Exactly — 4 bits. And that's not trivia: one nibble is precisely one hex digit, which is WHY hex and binary convert so cleanly.",
-        },
-        {
-          kind: "check",
-          prompt: "Why is hexadecimal preferred over binary for humans reading machine values?",
-          options: [
-            "Computers run on hex internally",
-            "Hex numbers are much shorter for the same value, so they're more readable",
-            "Hex has no zero",
-            "Binary can't represent large numbers",
+          id: "ns-decimal",
+          title: "Decimal & the idea of a base",
+          steps: [
+            {
+              kind: "teach",
+              title: "Base is everything",
+              body: "A **number system** is a set of symbols plus one rule: each position is worth **base times** the position to its right.\n\nThe **decimal** system — yours — has base **10**, symbols 0–9, and it's a **positional value system**: in 1234, the '2' means 200 because of *where* it stands, not what it is.\n\nEvery other system in this course is this exact idea with a different base. Master 'base + position' here and the rest are costume changes.",
+            },
+            {
+              kind: "check",
+              prompt: "In the decimal number 5319, the digit 3 contributes…",
+              options: ["3", "30", "300", "3000"],
+              answer: 2,
+              praise:
+                "Right — position gives it ×100. 'The value of a digit depends on its position' is the sentence the whole unit stands on.",
+            },
+            {
+              kind: "check",
+              prompt: "The base (radix) of a number system tells you…",
+              options: [
+                "the largest number it can store",
+                "how many symbols it uses",
+                "how many digits a number must have",
+                "whether it's positional",
+              ],
+              answer: 1,
+              praise:
+                "Exactly — base 10 means ten symbols, base 2 means two. Count the symbols, know the base: that's the definition, banked forever.",
+            },
           ],
-          answer: 1,
-          praise:
-            "That's the honest reason — same information, a quarter the symbols. The machine still runs on binary; hex is our compression for reading it.",
+        },
+        {
+          id: "ns-binary",
+          title: "Binary",
+          steps: [
+            {
+              kind: "teach",
+              title: "The machine's own system",
+              body: "**Binary** is base **2**: just the symbols **0 and 1**. All modern digital devices — computers, combinational circuits, sequential circuits — run on it, because a wire is either carrying voltage or it isn't.\n\nExamples from your slides: `(1101)₂`, `(1010)₂`, even fractions like `(10110.001)₂` — same positional rule, powers of 2 instead of 10.",
+            },
+            {
+              kind: "check",
+              prompt: "Which of these is a VALID binary number?",
+              options: ["(1021)₂", "(1101)₂", "(12)₂", "(A01)₂"],
+              answer: 1,
+              praise:
+                "Right — binary owns exactly two symbols, so any 2, or A disqualifies the number instantly. That validity check is a free exam mark.",
+            },
+            {
+              kind: "check",
+              prompt: "Why do digital devices use binary rather than decimal?",
+              options: [
+                "Binary numbers are shorter",
+                "Hardware states (on/off) map naturally onto exactly two symbols",
+                "Decimal is copyrighted",
+                "Binary is newer",
+              ],
+              answer: 1,
+              praise:
+                "That's the physical truth under the maths — a circuit is on or off, so two symbols fit perfectly. Binary isn't a choice; it's what hardware IS.",
+            },
+          ],
+        },
+        {
+          id: "ns-octal-hex",
+          title: "Octal & hexadecimal",
+          steps: [
+            {
+              kind: "teach",
+              title: "The two compressions",
+              body: "**Octal** — base **8**, symbols 0–7: `(124)₈`, `(1725.43)₈`.\n\n**Hexadecimal** — base **16**: symbols 0–9 then **A=10, B=11, C=12, D=13, E=14, F=15**: `(1AF)₁₆`, `(EBF1.A2)₁₆`.\n\nWhy do they exist? **Readability.** Hex is used heavily in microprocessors because it's **much shorter than binary** for the same value — and (next circle's secret) each hex digit is exactly 4 bits, each octal digit exactly 3.",
+            },
+            {
+              kind: "check",
+              prompt: "In hexadecimal, the symbol C stands for which decimal value?",
+              options: ["3", "11", "12", "16"],
+              answer: 2,
+              praise:
+                "Right — A starts at 10, so C is 12. Counting up from A is the fastest way to never trip on the letters.",
+            },
+            {
+              kind: "check",
+              prompt: "Which symbol can appear in octal but NOT cause an error?",
+              options: ["8", "9", "7", "A"],
+              answer: 2,
+              praise:
+                "Exactly — octal stops at 7. An 8 or 9 inside a supposed octal number is the classic spot-the-invalid trick.",
+            },
+            {
+              kind: "check",
+              prompt: "Why is hexadecimal preferred over binary for humans reading machine values?",
+              options: [
+                "Computers run on hex internally",
+                "Hex is much shorter for the same value, so it's more readable",
+                "Hex has no zero",
+                "Binary can't represent large numbers",
+              ],
+              answer: 1,
+              praise:
+                "The honest reason — same information, a quarter the symbols. The machine still runs on binary; hex is our compression for reading it.",
+            },
+          ],
+        },
+        {
+          id: "ns-bits",
+          title: "Bits, nibbles, bytes, MSB & LSB",
+          steps: [
+            {
+              kind: "teach",
+              title: "The vocabulary of bits",
+              body: "Four define-and-collect terms:\n\n**Bit** — one binary digit (a 0 or a 1).\n**Nibble** — a group of **4 bits** (0101).\n**Byte** — a group of **8 bits** (01001011).\n\nAnd inside any binary number: the **MSB** (most significant bit) is the **leftmost** bit — highest place value; the **LSB** (least significant bit) is the **rightmost** — lowest place value.",
+            },
+            {
+              kind: "check",
+              prompt: "A nibble is…",
+              options: ["1 bit", "4 bits", "8 bits", "16 bits"],
+              answer: 1,
+              praise:
+                "Exactly — 4 bits, which is precisely one hex digit. That's WHY hex and binary convert so cleanly.",
+            },
+            {
+              kind: "check",
+              prompt: "In the binary number 10010110, the MSB is…",
+              options: ["the rightmost 0", "the leftmost 1", "the middle bit", "always 1"],
+              answer: 1,
+              praise:
+                "Right — leftmost bit, highest place value. And it'll matter twice more: it's where the SIGN lives in signed numbers.",
+            },
+          ],
         },
       ],
+      steps: [],
+    },
+    {
+      id: "ca-rev-numbers",
+      title: "Quick review: number systems",
+      unit: 1,
+      weight: "light",
+      kind: "review",
+      review: { topicIds: ["ca-number-systems"], count: 5 },
+      deps: ["ca-number-systems"],
+      whyItMatters:
+        "Locks the four bases in before conversions build on them — five quick questions, then decimals never trouble you again.",
+      recap: [],
+      steps: [],
     },
     {
       id: "ca-base-conversions",
       title: "Converting between bases",
       unit: 1,
       weight: "heavy",
-      deps: ["ca-number-systems"],
+      deps: ["ca-number-systems", "ca-rev-numbers"],
       whyItMatters:
         "Conversion questions are CO1's guaranteed marks — and the group-of-3 / group-of-4 shortcuts turn them into free ones.",
       recap: [
@@ -103,52 +209,113 @@ const sectionA: Section = {
         "Binary ↔ octal: group bits in 3s from the right (pad left with 0s). Binary ↔ hex: group in 4s.",
         "Octal ↔ hex: go through binary in the middle.",
       ],
-      steps: [
+      lessons: [
         {
-          kind: "teach",
-          title: "Everything → decimal: place values",
-          body: "To bring any number home to decimal, pay each digit its **place value** — powers of the base, counted from 0 at the right:\n\n`(1101)₂ = 1×8 + 1×4 + 0×2 + 1×1 = 13`\n`(124)₈ = 1×64 + 2×8 + 4×1 = 84`\n`(1AF)₁₆ = 1×256 + 10×16 + 15×1 = 431`\n\nOne method, three bases — the only thing that changes is the base you're raising.",
-        },
-        {
-          kind: "teach",
-          title: "Decimal → anything: divide and collect",
-          body: "Going the other way, **divide repeatedly by the target base and read the remainders from bottom to top**:\n\n`25 ÷ 2 = 12 r 1` → `12 ÷ 2 = 6 r 0` → `6 ÷ 2 = 3 r 0` → `3 ÷ 2 = 1 r 1` → `1 ÷ 2 = 0 r 1`\nRead up: `(25)₁₀ = (11001)₂`.\n\nFor a decimal **fraction**, flip the machine: repeatedly **multiply** by the base and collect the integer parts **top-down** — that's how 0.188 or 25.5 get their binary tails.",
-        },
-        {
-          kind: "teach",
-          title: "The shortcut pair",
-          body: "Binary ↔ octal and binary ↔ hex never need decimal at all:\n\n**Octal** — group bits in **3s** from the right (pad with leading 0s): `010 101` → `(25)₈.\n**Hex** — group bits in **4s**: `0011 1010 1011 0010` → `3AB2`.\n\nAnd octal ↔ hex? **Go through binary in the middle** — expand to bits, regroup the other way. Three symbols of scratch work, no division anywhere.",
-        },
-        {
-          kind: "check",
-          prompt: "What is (1010)₂ in decimal?",
-          options: ["8", "10", "12", "5"],
-          answer: 1,
-          praise:
-            "Right — 8 + 0 + 2 + 0. Fittingly, binary 1010 IS ten; examiners love that little echo.",
-        },
-        {
-          kind: "check",
-          prompt: "Converting (100)₁₀ to binary by repeated division, the answer is…",
-          options: ["(1100100)₂", "(1010101)₂", "(1100010)₂", "(1001001)₂"],
-          answer: 0,
-          praise:
-            "Exactly — 64+32+4 = 100, and the remainders read bottom-up as 1100100. Divide-collect-read-up, every time.",
-        },
-        {
-          kind: "check",
-          prompt: "To convert binary to hexadecimal you group the bits…",
-          options: [
-            "in 3s from the left",
-            "in 4s from the right, padding with 0s on the left",
-            "in 8s from the right",
-            "any way you like",
+          id: "bc-to-decimal",
+          title: "Anything → decimal",
+          steps: [
+            {
+              kind: "teach",
+              title: "Place values bring it home",
+              body: "To bring any number home to decimal, pay each digit its **place value** — powers of the base, counted from 0 at the right:\n\n`(1101)₂ = 1×8 + 1×4 + 0×2 + 1×1 = 13`\n`(124)₈ = 1×64 + 2×8 + 4×1 = 84`\n`(1AF)₁₆ = 1×256 + 10×16 + 15×1 = 431`\n\nOne method, three bases — the only thing that changes is the base you're raising.",
+            },
+            {
+              kind: "check",
+              prompt: "What is (1010)₂ in decimal?",
+              options: ["8", "10", "12", "5"],
+              answer: 1,
+              praise:
+                "Right — 8 + 0 + 2 + 0. Fittingly, binary 1010 IS ten; examiners love that little echo.",
+            },
+            {
+              kind: "check",
+              prompt: "(124)₈ in decimal is…",
+              options: ["84", "124", "96", "72"],
+              answer: 0,
+              praise:
+                "1×64 + 2×8 + 4 = 84 — powers of eight this time, same machine. You now convert FROM any base the paper can throw.",
+            },
           ],
-          answer: 1,
-          praise:
-            "Right — 4 bits = 1 hex digit (one nibble!), grouped from the LSB end. Octal is the same dance with groups of 3.",
+        },
+        {
+          id: "bc-from-decimal",
+          title: "Decimal → anything",
+          steps: [
+            {
+              kind: "teach",
+              title: "Divide and collect",
+              body: "Going the other way, **divide repeatedly by the target base and read the remainders from bottom to top**:\n\n`25 ÷ 2 = 12 r 1` → `12 ÷ 2 = 6 r 0` → `6 ÷ 2 = 3 r 0` → `3 ÷ 2 = 1 r 1` → `1 ÷ 2 = 0 r 1`\nRead up: `(25)₁₀ = (11001)₂`.\n\nFor a decimal **fraction**, flip the machine: repeatedly **multiply** by the base and collect the integer parts **top-down** — that's how 0.188 or 25.5 get their binary tails.",
+            },
+            {
+              kind: "check",
+              prompt: "Converting (100)₁₀ to binary by repeated division gives…",
+              options: ["(1100100)₂", "(1010101)₂", "(1100010)₂", "(1001001)₂"],
+              answer: 0,
+              praise:
+                "Exactly — 64+32+4 = 100, remainders read bottom-up as 1100100. Divide-collect-read-up, every time.",
+            },
+            {
+              kind: "check",
+              prompt: "For the FRACTIONAL part of a decimal number, you repeatedly…",
+              options: [
+                "divide by the base, reading remainders up",
+                "multiply by the base, collecting integer parts top-down",
+                "subtract the base",
+                "flip the bits",
+              ],
+              answer: 1,
+              praise:
+                "Right — fractions run the machine in reverse: multiply and skim the integer part. Divide for the left of the point, multiply for the right.",
+            },
+          ],
+        },
+        {
+          id: "bc-shortcuts",
+          title: "The shortcut pair: groups of 3 & 4",
+          steps: [
+            {
+              kind: "teach",
+              title: "No decimal needed",
+              body: "Binary ↔ octal and binary ↔ hex never need decimal at all:\n\n**Octal** — group bits in **3s** from the right (pad with leading 0s): `010 101` → `(25)₈`.\n**Hex** — group bits in **4s**: `0011 1010 1011 0010` → `3AB2`.\n\nAnd octal ↔ hex? **Go through binary in the middle** — expand to bits, regroup the other way. Three symbols of scratch work, no division anywhere.",
+            },
+            {
+              kind: "check",
+              prompt: "To convert binary to hexadecimal you group the bits…",
+              options: [
+                "in 3s from the left",
+                "in 4s from the right, padding with 0s on the left",
+                "in 8s from the right",
+                "any way you like",
+              ],
+              answer: 1,
+              praise:
+                "Right — 4 bits = 1 hex digit (one nibble!), grouped from the LSB end. Octal is the same dance in 3s.",
+            },
+            {
+              kind: "check",
+              prompt: "(345)₈ in binary is…",
+              options: ["011 100 101", "011 100 100", "011 101 101", "111 100 101"],
+              answer: 0,
+              praise:
+                "3→011, 4→100, 5→101 — three digits, nine bits, zero division. The shortcut earns its name.",
+            },
+            {
+              kind: "check",
+              prompt: "The cleanest route from octal to hexadecimal is…",
+              options: [
+                "octal → decimal → hex",
+                "octal → binary (3s) → regroup in 4s → hex",
+                "memorising a table",
+                "there is no route",
+              ],
+              answer: 1,
+              praise:
+                "Through binary in the middle — expand, regroup, read. That exact move solves the paper's (651.124)₈ → hex question.",
+            },
+          ],
         },
       ],
+      steps: [],
     },
     {
       id: "ca-complements",
@@ -366,11 +533,24 @@ const sectionB: Section = {
   unit: 2,
   topics: [
     {
+      id: "ca-rev-repr",
+      title: "Quick review: data representation",
+      unit: 2,
+      weight: "light",
+      kind: "review",
+      review: { topicIds: ["ca-base-conversions", "ca-complements"], count: 5 },
+      deps: ["ca-base-conversions", "ca-complements"],
+      whyItMatters:
+        "Five questions to keep conversions and complements warm before the CPU starts using them.",
+      recap: [],
+      steps: [],
+    },
+    {
       id: "ca-cpu-instructions",
       title: "Instruction categories & CPU components",
       unit: 2,
       weight: "medium",
-      deps: [],
+      deps: ["ca-rev-repr"],
       whyItMatters:
         "The three instruction categories frame Unit 2, and the register-set-with-common-ALU picture is the CPU question's skeleton.",
       recap: [
@@ -581,11 +761,24 @@ const sectionU3: Section = {
   unit: 3,
   topics: [
     {
+      id: "ca-rev-modes",
+      title: "Quick review: addressing modes",
+      unit: 3,
+      weight: "light",
+      kind: "review",
+      review: { topicIds: ["ca-addressing-modes", "ca-cpu-instructions"], count: 5 },
+      deps: ["ca-addressing-modes"],
+      whyItMatters:
+        "Instruction formats are addressing modes wearing structure — this keeps the modes sharp before they return.",
+      recap: [],
+      steps: [],
+    },
+    {
       id: "ca-stack-org",
       title: "The stack & stack pointer",
       unit: 3,
       weight: "heavy",
-      deps: ["ca-cpu-instructions"],
+      deps: ["ca-cpu-instructions", "ca-rev-modes"],
       whyItMatters:
         "LIFO + push/pop + the SP is the foundation of everything in Unit 3 — and the reason zero-address instructions can exist at all.",
       recap: [
@@ -901,11 +1094,24 @@ const sectionC: Section = {
       ],
     },
     {
+      id: "ca-rev-arith",
+      title: "Quick review: complements & addition",
+      unit: 4,
+      weight: "light",
+      kind: "review",
+      review: { topicIds: ["ca-complements", "ca-add-sub"], count: 5 },
+      deps: ["ca-add-sub"],
+      whyItMatters:
+        "Booth's algorithm subtracts in 2's complement mid-flight — five questions make sure that reflex is ready.",
+      recap: [],
+      steps: [],
+    },
+    {
       id: "ca-multiplication",
       title: "Multiplication & Booth's algorithm",
       unit: 4,
       weight: "heavy",
-      deps: ["ca-add-sub"],
+      deps: ["ca-add-sub", "ca-rev-arith"],
       whyItMatters:
         "Booth's bit-pair table (00/11 shift, 01 add, 10 subtract) is the highest-value algorithm question Unit 4 can ask.",
       recap: [
@@ -978,11 +1184,24 @@ const sectionU5: Section = {
   unit: 5,
   topics: [
     {
+      id: "ca-rev-control",
+      title: "Quick review: program control",
+      unit: 5,
+      weight: "light",
+      kind: "review",
+      review: { topicIds: ["ca-program-control"], count: 5 },
+      deps: ["ca-program-control"],
+      whyItMatters:
+        "Interrupt-driven I/O is program control applied to devices — a warm-up before Unit 5 leans on it.",
+      recap: [],
+      steps: [],
+    },
+    {
       id: "ca-peripherals",
       title: "Peripheral devices",
       unit: 5,
       weight: "light",
-      deps: [],
+      deps: ["ca-rev-control"],
       whyItMatters:
         "Quick CO5 definitions — and 'Note on peripheral devices' opens a 10-mark Part B question on your sample paper.",
       recap: [
@@ -1234,11 +1453,24 @@ const sectionU6: Section = {
   unit: 6,
   topics: [
     {
+      id: "ca-rev-io",
+      title: "Quick review: I/O transfer",
+      unit: 6,
+      weight: "light",
+      kind: "review",
+      review: { topicIds: ["ca-async-transfer", "ca-transfer-modes"], count: 5 },
+      deps: ["ca-transfer-modes"],
+      whyItMatters:
+        "Strobe, handshake, DMA — five questions so Unit 5 stays green while you climb Unit 6.",
+      recap: [],
+      steps: [],
+    },
+    {
       id: "ca-mem-hierarchy",
       title: "The memory hierarchy",
       unit: 6,
       weight: "heavy",
-      deps: [],
+      deps: ["ca-rev-io"],
       whyItMatters:
         "CO6's anchor: the hierarchy's order, why it exists, and the access methods — the paper asks both 'purpose' and 'fastest level'.",
       recap: [

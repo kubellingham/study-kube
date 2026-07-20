@@ -9,11 +9,24 @@ export const sectionC: Section = {
   unit: 2,
   topics: [
     {
+      id: "rev-c-basics",
+      title: "Quick review: operators & I/O",
+      unit: 2,
+      weight: "light",
+      kind: "review",
+      review: { topicIds: ["operators", "io"], count: 5 },
+      deps: ["operators", "io"],
+      whyItMatters:
+        "Every if-condition is an operator expression and every loop prints — five questions keep Unit 1 warm before control flow builds on it.",
+      recap: [],
+      steps: [],
+    },
+    {
       id: "selection-if",
       title: "if & if-else",
       unit: 2,
       weight: "heavy",
-      deps: ["operators", "io"],
+      deps: ["operators", "io", "rev-c-basics"],
       whyItMatters:
         "Selection is half of Unit 2's marks, and 'nonzero means true' explains a whole family of trick questions.",
       recap: [

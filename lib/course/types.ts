@@ -20,17 +20,39 @@ export interface Section {
   topics: Topic[];
 }
 
+/** A slice of a topic's circle: one small sitting with its own checks. */
+export interface Lesson {
+  id: string;
+  title: string;
+  steps: Step[];
+}
+
+/** A review node re-tests earlier topics with a short compulsory quiz. */
+export interface ReviewSpec {
+  /** Earlier topic ids this node re-tests. */
+  topicIds: string[];
+  /** How many questions to draw (typically 5). */
+  count: number;
+}
+
 export interface Topic {
   id: string;
   title: string;
   unit: number;
   weight: Weight;
+  /** "teach" (default) or "review" — a small compulsory quiz over earlier topics. */
+  kind?: "teach" | "review";
+  /** Review nodes only: what to re-test. */
+  review?: ReviewSpec;
   /** Topic ids that must be understood first. Must point backwards in ladder order. */
   deps: string[];
   /** One line shown on the analysis screen: why this topic matters. */
   whyItMatters: string;
   /** 3–6 key lines for the quick-review view of a completed node and the glossary. */
   recap: string[];
+  /** Explicit lesson slices. When absent, lessons are derived by splitting
+   *  `steps` at each teach step (lib/course/lessons.ts). */
+  lessons?: Lesson[];
   steps: Step[];
 }
 

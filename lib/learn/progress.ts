@@ -12,7 +12,10 @@ import { doc, getDoc, setDoc, addDoc, collection } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 
 export interface LearnProgress {
+  /** Fully completed topics (every lesson slice done). */
   completed: Record<string, true>;
+  /** Completed lesson slices, keyed `${topicId}::${lessonId}`. */
+  lessons: Record<string, true>;
 }
 
 function progressDocId(uid: string, courseId: string): string {
@@ -27,27 +30,35 @@ export async function loadProgress(
     const snap = await getDoc(
       doc(db(), "learnProgress", progressDocId(uid, courseId))
     );
-    if (!snap.exists()) return { completed: {} };
+    if (!snap.exists()) return { completed: {}, lessons: {} };
     const data = snap.data();
-    return { completed: (data.completed as Record<string, true>) ?? {} };
+    return {
+      completed: (data.completed as Record<string, true>) ?? {},
+      lessons: (data.lessons as Record<string, true>) ?? {},
+    };
   } catch {
     // Missing doc (permission-denied under our rules) or a transient network
     // failure: start from an empty map rather than blocking the page.
-    return { completed: {} };
+    return { completed: {}, lessons: {} };
   }
 }
 
-export async function markTopicComplete(
+/** Record one lesson slice done; when it was the topic's last remaining
+ *  slice, the whole topic is marked complete too. */
+export async function markLessonComplete(
   uid: string,
   courseId: string,
-  topicId: string
+  topicId: string,
+  lessonId: string,
+  topicNowComplete: boolean
 ): Promise<void> {
   await setDoc(
     doc(db(), "learnProgress", progressDocId(uid, courseId)),
     {
       userId: uid,
       courseId,
-      completed: { [topicId]: true },
+      lessons: { [`${topicId}::${lessonId}`]: true },
+      ...(topicNowComplete ? { completed: { [topicId]: true } } : {}),
       updatedAt: Date.now(),
     },
     { merge: true }

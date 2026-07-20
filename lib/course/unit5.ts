@@ -9,11 +9,24 @@ export const sectionF: Section = {
   unit: 5,
   topics: [
     {
+      id: "rev-callby",
+      title: "Quick review: call by value & reference",
+      unit: 5,
+      weight: "light",
+      kind: "review",
+      review: { topicIds: ["call-by", "arrays-funcs"], count: 5 },
+      deps: ["call-by", "arrays-funcs"],
+      whyItMatters:
+        "Pointers are the machinery UNDER call by reference — five questions so & and * feel familiar before they get names.",
+      recap: [],
+      steps: [],
+    },
+    {
       id: "pointers-idea",
       title: "Pointers: variables that hold addresses",
       unit: 5,
       weight: "heavy",
-      deps: ["call-by", "data-types"],
+      deps: ["call-by", "data-types", "rev-callby"],
       whyItMatters:
         "Pointers are the most feared C topic and one of the most examined — and you've secretly been using them since scanf's &.",
       recap: [

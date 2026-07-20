@@ -9,11 +9,24 @@ export const sectionG: Section = {
   unit: 6,
   topics: [
     {
+      id: "rev-ptr-str",
+      title: "Quick review: pointers & strings",
+      unit: 6,
+      weight: "light",
+      kind: "review",
+      review: { topicIds: ["pointers-idea", "strings"], count: 5 },
+      deps: ["pointers-idea", "strings"],
+      whyItMatters:
+        "FILE *fp is a pointer and every filename is a string — five questions before files ask you to use both at once.",
+      recap: [],
+      steps: [],
+    },
+    {
       id: "files-idea",
       title: "Why files, and FILE *",
       unit: 6,
       weight: "medium",
-      deps: ["pointers-idea", "strings"],
+      deps: ["pointers-idea", "strings", "rev-ptr-str"],
       whyItMatters:
         "'Why file handling?' and text-vs-binary are quick theory marks, and FILE *fp is the doorway to every file question.",
       recap: [

@@ -9,11 +9,24 @@ export const sectionD: Section = {
   unit: 3,
   topics: [
     {
+      id: "rev-flow",
+      title: "Quick review: loops",
+      unit: 3,
+      weight: "light",
+      kind: "review",
+      review: { topicIds: ["for-loops", "while-dowhile"], count: 5 },
+      deps: ["for-loops"],
+      whyItMatters:
+        "Functions wrap loops constantly — five questions so entry-vs-exit control and for's order of events stay reflexive.",
+      recap: [],
+      steps: [],
+    },
+    {
       id: "func-why",
       title: "Why functions exist",
       unit: 3,
       weight: "medium",
-      deps: ["hello-c", "for-loops"],
+      deps: ["hello-c", "for-loops", "rev-flow"],
       whyItMatters:
         "'Advantages of functions' is a straight theory question — and the reusability/modularity idea frames everything else in Unit 3.",
       recap: [

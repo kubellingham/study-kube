@@ -9,11 +9,24 @@ export const sectionE: Section = {
   unit: 4,
   topics: [
     {
+      id: "rev-functions",
+      title: "Quick review: functions",
+      unit: 4,
+      weight: "light",
+      kind: "review",
+      review: { topicIds: ["func-anatomy", "call-by"], count: 5 },
+      deps: ["call-by"],
+      whyItMatters:
+        "Arrays end this unit by walking into functions — five questions keep declaration/call/definition and call-by-value warm.",
+      recap: [],
+      steps: [],
+    },
+    {
       id: "arrays-idea",
       title: "Arrays: what & why",
       unit: 4,
       weight: "medium",
-      deps: ["data-types", "for-loops"],
+      deps: ["data-types", "for-loops", "rev-functions"],
       whyItMatters:
         "Indexing from 0 — and the off-by-one trap at the other end — quietly decides whether every array answer you give is right or wrong.",
       recap: [
@@ -149,11 +162,24 @@ export const sectionE: Section = {
       ],
     },
     {
+      id: "rev-arrays",
+      title: "Quick review: arrays",
+      unit: 4,
+      weight: "light",
+      kind: "review",
+      review: { topicIds: ["arrays-use"], count: 5 },
+      deps: ["arrays-use"],
+      whyItMatters:
+        "Strings ARE char arrays — five questions on indexing and initialisation before the '\\0' twist arrives.",
+      recap: [],
+      steps: [],
+    },
+    {
       id: "strings",
       title: "Strings & the null terminator",
       unit: 4,
       weight: "heavy",
-      deps: ["arrays-use"],
+      deps: ["arrays-use", "rev-arrays"],
       whyItMatters:
         "'\\0' is THE string fact — size questions, %s behaviour, and half the string-function questions all reduce to it.",
       recap: [

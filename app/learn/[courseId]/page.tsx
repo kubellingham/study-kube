@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import type { Topic } from "@/lib/course/types";
+import { topicLessons, lessonKey } from "@/lib/course/lessons";
 import { useCourse } from "@/lib/learn/use-course";
 import { loadProgress, type LearnProgress } from "@/lib/learn/progress";
 import AddMaterial from "@/app/learn/components/AddMaterial";
@@ -51,19 +52,68 @@ function CheckIcon() {
   );
 }
 
+function polar(cx: number, cy: number, r: number, deg: number) {
+  const rad = ((deg - 90) * Math.PI) / 180;
+  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+}
+
+/** The circle's slices: one arc segment per lesson, filling as they're done. */
+function SegmentRing({ total, done }: { total: number; done: number }) {
+  if (total < 2) return null;
+  const size = 84;
+  const c = size / 2;
+  const r = 38;
+  const gapDeg = Math.min(10, 120 / total);
+  const per = 360 / total;
+  const segs = [];
+  for (let i = 0; i < total; i++) {
+    const a0 = i * per + gapDeg / 2;
+    const a1 = (i + 1) * per - gapDeg / 2;
+    const p0 = polar(c, c, r, a0);
+    const p1 = polar(c, c, r, a1);
+    const large = a1 - a0 > 180 ? 1 : 0;
+    segs.push(
+      <path
+        key={i}
+        d={`M ${p0.x} ${p0.y} A ${r} ${r} 0 ${large} 1 ${p1.x} ${p1.y}`}
+        fill="none"
+        stroke={i < done ? "var(--kube)" : "var(--line)"}
+        strokeWidth="4.5"
+        strokeLinecap="round"
+      />
+    );
+  }
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox={`0 0 ${size} ${size}`}
+      className="pointer-events-none absolute -left-2.5 -top-2.5"
+      aria-hidden
+    >
+      {segs}
+    </svg>
+  );
+}
+
 function LadderNode({
   courseId,
   topic,
   state,
   side,
   number,
+  lessonsTotal,
+  lessonsDone,
 }: {
   courseId: string;
   topic: Topic;
   state: NodeState;
   side: "left" | "right";
   number: number;
+  lessonsTotal: number;
+  lessonsDone: number;
 }) {
+  const isReview = topic.kind === "review";
   const circle: Record<NodeState, React.CSSProperties> = {
     completed: { background: "var(--kube)", borderColor: "var(--kube)" },
     current: {
@@ -93,9 +143,19 @@ function LadderNode({
       >
         {topic.title}
       </span>
-      {topic.weight === "heavy" && state !== "locked" && (
+      {isReview && state !== "locked" && (
+        <span className="k-eyebrow mt-0.5" style={{ color: "var(--kube)" }}>
+          5 questions
+        </span>
+      )}
+      {!isReview && topic.weight === "heavy" && state !== "locked" && (
         <span className="k-eyebrow mt-0.5" style={{ color: "var(--amber)" }}>
           core
+        </span>
+      )}
+      {!isReview && lessonsTotal > 1 && state !== "locked" && state !== "completed" && (
+        <span className="text-xs mt-0.5" style={{ color: "var(--faint)" }}>
+          {lessonsDone} of {lessonsTotal} parts
         </span>
       )}
       {state === "completed" && (
@@ -119,23 +179,49 @@ function LadderNode({
             start here
           </div>
         )}
-        <div
-          className="grid h-16 w-16 place-items-center rounded-full border-2 text-lg font-semibold text-white"
-          style={circle[state]}
-        >
-          {state === "completed" ? (
-            <CheckIcon />
-          ) : state === "locked" ? (
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-              <rect x="5" y="10" width="14" height="10" rx="2" stroke="var(--faint)" strokeWidth="2" />
-              <path d="M8 10V7a4 4 0 018 0v3" stroke="var(--faint)" strokeWidth="2" />
-            </svg>
-          ) : (
-            <span style={state === "available" ? { color: "var(--kube)" } : undefined}>
-              {number}
-            </span>
-          )}
-        </div>
+        {isReview ? (
+          <div
+            className="grid h-12 w-12 place-items-center rounded-full border-2 text-base font-semibold"
+            style={{
+              ...(state === "completed"
+                ? { background: "var(--kube)", borderColor: "var(--kube)", color: "white" }
+                : state === "locked"
+                  ? { background: "var(--line)", borderColor: "var(--line)", color: "var(--faint)" }
+                  : {
+                      background: "var(--kube-soft)",
+                      borderColor: "var(--kube-line)",
+                      color: "var(--kube)",
+                      borderStyle: "dashed",
+                      ...(state === "current"
+                        ? { boxShadow: "0 0 0 6px var(--amber-soft)" }
+                        : {}),
+                    }),
+            }}
+          >
+            {state === "completed" ? <CheckIcon /> : "↻"}
+          </div>
+        ) : (
+          <div
+            className="grid h-16 w-16 place-items-center rounded-full border-2 text-lg font-semibold text-white"
+            style={circle[state]}
+          >
+            {state !== "locked" && (
+              <SegmentRing total={lessonsTotal} done={lessonsDone} />
+            )}
+            {state === "completed" ? (
+              <CheckIcon />
+            ) : state === "locked" ? (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+                <rect x="5" y="10" width="14" height="10" rx="2" stroke="var(--faint)" strokeWidth="2" />
+                <path d="M8 10V7a4 4 0 018 0v3" stroke="var(--faint)" strokeWidth="2" />
+              </svg>
+            ) : (
+              <span style={state === "available" ? { color: "var(--kube)" } : undefined}>
+                {number}
+              </span>
+            )}
+          </div>
+        )}
       </div>
       {label}
     </div>
@@ -290,6 +376,10 @@ export default function CourseLadderPage() {
                 {row.section.topics.map((topic) => {
                   const side = nodeIdx % 2 === 0 ? "left" : "right";
                   nodeIdx += 1;
+                  const lessons = topicLessons(topic);
+                  const lessonsDone = lessons.filter(
+                    (l) => progress.lessons[lessonKey(topic.id, l.id)]
+                  ).length;
                   return (
                     <LadderNode
                       key={topic.id}
@@ -298,6 +388,10 @@ export default function CourseLadderPage() {
                       state={states[topic.id]}
                       side={side}
                       number={bundle.topicPosition(topic.id) + 1}
+                      lessonsTotal={lessons.length}
+                      lessonsDone={
+                        progress.completed[topic.id] ? lessons.length : lessonsDone
+                      }
                     />
                   );
                 })}
