@@ -11,6 +11,7 @@ import { sectionU1A } from "./cse46d-unit1a";
 import { sectionU1B } from "./cse46d-unit1b";
 import { sectionU2 } from "./cse46d-unit2";
 import { sectionU3 } from "./cse46d-unit3";
+import { sectionU4 } from "./cse46d-unit4";
 
 export const cse46dSyllabus: SyllabusInfo = {
   units: [
@@ -364,6 +365,88 @@ const examBank: ExamQuestion[] = [
     hint: "It auto-increments after each instruction.",
     explanation: "The PC always points at the NEXT instruction's address; the current instruction sits in the IR.",
   },
+  // ---- Authored for Unit 4's circles (CO4 per syllabus mapping) ----
+  {
+    id: "ca-u4q1", topicId: "ca-sub-2comp", unit: 4, co: "CO4", level: "L2", source: "generated",
+    prompt: "Computers subtract B from A by…",
+    options: [
+      "a dedicated subtraction circuit",
+      "adding the 2's complement of B to A",
+      "swapping the operands",
+      "repeated decrement",
+    ], answer: 1,
+    hint: "One adder, two jobs.",
+    explanation: "A − B = A + (2's complement of B) — the complement trick lets one parallel adder do both operations.",
+  },
+  {
+    id: "ca-u4q2", topicId: "ca-add-signed", unit: 4, co: "CO4", level: "L2", source: "generated",
+    prompt: "(+10) + (+3) in 5-bit signed binary (0 1010 + 0 0011) equals…",
+    options: ["0 1101", "1 1101", "0 1011", "1 0111"], answer: 0,
+    hint: "Add the magnitudes; the sign bit stays 0.",
+    explanation: "01010 + 00011 = 01101 = +13, sign bit 0 throughout.",
+  },
+  {
+    id: "ca-u4q3", topicId: "ca-addsub-hw", unit: 4, co: "CO4", level: "L2", source: "generated",
+    prompt: "In the add/subtract hardware, mode control M = 0 makes the circuit output…",
+    options: ["A − B", "A + B", "B − A", "A + B' + 1"], answer: 1,
+    hint: "M = 0 passes B through unchanged with carry-in 0.",
+    explanation: "M=0: plain B and carry 0 → A + B. M=1 complements B with carry 1 → A − B.",
+  },
+  {
+    id: "ca-u4q4", topicId: "ca-addsub-hw", unit: 4, co: "CO4", level: "L1", source: "generated",
+    prompt: "Which flip-flop receives the adder's output carry?",
+    options: ["AVF", "E", "As", "M"], answer: 1,
+    hint: "AVF is busy holding the overflow.",
+    explanation: "E stores the output carry; AVF holds the overflow bit; As/Bs are the sign flip-flops.",
+  },
+  {
+    id: "ca-u4q5", topicId: "ca-booth-rules", unit: 4, co: "CO4", level: "L2", source: "generated",
+    prompt: "In Booth's algorithm, the bit pair 01 triggers…",
+    options: [
+      "shift only",
+      "add the multiplicand to A, then shift",
+      "subtract the multiplicand, then shift",
+      "end of algorithm",
+    ], answer: 1,
+    hint: "10 is the subtractor; what's its mirror?",
+    explanation: "01 adds M to A before the arithmetic right shift; 10 subtracts; 00/11 only shift.",
+  },
+  {
+    id: "ca-u4q6", topicId: "ca-booth-idea", unit: 4, co: "CO4", level: "L1", source: "generated",
+    prompt: "Booth's algorithm is designed to multiply…",
+    options: [
+      "unsigned numbers only",
+      "signed numbers in 2's complement representation",
+      "BCD numbers",
+      "floating point numbers",
+    ], answer: 1,
+    hint: "Invented in 1951 precisely for signed arithmetic.",
+    explanation: "Booth (1951) multiplies signed 2's-complement operands directly, with fewer additions via shift runs.",
+  },
+  {
+    id: "ca-u4q7", topicId: "ca-mult-shiftadd", unit: 4, co: "CO4", level: "L1", source: "generated",
+    prompt: "Basic signed-magnitude binary multiplication is performed by successive…",
+    options: [
+      "divide and conquer",
+      "shift and add operations",
+      "complement and swap",
+      "compare and branch",
+    ], answer: 1,
+    hint: "Long multiplication, base 2.",
+    explanation: "Each multiplier bit contributes a shifted copy of the multiplicand — shift-and-add is the whole method.",
+  },
+  {
+    id: "ca-u4q8", topicId: "ca-booth-run", unit: 4, co: "CO4", level: "L4", source: "generated",
+    prompt: "Running Booth's algorithm for 7 × 3 (4-bit registers), the final product is read from…",
+    options: [
+      "register A alone",
+      "the register pair A:Q — 0001 0101 = 21",
+      "register Q alone",
+      "the count register",
+    ], answer: 1,
+    hint: "Two 4-bit registers hold one 8-bit product.",
+    explanation: "When count reaches 0, A:Q together hold the double-width signed product: 0001 0101 = 21.",
+  },
   // ---- Sample end-term paper, Unit 2 questions (CO/L tags as printed) ----
   {
     id: "ca-ppq4", topicId: "ca-addr-direct-indirect", unit: 2, co: "CO2", level: "L2", source: "pastpaper",
@@ -408,6 +491,43 @@ const examBank: ExamQuestion[] = [
     hint: "Count how many formats the comparison table actually has.",
     explanation: "The standard formats are zero through three address; four-address is the invented option.",
   },
+  // ---- Sample end-term paper, Unit 4 questions (CO/L tags as printed) ----
+  {
+    id: "ca-ppq19", topicId: "ca-mult-shiftadd", unit: 4, co: "CO4", level: "L2", source: "pastpaper",
+    prompt: "The shift-and-add multiplication method is based on:",
+    options: [
+      "Bitwise shifting and addition",
+      "Repeated subtraction",
+      "Dividing and multiplying with powers of two",
+      "None of the above",
+    ], answer: 0,
+    hint: "Its name is the method.",
+    explanation: "Each multiplier bit adds a shifted copy of the multiplicand — shifting plus addition.",
+  },
+  {
+    id: "ca-ppq20", topicId: "ca-booth-idea", unit: 4, co: "CO4", level: "L2", source: "pastpaper",
+    prompt: "Booth's multiplication algorithm is used for:",
+    options: [
+      "Efficient division",
+      "Efficient multiplication of binary numbers",
+      "Decimal addition",
+      "Floating-point multiplication",
+    ], answer: 1,
+    hint: "Signed 2's-complement operands, fewer additions.",
+    explanation: "Booth multiplies signed binary numbers efficiently using shift runs to skip additions.",
+  },
+  {
+    id: "ca-ppq25", topicId: "ca-booth-rules", unit: 4, co: "CO4", level: "L6", source: "pastpaper",
+    prompt: "What is the main advantage of Booth's algorithm in binary multiplication?",
+    options: [
+      "Reduced number of additions",
+      "Reduced number of shifts",
+      "Reduced memory usage",
+      "Better precision",
+    ], answer: 0,
+    hint: "Runs of identical bits cost only shifts.",
+    explanation: "Booth's recoding turns runs of 1s into a subtract-and-add pair, cutting the number of additions.",
+  },
 ];
 
 export const cse46d = buildCourseBundle(
@@ -415,7 +535,7 @@ export const cse46d = buildCourseBundle(
     id: "cse46d",
     code: "CSE46D",
     title: "Computer Architecture",
-    sections: [sectionU1A, sectionU1B, sectionU2, sectionU3],
+    sections: [sectionU1A, sectionU1B, sectionU2, sectionU3, sectionU4],
   },
   examBank
 );
