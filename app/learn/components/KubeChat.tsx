@@ -18,7 +18,7 @@ export interface KubeChatContext {
   coveredSoFar: string;
 }
 
-interface Turn {
+export interface ChatTurn {
   role: "user" | "assistant";
   content: string;
 }
@@ -28,14 +28,19 @@ export default function KubeChat({
   onClose,
   context,
   seed,
+  turns,
+  onTurns,
 }: {
   open: boolean;
   onClose: () => void;
   context: KubeChatContext;
   /** Optional first question to pre-fill (e.g. after a review miss). */
   seed?: string;
+  /** Conversation state lives with the PARENT, scoped to one slide — moving
+   *  to a new slide starts a fresh chat; stepping back restores the old one. */
+  turns: ChatTurn[];
+  onTurns: (updater: (prev: ChatTurn[]) => ChatTurn[]) => void;
 }) {
-  const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const scroller = useRef<HTMLDivElement | null>(null);
@@ -58,7 +63,7 @@ export default function KubeChat({
     setInput("");
     setBusy(true);
     const history = turns;
-    setTurns((prev) => [...prev, { role: "user", content: question }, { role: "assistant", content: "" }]);
+    onTurns((prev) => [...prev, { role: "user", content: question }, { role: "assistant", content: "" }]);
     try {
       const res = await authedFetch("/api/learn/chat", {
         method: "POST",
@@ -77,7 +82,7 @@ export default function KubeChat({
         if (done) break;
         acc += decoder.decode(value, { stream: true });
         const snapshot = acc;
-        setTurns((prev) => {
+        onTurns((prev) => {
           const next = [...prev];
           next[next.length - 1] = { role: "assistant", content: snapshot };
           return next;
@@ -85,7 +90,7 @@ export default function KubeChat({
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Kube couldn't answer just now.";
-      setTurns((prev) => {
+      onTurns((prev) => {
         const next = [...prev];
         next[next.length - 1] = { role: "assistant", content: message };
         return next;

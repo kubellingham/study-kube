@@ -30,7 +30,11 @@ import {
   type SlideVotes,
 } from "@/lib/learn/feedback";
 import Rich from "@/app/learn/components/Rich";
-import KubeChat, { type KubeChatContext } from "@/app/learn/components/KubeChat";
+import KubeChat, {
+  type KubeChatContext,
+  type ChatTurn,
+} from "@/app/learn/components/KubeChat";
+import { authedFetch } from "@/lib/authed-fetch";
 
 function DrawnCheck() {
   return (
@@ -48,6 +52,26 @@ function DrawnCheck() {
   );
 }
 
+/** Minimal thumb: outline only; tapping fills it solid. Drawn, not emoji. */
+function ThumbIcon({ down, filled }: { down?: boolean; filled: boolean }) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill={filled ? "currentColor" : "none"}
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      style={down ? { transform: "rotate(180deg)" } : undefined}
+    >
+      <path d="M7 10v11H4a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1h3zm0 0l4.2-7.1A2 2 0 0 1 13 2c1.1 0 2 .9 2 2v5h4.6a2 2 0 0 1 2 2.4l-1.3 7A2 2 0 0 1 18.3 20H7" />
+    </svg>
+  );
+}
+
 function ThumbButtons({
   vote,
   onVote,
@@ -55,29 +79,38 @@ function ThumbButtons({
   vote: SlideVote | undefined;
   onVote: (v: SlideVote | null) => void;
 }) {
-  const thumb = (v: SlideVote, label: string, glyph: string) => {
+  const thumb = (v: SlideVote, label: string) => {
     const active = vote === v;
     return (
       <button
         aria-label={label}
         aria-pressed={active}
         onClick={() => onVote(active ? null : v)}
-        className="grid h-8 w-8 place-items-center rounded-full border text-sm transition-colors"
-        style={{
-          borderColor: active ? "var(--kube)" : "var(--line)",
-          background: active ? "var(--kube-soft)" : "transparent",
-          color: active ? "var(--kube)" : "var(--faint)",
-        }}
+        className="grid h-8 w-8 place-items-center rounded-full transition-colors"
+        style={{ color: "var(--ink)" }}
       >
-        {glyph}
+        <ThumbIcon down={v === -1} filled={active} />
       </button>
     );
   };
   return (
-    <div className="flex gap-1.5">
-      {thumb(1, "This slide helped", "👍")}
-      {thumb(-1, "This slide didn't help", "👎")}
+    <div className="flex gap-0.5">
+      {thumb(1, "This slide helped")}
+      {thumb(-1, "This slide didn't help")}
     </div>
+  );
+}
+
+/** One quiet lap of the button's border — the clock-hand hint. */
+function SweepOverlay() {
+  return (
+    <svg
+      className="k-sweep pointer-events-none absolute inset-0 h-full w-full"
+      aria-hidden
+      style={{ overflow: "visible" }}
+    >
+      <rect x="1" y="1" rx="15" pathLength={100} style={{ width: "calc(100% - 2px)", height: "calc(100% - 2px)" }} />
+    </svg>
   );
 }
 
@@ -126,8 +159,9 @@ function TeachCard({
   );
 }
 
-const IDLE_BLINK_MS = 5000;
-const BLINK_ANIM_MS = 2500;
+// The hint waits long enough for genuine thought — not reading time.
+const IDLE_HINT_MS = 18_000;
+const SWEEP_ANIM_MS = 1500;
 
 function CheckCard({
   step,
@@ -135,48 +169,52 @@ function CheckCard({
   onPass,
   onMiss,
   onAskKube,
+  onBack,
+  canBack,
 }: {
   step: CheckStep;
-  /** learn = teaching check (blinking hints, nothing recorded);
+  /** learn = teaching check (quiet sweep hint, nothing recorded);
    *  assess = review question (no hints; misses are flagged). */
   mode: "learn" | "assess";
   onPass: () => void;
   onMiss?: () => void;
   onAskKube?: (question: string) => void;
+  onBack?: () => void;
+  canBack?: boolean;
 }) {
   const [shaking, setShaking] = useState<number | null>(null);
   const [passed, setPassed] = useState(false);
-  const [blinking, setBlinking] = useState(false);
+  const [sweeping, setSweeping] = useState(false);
   const [missed, setMissed] = useState(false);
   const wrongTaps = useRef(0);
   const missReported = useRef(false);
   const shakeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const blinkTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sweepTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const blinkCorrect = useCallback(() => {
-    setBlinking(false);
-    // restart the CSS animation even if it just ran
-    requestAnimationFrame(() => setBlinking(true));
-    if (blinkTimer.current) clearTimeout(blinkTimer.current);
-    blinkTimer.current = setTimeout(() => setBlinking(false), BLINK_ANIM_MS);
+  const sweepCorrect = useCallback(() => {
+    setSweeping(false);
+    // remount the overlay so the CSS animation restarts cleanly
+    requestAnimationFrame(() => setSweeping(true));
+    if (sweepTimer.current) clearTimeout(sweepTimer.current);
+    sweepTimer.current = setTimeout(() => setSweeping(false), SWEEP_ANIM_MS);
   }, []);
 
   const armIdle = useCallback(() => {
     if (mode !== "learn") return;
     if (idleTimer.current) clearTimeout(idleTimer.current);
     idleTimer.current = setTimeout(() => {
-      blinkCorrect();
-      armIdle(); // still unanswered after another stretch → blink again
-    }, IDLE_BLINK_MS);
-  }, [mode, blinkCorrect]);
+      sweepCorrect();
+      armIdle(); // still thinking after another stretch → one more quiet lap
+    }, IDLE_HINT_MS);
+  }, [mode, sweepCorrect]);
 
   useEffect(() => {
     armIdle();
     return () => {
       if (shakeTimer.current) clearTimeout(shakeTimer.current);
       if (idleTimer.current) clearTimeout(idleTimer.current);
-      if (blinkTimer.current) clearTimeout(blinkTimer.current);
+      if (sweepTimer.current) clearTimeout(sweepTimer.current);
     };
   }, [armIdle]);
 
@@ -192,9 +230,9 @@ function CheckCard({
     shakeTimer.current = setTimeout(() => setShaking(null), 500);
     if (mode === "learn") {
       wrongTaps.current += 1;
-      // Second wrong tap → the correct answer blinks twice, slowly.
+      // Second wrong tap → the quiet border lap points the way.
       if (wrongTaps.current >= 2) {
-        setTimeout(blinkCorrect, 520);
+        setTimeout(sweepCorrect, 520);
         wrongTaps.current = 0;
       }
       armIdle();
@@ -218,13 +256,13 @@ function CheckCard({
         {step.options.map((opt, i) => {
           const isShaking = shaking === i;
           const isRight = passed && i === step.answer;
-          const isBlinking = blinking && i === step.answer && !passed;
+          const isSweeping = sweeping && i === step.answer && !passed;
           return (
             <button
               key={i}
               onClick={() => tap(i)}
               disabled={passed}
-              className={`rounded-2xl border px-4 py-3 text-left text-sm font-medium transition-colors ${isShaking ? "k-shake" : ""} ${isBlinking ? "k-blink" : ""}`}
+              className={`relative rounded-2xl border px-4 py-3 text-left text-sm font-medium transition-colors ${isShaking ? "k-shake" : ""}`}
               style={{
                 background: isRight
                   ? "var(--kube-soft)"
@@ -240,10 +278,20 @@ function CheckCard({
               }}
             >
               {opt}
+              {isSweeping && <SweepOverlay />}
             </button>
           );
         })}
       </div>
+      {!passed && canBack && onBack && (
+        <button
+          onClick={onBack}
+          className="mt-4 rounded-2xl border py-3 text-sm font-semibold"
+          style={{ width: "30%", borderColor: "var(--line)", color: "var(--ink-soft)" }}
+        >
+          ← Back
+        </button>
+      )}
       {passed && (
         <div className="k-rise mt-5 rounded-2xl px-4 py-4" style={{ background: "var(--kube-soft)" }}>
           <p className="text-sm leading-relaxed" style={{ color: "var(--kube)" }}>
@@ -291,6 +339,10 @@ export default function TopicPage() {
   const [votes, setVotes] = useState<SlideVotes>({});
   const [chatOpen, setChatOpen] = useState(false);
   const [chatSeed, setChatSeed] = useState<string | undefined>(undefined);
+  // One chat per SLIDE: moving forward starts fresh; stepping back restores
+  // that slide's conversation; finishing the slice clears everything.
+  const [chats, setChats] = useState<Record<string, ChatTurn[]>>({});
+  const notedChats = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!userLoading && !user) router.replace("/login");
@@ -394,16 +446,46 @@ export default function TopicPage() {
       void finishLesson();
       return null;
     }
+    const lessonSliceId = isReview ? "review" : lesson.id;
+    const chatKey = slideKey(topic.id, lessonSliceId, stepIdx);
+    const chatTurns = chats[chatKey] ?? [];
+
+    // Leaving a slide where the student talked to Kube → quietly file the
+    // struggle note (assessed server-side in the background, never shown).
+    const noteChatIfAny = (key: string, turns: ChatTurn[]) => {
+      if (turns.length < 2 || notedChats.current.has(key)) return;
+      notedChats.current.add(key);
+      void authedFetch("/api/learn/chat-note", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          courseId,
+          topicId: topic!.id,
+          topicTitle: topic!.title,
+          lessonId: lessonSliceId,
+          lessonTitle: isReview ? "Review assessment" : lesson.title,
+          stepIdx,
+          transcript: turns,
+        }),
+      }).catch(() => {});
+    };
+
     const advance = () => {
+      noteChatIfAny(chatKey, chatTurns);
+      setChatOpen(false);
+      setChatSeed(undefined);
       if (stepIdx + 1 >= steps.length) {
+        setChats({}); // the slice is done — every slide's chat starts over next time
         void finishLesson();
       } else {
         setStepIdx(stepIdx + 1);
       }
     };
     const goBack = () => {
+      setChatOpen(false);
+      setChatSeed(undefined);
       if (stepIdx === 0) setPhase("overview");
-      else setStepIdx(stepIdx - 1);
+      else setStepIdx(stepIdx - 1); // the previous slide's chat is still there
     };
 
     // Kube chat context: strictly THIS lesson's content, plus earlier topic
@@ -475,7 +557,7 @@ export default function TopicPage() {
             step={step}
             onNext={advance}
             onBack={goBack}
-            canBack={stepIdx > 0}
+            canBack
             vote={votes[stepVoteKey]}
             onVote={(v) => {
               setVotes((prev) => {
@@ -493,6 +575,8 @@ export default function TopicPage() {
             step={step}
             mode={isReview ? "assess" : "learn"}
             onPass={advance}
+            onBack={goBack}
+            canBack={!isReview}
             onMiss={
               isReview
                 ? () => {
@@ -528,6 +612,10 @@ export default function TopicPage() {
           onClose={() => setChatOpen(false)}
           context={chatContext}
           seed={chatSeed}
+          turns={chatTurns}
+          onTurns={(updater) =>
+            setChats((prev) => ({ ...prev, [chatKey]: updater(prev[chatKey] ?? []) }))
+          }
         />
       </main>
     );
