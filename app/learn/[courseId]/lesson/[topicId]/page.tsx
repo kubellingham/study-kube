@@ -5,18 +5,32 @@
 // Each slice plays §5A mechanics — shake-not-judge, warm specific praise —
 // and fills one segment of the circle. Review nodes play a short compulsory
 // quiz drawn from earlier topics, keeping old rungs warm (Duolingo-style).
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCourse } from "@/lib/learn/use-course";
 import type { CheckStep, TeachStep, Step, Lesson } from "@/lib/course/types";
-import { topicLessons, lessonKey, buildReviewQuiz } from "@/lib/course/lessons";
+import {
+  topicLessons,
+  lessonKey,
+  buildReviewQuiz,
+  type ReviewCheck,
+} from "@/lib/course/lessons";
 import {
   loadProgress,
   markLessonComplete,
+  recordReviewMiss,
   type LearnProgress,
 } from "@/lib/learn/progress";
+import {
+  loadSlideVotes,
+  saveSlideVote,
+  slideKey,
+  type SlideVote,
+  type SlideVotes,
+} from "@/lib/learn/feedback";
 import Rich from "@/app/learn/components/Rich";
+import KubeChat, { type KubeChatContext } from "@/app/learn/components/KubeChat";
 
 function DrawnCheck() {
   return (
@@ -34,59 +48,183 @@ function DrawnCheck() {
   );
 }
 
-function TeachCard({ step, onNext }: { step: TeachStep; onNext: () => void }) {
-  return (
-    <div className="k-card k-rise px-6 py-6">
-      {step.title && <h2 className="mb-3 text-xl">{step.title}</h2>}
-      <Rich body={step.body} />
-      {step.code && <pre className="k-code mt-4">{step.code}</pre>}
+function ThumbButtons({
+  vote,
+  onVote,
+}: {
+  vote: SlideVote | undefined;
+  onVote: (v: SlideVote | null) => void;
+}) {
+  const thumb = (v: SlideVote, label: string, glyph: string) => {
+    const active = vote === v;
+    return (
       <button
-        onClick={onNext}
-        className="mt-6 w-full rounded-2xl py-3 text-sm font-semibold text-white"
-        style={{ background: "var(--kube)" }}
+        aria-label={label}
+        aria-pressed={active}
+        onClick={() => onVote(active ? null : v)}
+        className="grid h-8 w-8 place-items-center rounded-full border text-sm transition-colors"
+        style={{
+          borderColor: active ? "var(--kube)" : "var(--line)",
+          background: active ? "var(--kube-soft)" : "transparent",
+          color: active ? "var(--kube)" : "var(--faint)",
+        }}
       >
-        Got it — keep going
+        {glyph}
       </button>
+    );
+  };
+  return (
+    <div className="flex gap-1.5">
+      {thumb(1, "This slide helped", "👍")}
+      {thumb(-1, "This slide didn't help", "👎")}
     </div>
   );
 }
 
-function CheckCard({ step, onPass }: { step: CheckStep; onPass: () => void }) {
+function TeachCard({
+  step,
+  onNext,
+  onBack,
+  canBack,
+  vote,
+  onVote,
+}: {
+  step: TeachStep;
+  onNext: () => void;
+  onBack: () => void;
+  canBack: boolean;
+  vote: SlideVote | undefined;
+  onVote: (v: SlideVote | null) => void;
+}) {
+  return (
+    <div className="k-card k-rise px-6 py-6">
+      <div className="flex items-start justify-between gap-3">
+        {step.title ? <h2 className="mb-3 text-xl">{step.title}</h2> : <span />}
+        <ThumbButtons vote={vote} onVote={onVote} />
+      </div>
+      <Rich body={step.body} />
+      {step.code && <pre className="k-code mt-4">{step.code}</pre>}
+      <div className="mt-6 flex gap-3">
+        {canBack && (
+          <button
+            onClick={onBack}
+            className="rounded-2xl border py-3 text-sm font-semibold"
+            style={{ flexBasis: "30%", borderColor: "var(--line)", color: "var(--ink-soft)" }}
+          >
+            ← Back
+          </button>
+        )}
+        <button
+          onClick={onNext}
+          className="flex-1 rounded-2xl py-3 text-sm font-semibold text-white"
+          style={{ background: "var(--kube)" }}
+        >
+          Got it — keep going
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const IDLE_BLINK_MS = 5000;
+const BLINK_ANIM_MS = 2500;
+
+function CheckCard({
+  step,
+  mode,
+  onPass,
+  onMiss,
+  onAskKube,
+}: {
+  step: CheckStep;
+  /** learn = teaching check (blinking hints, nothing recorded);
+   *  assess = review question (no hints; misses are flagged). */
+  mode: "learn" | "assess";
+  onPass: () => void;
+  onMiss?: () => void;
+  onAskKube?: (question: string) => void;
+}) {
   const [shaking, setShaking] = useState<number | null>(null);
   const [passed, setPassed] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [blinking, setBlinking] = useState(false);
+  const [missed, setMissed] = useState(false);
+  const wrongTaps = useRef(0);
+  const missReported = useRef(false);
+  const shakeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const blinkTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => () => {
-    if (timer.current) clearTimeout(timer.current);
+  const blinkCorrect = useCallback(() => {
+    setBlinking(false);
+    // restart the CSS animation even if it just ran
+    requestAnimationFrame(() => setBlinking(true));
+    if (blinkTimer.current) clearTimeout(blinkTimer.current);
+    blinkTimer.current = setTimeout(() => setBlinking(false), BLINK_ANIM_MS);
   }, []);
+
+  const armIdle = useCallback(() => {
+    if (mode !== "learn") return;
+    if (idleTimer.current) clearTimeout(idleTimer.current);
+    idleTimer.current = setTimeout(() => {
+      blinkCorrect();
+      armIdle(); // still unanswered after another stretch → blink again
+    }, IDLE_BLINK_MS);
+  }, [mode, blinkCorrect]);
+
+  useEffect(() => {
+    armIdle();
+    return () => {
+      if (shakeTimer.current) clearTimeout(shakeTimer.current);
+      if (idleTimer.current) clearTimeout(idleTimer.current);
+      if (blinkTimer.current) clearTimeout(blinkTimer.current);
+    };
+  }, [armIdle]);
 
   function tap(i: number) {
     if (passed || shaking !== null) return;
     if (i === step.answer) {
       setPassed(true);
+      if (idleTimer.current) clearTimeout(idleTimer.current);
       return;
     }
-    // Wrong: shake + red, then reset. Nothing is recorded — Kube is teaching
-    // here, not testing.
+    // Wrong: shake + red, then reset — shake-not-judge, always.
     setShaking(i);
-    timer.current = setTimeout(() => setShaking(null), 500);
+    shakeTimer.current = setTimeout(() => setShaking(null), 500);
+    if (mode === "learn") {
+      wrongTaps.current += 1;
+      // Second wrong tap → the correct answer blinks twice, slowly.
+      if (wrongTaps.current >= 2) {
+        setTimeout(blinkCorrect, 520);
+        wrongTaps.current = 0;
+      }
+      armIdle();
+    } else {
+      // Assessment: flag the miss (once per question) — Kube takes note and
+      // can offer help. Retrying is still allowed.
+      setMissed(true);
+      if (!missReported.current) {
+        missReported.current = true;
+        onMiss?.();
+      }
+    }
   }
 
   return (
     <div className="k-card k-rise px-6 py-6">
-      <span className="k-eyebrow">check yourself</span>
+      <span className="k-eyebrow">{mode === "assess" ? "review — this one counts" : "check yourself"}</span>
       <h2 className="mt-2 text-xl leading-snug">{step.prompt}</h2>
       {step.code && <pre className="k-code mt-4">{step.code}</pre>}
       <div className="mt-5 flex flex-col gap-3">
         {step.options.map((opt, i) => {
           const isShaking = shaking === i;
           const isRight = passed && i === step.answer;
+          const isBlinking = blinking && i === step.answer && !passed;
           return (
             <button
               key={i}
               onClick={() => tap(i)}
               disabled={passed}
-              className={`rounded-2xl border px-4 py-3 text-left text-sm font-medium transition-colors ${isShaking ? "k-shake" : ""}`}
+              className={`rounded-2xl border px-4 py-3 text-left text-sm font-medium transition-colors ${isShaking ? "k-shake" : ""} ${isBlinking ? "k-blink" : ""}`}
               style={{
                 background: isRight
                   ? "var(--kube-soft)"
@@ -111,6 +249,19 @@ function CheckCard({ step, onPass }: { step: CheckStep; onPass: () => void }) {
           <p className="text-sm leading-relaxed" style={{ color: "var(--kube)" }}>
             {step.praise}
           </p>
+          {mode === "assess" && missed && onAskKube && (
+            <button
+              onClick={() =>
+                onAskKube(
+                  `I missed this review question: "${step.prompt}" — help me understand the idea behind it.`
+                )
+              }
+              className="mt-3 w-full rounded-2xl border py-3 text-sm font-semibold"
+              style={{ borderColor: "var(--kube-line)", color: "var(--kube)" }}
+            >
+              That slip is flagged — ask Kube about it
+            </button>
+          )}
           <button
             onClick={onPass}
             className="mt-3 w-full rounded-2xl py-3 text-sm font-semibold text-white"
@@ -136,13 +287,20 @@ export default function TopicPage() {
   const [phase, setPhase] = useState<Phase>("loading");
   const [lessonIdx, setLessonIdx] = useState(0);
   const [stepIdx, setStepIdx] = useState(0);
-  const [reviewSteps, setReviewSteps] = useState<Step[] | null>(null);
+  const [reviewSteps, setReviewSteps] = useState<ReviewCheck[] | null>(null);
+  const [votes, setVotes] = useState<SlideVotes>({});
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatSeed, setChatSeed] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     if (!userLoading && !user) router.replace("/login");
     if (user && bundle && topic) {
-      loadProgress(user.uid, bundle.course.id).then((p) => {
+      Promise.all([
+        loadProgress(user.uid, bundle.course.id),
+        loadSlideVotes(user.uid, bundle.course.id),
+      ]).then(([p, v]) => {
         setProgress(p);
+        setVotes(v);
         setPhase("overview");
       });
     }
@@ -197,6 +355,7 @@ export default function TopicPage() {
         ? { ...progress!.completed, [topic!.id]: true }
         : progress!.completed,
       lessons: newLessons,
+      reviewMisses: progress!.reviewMisses,
     });
     setPhase(allDone ? "topicDone" : "overview");
     if (user && !alreadyDone) {
@@ -227,7 +386,8 @@ export default function TopicPage() {
 
   /* ---------------- play a slice ---------------- */
   if (phase === "play") {
-    const steps: Step[] = isReview ? (reviewSteps ?? []) : lessons[lessonIdx].steps;
+    const lesson = lessons[lessonIdx];
+    const steps: Step[] = isReview ? (reviewSteps ?? []) : lesson.steps;
     const step = steps[stepIdx];
     if (!step) {
       // Empty slice (shouldn't happen) — treat as done.
@@ -241,14 +401,55 @@ export default function TopicPage() {
         setStepIdx(stepIdx + 1);
       }
     };
+    const goBack = () => {
+      if (stepIdx === 0) setPhase("overview");
+      else setStepIdx(stepIdx - 1);
+    };
+
+    // Kube chat context: strictly THIS lesson's content, plus earlier topic
+    // titles so Kube can point backward (never forward).
+    const lessonContent = isReview
+      ? [
+          "This is a compulsory review assessment over earlier circles.",
+          `Current question: ${(step as CheckStep).prompt}`,
+          "Recaps of the circles under review:",
+          ...(topic.review?.topicIds ?? []).map((id) => {
+            const t = bundle.getTopic(id);
+            return t ? `• ${t.title}: ${t.recap.join(" ")}` : "";
+          }),
+        ].join("\n")
+      : steps
+          .slice(0, stepIdx + 1) // only what the learner has actually seen
+          .map((s) =>
+            s.kind === "teach"
+              ? `${s.title ? s.title + "\n" : ""}${s.body}${s.code ? "\n" + s.code : ""}`
+              : `Check question: ${s.prompt}`
+          )
+          .join("\n\n");
+    const chatContext: KubeChatContext = {
+      courseTitle: bundle.course.title,
+      topicTitle: topic.title,
+      lessonTitle: isReview ? "Review assessment" : lesson.title,
+      lessonContent,
+      coveredSoFar: bundle.ladder
+        .slice(0, pos)
+        .map((t) => t.title)
+        .join(" · "),
+    };
+    const openChat = (seed?: string) => {
+      setChatSeed(seed);
+      setChatOpen(true);
+    };
+    const stepVoteKey = slideKey(topic.id, isReview ? "review" : lesson.id, stepIdx);
+
     return (
-      <main className="mx-auto w-full max-w-lg flex-1 px-4 pb-20 pt-10">
+      <main className="mx-auto w-full max-w-lg flex-1 px-4 pb-24 pt-10">
         <div className="mb-6">
           <div className="flex items-center justify-between">
             <span className="k-eyebrow">
               {isReview
                 ? `review · ${stepIdx + 1} / ${steps.length}`
-                : `${lessons[lessonIdx].title}`}
+                : `${lesson.title}`}
             </span>
             <button
               onClick={() => setPhase("overview")}
@@ -269,10 +470,65 @@ export default function TopicPage() {
           </div>
         </div>
         {step.kind === "teach" ? (
-          <TeachCard key={stepIdx} step={step} onNext={advance} />
+          <TeachCard
+            key={stepIdx}
+            step={step}
+            onNext={advance}
+            onBack={goBack}
+            canBack={stepIdx > 0}
+            vote={votes[stepVoteKey]}
+            onVote={(v) => {
+              setVotes((prev) => {
+                const next = { ...prev };
+                if (v === null) delete next[stepVoteKey];
+                else next[stepVoteKey] = v;
+                return next;
+              });
+              if (user) void saveSlideVote(user.uid, courseId, stepVoteKey, v).catch(() => {});
+            }}
+          />
         ) : (
-          <CheckCard key={stepIdx} step={step} onPass={advance} />
+          <CheckCard
+            key={stepIdx}
+            step={step}
+            mode={isReview ? "assess" : "learn"}
+            onPass={advance}
+            onMiss={
+              isReview
+                ? () => {
+                    const src = (step as ReviewCheck).sourceTopicId ?? topic.id;
+                    setProgress((p) =>
+                      p
+                        ? {
+                            ...p,
+                            reviewMisses: {
+                              ...p.reviewMisses,
+                              [src]: (p.reviewMisses[src] ?? 0) + 1,
+                            },
+                          }
+                        : p
+                    );
+                    if (user) void recordReviewMiss(user.uid, courseId, src).catch(() => {});
+                  }
+                : undefined
+            }
+            onAskKube={isReview ? openChat : undefined}
+          />
         )}
+        <button
+          onClick={() => openChat()}
+          aria-label="Ask Kube about this lesson"
+          className="fixed bottom-5 right-5 z-40 rounded-full border px-4 py-3 text-sm font-semibold shadow-lg"
+          style={{ background: "var(--card)", borderColor: "var(--kube-line)", color: "var(--kube)" }}
+        >
+          Ask Kube
+        </button>
+        <KubeChat
+          open={chatOpen}
+          onClose={() => setChatOpen(false)}
+          context={chatContext}
+          seed={chatSeed}
+        />
       </main>
     );
   }
@@ -336,8 +592,8 @@ export default function TopicPage() {
           </p>
           <p className="mt-2 text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>
             {topic.review?.count ?? 5} questions on what you climbed earlier —
-            fresh ones each sitting. Wrong answers just shake; this keeps old
-            rungs warm, it doesn&apos;t grade you.
+            fresh ones you haven&apos;t met in the lessons. This one assesses:
+            a miss gets flagged and Kube offers to help, right there.
           </p>
           <button
             onClick={() => beginLesson(0)}

@@ -8,7 +8,7 @@
 // getDoc REJECTS with permission-denied rather than returning "no doc".
 // loadProgress must treat that as a fresh start, never throw — otherwise the
 // path page hangs on "Loading your path" forever.
-import { doc, getDoc, setDoc, addDoc, collection } from "firebase/firestore";
+import { doc, getDoc, setDoc, addDoc, collection, increment } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 
 export interface LearnProgress {
@@ -16,6 +16,9 @@ export interface LearnProgress {
   completed: Record<string, true>;
   /** Completed lesson slices, keyed `${topicId}::${lessonId}`. */
   lessons: Record<string, true>;
+  /** Review-assessment misses per topic — Kube's flags for where help is
+   *  needed. Reviews assess; lesson checks never write here. */
+  reviewMisses: Record<string, number>;
 }
 
 function progressDocId(uid: string, courseId: string): string {
@@ -30,17 +33,37 @@ export async function loadProgress(
     const snap = await getDoc(
       doc(db(), "learnProgress", progressDocId(uid, courseId))
     );
-    if (!snap.exists()) return { completed: {}, lessons: {} };
+    if (!snap.exists()) return { completed: {}, lessons: {}, reviewMisses: {} };
     const data = snap.data();
     return {
       completed: (data.completed as Record<string, true>) ?? {},
       lessons: (data.lessons as Record<string, true>) ?? {},
+      reviewMisses: (data.reviewMisses as Record<string, number>) ?? {},
     };
   } catch {
     // Missing doc (permission-denied under our rules) or a transient network
     // failure: start from an empty map rather than blocking the page.
-    return { completed: {}, lessons: {} };
+    return { completed: {}, lessons: {}, reviewMisses: {} };
   }
+}
+
+/** Flag a review-assessment miss on a topic — the signal Kube uses to offer
+ *  assistance and (later) to steer what gets re-drilled. */
+export async function recordReviewMiss(
+  uid: string,
+  courseId: string,
+  topicId: string
+): Promise<void> {
+  await setDoc(
+    doc(db(), "learnProgress", progressDocId(uid, courseId)),
+    {
+      userId: uid,
+      courseId,
+      reviewMisses: { [topicId]: increment(1) },
+      updatedAt: Date.now(),
+    },
+    { merge: true }
+  );
 }
 
 /** Record one lesson slice done; when it was the topic's last remaining

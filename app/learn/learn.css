@@ -89,6 +89,23 @@
   animation: k-shake 0.45s ease-in-out;
 }
 
+/* Two slow, gentle pulses on the correct answer — the attention-grab used
+   when a learner stalls on a lesson check or misses twice. */
+@keyframes k-blink {
+  0%, 45%, 100% {
+    background: var(--card);
+    border-color: var(--line);
+  }
+  15%, 60% {
+    background: var(--kube-soft);
+    border-color: var(--kube);
+  }
+}
+
+.kube .k-blink {
+  animation: k-blink 2.4s ease-in-out 1;
+}
+
 @keyframes k-bob {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-6px); }

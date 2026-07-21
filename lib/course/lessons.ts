@@ -37,43 +37,69 @@ export function lessonKey(topicId: string, lessonId: string): string {
   return `${topicId}::${lessonId}`;
 }
 
-/** All check steps that could re-test a topic: its own checks plus its exam
- *  questions converted into gentle learning-mode checks. */
-function checkPool(bundle: CourseBundle, topicId: string): CheckStep[] {
+/** The questions that can re-test a topic, in two tiers:
+ *  FRESH — exam-bank questions the learner has NOT met inside the lessons
+ *  (reviews are assessments; a crammer must not recognize the question), and
+ *  SEEN — the topic's own lesson checks, kept only as a last-resort filler
+ *  for topics with no exam-bank coverage yet. */
+/** A review check remembers which topic it assesses, so a miss can be
+ *  flagged against that topic (and Kube can offer help on it). */
+export type ReviewCheck = CheckStep & { sourceTopicId: string };
+
+function checkPools(
+  bundle: CourseBundle,
+  topicId: string
+): { fresh: ReviewCheck[]; seen: ReviewCheck[] } {
   const topic = bundle.getTopic(topicId);
-  if (!topic) return [];
-  const own = topicLessons(topic)
+  if (!topic) return { fresh: [], seen: [] };
+  const seen = topicLessons(topic)
     .flatMap((l) => l.steps)
-    .filter((s): s is CheckStep => s.kind === "check");
-  const fromExam = bundle.examBank
+    .filter((s): s is CheckStep => s.kind === "check")
+    .map((s): ReviewCheck => ({ ...s, sourceTopicId: topicId }));
+  const fresh = bundle.examBank
     .filter((q: ExamQuestion) => q.topicId === topicId)
     .map(
-      (q): CheckStep => ({
+      (q): ReviewCheck => ({
         kind: "check",
         prompt: q.prompt,
         options: q.options,
         answer: q.answer,
         praise: `Right — ${q.explanation}`,
+        sourceTopicId: topicId,
         ...(q.code ? { code: q.code } : {}),
       })
     );
-  return [...own, ...fromExam];
+  return { fresh, seen };
 }
 
 /** Draw the review node's quiz: `count` checks sampled across the reviewed
- *  topics, shuffled fresh each sitting so repeats stay honest. */
-export function buildReviewQuiz(bundle: CourseBundle, topic: Topic): CheckStep[] {
+ *  topics, fresh (unseen-in-lessons) questions strictly first, shuffled each
+ *  sitting. Lesson checks only ever appear when a topic has nothing fresh. */
+export function buildReviewQuiz(bundle: CourseBundle, topic: Topic): ReviewCheck[] {
   const spec = topic.review;
   if (!spec) return [];
-  const pools = spec.topicIds.map((id) => shuffle(checkPool(bundle, id)));
-  const picked: CheckStep[] = [];
-  // Round-robin across topics so a two-topic review mixes both.
-  let i = 0;
-  while (picked.length < spec.count && pools.some((p) => p.length > 0)) {
-    const pool = pools[i % pools.length];
-    const q = pool.pop();
-    if (q) picked.push(q);
-    i += 1;
+  const pools = spec.topicIds.map((id) => {
+    const { fresh, seen } = checkPools(bundle, id);
+    return { fresh: shuffle(fresh), seen: shuffle(seen) };
+  });
+  const picked: ReviewCheck[] = [];
+  // Round-robin across topics, draining every topic's FRESH tier before any
+  // topic's SEEN tier is touched.
+  for (const tier of ["fresh", "seen"] as const) {
+    let i = 0;
+    let idle = 0;
+    while (picked.length < spec.count && idle < pools.length) {
+      const pool = pools[i % pools.length][tier];
+      const q = pool.pop();
+      if (q) {
+        picked.push(q);
+        idle = 0;
+      } else {
+        idle += 1;
+      }
+      i += 1;
+    }
+    if (picked.length >= spec.count) break;
   }
   return shuffle(picked);
 }
