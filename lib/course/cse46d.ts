@@ -12,6 +12,7 @@ import { sectionU1B } from "./cse46d-unit1b";
 import { sectionU2 } from "./cse46d-unit2";
 import { sectionU3 } from "./cse46d-unit3";
 import { sectionU4 } from "./cse46d-unit4";
+import { sectionU5 } from "./cse46d-unit5";
 
 export const cse46dSyllabus: SyllabusInfo = {
   units: [
@@ -447,6 +448,83 @@ const examBank: ExamQuestion[] = [
     hint: "Two 4-bit registers hold one 8-bit product.",
     explanation: "When count reaches 0, A:Q together hold the double-width signed product: 0001 0101 = 21.",
   },
+  // ---- Authored for Unit 5's circles (CO5 per syllabus mapping) ----
+  {
+    id: "ca-u5q1", topicId: "ca-io-interface", unit: 5, co: "CO5", level: "L2", source: "generated",
+    prompt: "The main functions of the I/O interface are…",
+    options: [
+      "data conversion, synchronization, device selection",
+      "fetch, decode, execute",
+      "push, pop, call",
+      "paging, mapping, caching",
+    ], answer: 0,
+    hint: "It exists to resolve the CPU-peripheral mismatches.",
+    explanation: "The interface converts signals, synchronises speeds, and selects the addressed device — the slides' exact trio.",
+  },
+  {
+    id: "ca-u5q2", topicId: "ca-io-bus", unit: 5, co: "CO5", level: "L2", source: "generated",
+    prompt: "Which I/O command activates a peripheral and tells it what to do?",
+    options: ["Status", "Control", "Data input", "Data output"], answer: 1,
+    hint: "It commands; another one merely asks how things are going.",
+    explanation: "The control command activates and instructs; status tests conditions; data input/output move the data itself.",
+  },
+  {
+    id: "ca-u5q3", topicId: "ca-async-strobe", unit: 5, co: "CO5", level: "L2", source: "generated",
+    prompt: "The strobe method's weakness is that…",
+    options: [
+      "it needs too many wires",
+      "the initiating unit can't know whether the other unit actually responded",
+      "it only works for printers",
+      "it requires a shared clock",
+    ], answer: 1,
+    hint: "One control line commands — but who confirms?",
+    explanation: "With a single control line there is no acknowledgment; handshaking adds the reply line that confirms each transfer.",
+  },
+  {
+    id: "ca-u5q4", topicId: "ca-handshake", unit: 5, co: "CO5", level: "L2", source: "generated",
+    prompt: "In source-initiated handshaking, the destination replies with…",
+    options: ["a strobe pulse", "the data-accepted signal", "an interrupt", "a page fault"], answer: 1,
+    hint: "The second wire's whole purpose.",
+    explanation: "Source raises data-valid; destination confirms with data-accepted; then both reset — every transfer acknowledged.",
+  },
+  {
+    id: "ca-u5q5", topicId: "ca-transfer-modes", unit: 5, co: "CO5", level: "L2", source: "generated",
+    prompt: "Interrupt-initiated I/O improves on programmed I/O because…",
+    options: [
+      "the CPU polls faster",
+      "the CPU works on its task and is only interrupted when the device is ready",
+      "it removes the interface",
+      "data goes through the cache",
+    ], answer: 1,
+    hint: "Who watches the flag in each scheme?",
+    explanation: "No busy-wait loop: the device signals readiness itself, so CPU time isn't wasted monitoring flags.",
+  },
+  {
+    id: "ca-u5q6", topicId: "ca-dma", unit: 5, co: "CO5", level: "L2", source: "generated",
+    prompt: "In DMA, data moves between device and memory…",
+    options: [
+      "through CPU registers",
+      "directly, with the DMA controller borrowing the system buses",
+      "one word per interrupt",
+      "only at boot",
+    ], answer: 1,
+    hint: "The CPU steps aside entirely.",
+    explanation: "The controller takes the address/data/control buses and streams data directly — independent of the CPU.",
+  },
+  {
+    id: "ca-u5q7", topicId: "ca-priority-daisy", unit: 5, co: "CO5", level: "L2", source: "generated",
+    prompt: "In daisy chaining, the device that sent the interrupt request has…",
+    options: ["PI = 0, PO = 1", "PI = 1, PO = 0", "PI = PO = 1", "PI = PO = 0"], answer: 1,
+    hint: "Acknowledge arrived, and stopped there.",
+    explanation: "INTACK reached it (PI=1) and it blocked the chain (PO=0) while placing its VAD on the bus.",
+  },
+  {
+    id: "ca-u5q8", topicId: "ca-peripherals", unit: 5, co: "CO5", level: "L1", source: "generated",
+    prompt: "A device under the direct control of the computer is said to be connected…",
+    options: ["offline", "online", "in parallel", "asynchronously"], answer: 1,
+    hint: "The deck's one-word vocabulary flag.",
+    explanation: "Online means under the computer's direct control — the deck's definition for connected peripherals.",
+  },
   // ---- Sample end-term paper, Unit 2 questions (CO/L tags as printed) ----
   {
     id: "ca-ppq4", topicId: "ca-addr-direct-indirect", unit: 2, co: "CO2", level: "L2", source: "pastpaper",
@@ -528,6 +606,50 @@ const examBank: ExamQuestion[] = [
     hint: "Runs of identical bits cost only shifts.",
     explanation: "Booth's recoding turns runs of 1s into a subtract-and-add pair, cutting the number of additions.",
   },
+  // ---- Sample end-term paper, Unit 5 questions (CO/L tags as printed) ----
+  {
+    id: "ca-ppq3", topicId: "ca-transfer-modes", unit: 5, co: "CO5", level: "L2", source: "pastpaper",
+    prompt: "Which of the following is not a mode of data transfer in computer systems?",
+    options: ["Programmed I/O", "Direct Memory Access (DMA)", "Memory-mapped I/O", "Bus communication"], answer: 3,
+    hint: "Three real modes plus one made-up phrase.",
+    explanation: "Programmed, interrupt-initiated/memory-mapped I/O and DMA are genuine; 'bus communication' is not a transfer mode.",
+  },
+  {
+    id: "ca-ppq8", topicId: "ca-io-interface", unit: 5, co: "CO5", level: "L2", source: "pastpaper",
+    prompt: "Which of the following is NOT a role of the I/O interface?",
+    options: [
+      "Data conversion between different formats",
+      "Managing communication between devices",
+      "Connecting the CPU to RAM",
+      "Generating control signals for peripherals",
+    ], answer: 2,
+    hint: "One option belongs to the memory bus, not I/O.",
+    explanation: "CPU↔RAM is the memory bus's job; the I/O interface faces peripherals.",
+  },
+  {
+    id: "ca-ppq13", topicId: "ca-async-strobe", unit: 5, co: "CO5", level: "L2", source: "pastpaper",
+    prompt: "Which of the following is a key feature of asynchronous transfer?",
+    options: [
+      "Requires a clock signal",
+      "Data is transferred in bursts",
+      "Each data unit is sent with a start and stop bit",
+      "Data transfer speed is fixed",
+    ], answer: 2,
+    hint: "No shared clock — so each unit carries its own timing.",
+    explanation: "Asynchronous transfer frames each unit with start/stop signalling instead of a common clock.",
+  },
+  {
+    id: "ca-ppq14", topicId: "ca-async-strobe", unit: 5, co: "CO5", level: "L2", source: "pastpaper",
+    prompt: "Which of the following is true about synchronous data transfer?",
+    options: [
+      "Data is transferred without any timing coordination",
+      "It requires a shared clock signal between sender and receiver",
+      "It is slower than asynchronous transfer",
+      "It does not require synchronization signals",
+    ], answer: 1,
+    hint: "The word 'synchronous' is the clue.",
+    explanation: "Synchronous transfer runs sender and receiver off one shared clock — the opposite of start/stop framing.",
+  },
 ];
 
 export const cse46d = buildCourseBundle(
@@ -535,7 +657,7 @@ export const cse46d = buildCourseBundle(
     id: "cse46d",
     code: "CSE46D",
     title: "Computer Architecture",
-    sections: [sectionU1A, sectionU1B, sectionU2, sectionU3, sectionU4],
+    sections: [sectionU1A, sectionU1B, sectionU2, sectionU3, sectionU4, sectionU5],
   },
   examBank
 );
