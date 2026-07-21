@@ -112,10 +112,15 @@
   scrollbar-color: var(--kube-line) transparent;
 }
 .kube .k-rail::-webkit-scrollbar {
-  height: 6px;
+  height: 4px;
 }
 .kube .k-rail::-webkit-scrollbar-track {
   background: transparent;
+}
+.kube .k-rail::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
 }
 .kube .k-rail::-webkit-scrollbar-thumb {
   background: var(--kube-line);
