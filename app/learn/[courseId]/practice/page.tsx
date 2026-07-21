@@ -33,9 +33,23 @@ export default function PracticePage() {
   const [cards, setCards] = useState<Record<string, CardState>>({});
   const [best, setBest] = useState(0);
   const [ready, setReady] = useState(false);
+  // Which unit to practise from — "auto" draws from the whole course.
+  const [unit, setUnit] = useState<number | "auto">("auto");
 
-  const pool = useMemo(() => (bundle ? buildConceptPool(bundle) : []), [bundle]);
-  const items = useMemo(() => (bundle ? sprintItems(bundle) : []), [bundle]);
+  const fullPool = useMemo(() => (bundle ? buildConceptPool(bundle) : []), [bundle]);
+  const fullItems = useMemo(() => (bundle ? sprintItems(bundle) : []), [bundle]);
+  const units = useMemo(
+    () => [...new Set(fullPool.map((c) => c.unit))].sort((a, b) => a - b),
+    [fullPool]
+  );
+  const pool = useMemo(
+    () => (unit === "auto" ? fullPool : fullPool.filter((c) => c.unit === unit)),
+    [fullPool, unit]
+  );
+  const items = useMemo(
+    () => (unit === "auto" ? fullItems : fullItems.filter((q) => q.unit === unit)),
+    [fullItems, unit]
+  );
 
   useEffect(() => {
     if (!userLoading && !user) router.replace("/login");
@@ -111,13 +125,38 @@ export default function PracticePage() {
       ) : (
         <>
           <h1 className="text-2xl">{DOORS.find((d) => d.id === tool)!.title}</h1>
-          {tool === "matching" && <Matching pool={pool} />}
-          {tool === "definitions" && <Definitions pool={pool} />}
+
+          {/* Draw from one unit, or Auto (the whole course). */}
+          {units.length > 1 && (
+            <div className="k-rail mt-4 flex gap-2 pb-1">
+              {(["auto", ...units] as const).map((u) => {
+                const active = unit === u;
+                return (
+                  <button
+                    key={u}
+                    onClick={() => setUnit(u as number | "auto")}
+                    className="shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors"
+                    style={{
+                      borderColor: active ? "var(--kube)" : "var(--line)",
+                      background: active ? "var(--kube-soft)" : "var(--card)",
+                      color: active ? "var(--kube)" : "var(--ink-soft)",
+                    }}
+                  >
+                    {u === "auto" ? "Auto — all units" : `Unit ${u}`}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* key forces a fresh round when the unit changes */}
+          {tool === "matching" && <Matching key={`m-${unit}`} pool={pool} />}
+          {tool === "definitions" && <Definitions key={`d-${unit}`} pool={pool} />}
           {tool === "flashcards" && (
-            <Flashcards pool={pool} uid={user.uid} courseId={course.id} cards={cards} onCards={setCards} />
+            <Flashcards key={`f-${unit}`} pool={pool} uid={user.uid} courseId={course.id} cards={cards} onCards={setCards} />
           )}
           {tool === "sprint" && (
-            <Sprint items={items} uid={user.uid} courseId={course.id} best={best} onBest={setBest} />
+            <Sprint key={`s-${unit}`} items={items} uid={user.uid} courseId={course.id} best={best} onBest={setBest} />
           )}
         </>
       )}
