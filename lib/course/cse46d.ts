@@ -1,13 +1,15 @@
 // CSE46D — Computer Architecture (Lovely Professional University).
 // REBUILT per KUBE_LESSON_DEPTH.md: one concept per circle, four-quarter
-// depth, one document at a time. Unit 1 is fully built (from Unit_1_1.pptx
-// and Unit_12.pptx); Units 2–6 show as skeleton placeholders until their
-// documents are re-fed for deep processing. The previous shallow sections
-// live in git history (commit 105ba44) if ever needed.
+// depth, one document at a time. Units 1–2 are fully built (Unit 1 from
+// Unit_1_1.pptx + Unit_12.pptx; Unit 2 from Data_Tranfer_and_Manipulation.ppt
+// + the Addressing Modes deck); Units 3–6 show as skeleton placeholders until
+// their documents are re-fed for deep processing. The previous shallow
+// sections live in git history (commit 105ba44) if ever needed.
 import { buildCourseBundle } from "./bundle";
 import type { ExamQuestion, SyllabusInfo } from "./types";
 import { sectionU1A } from "./cse46d-unit1a";
 import { sectionU1B } from "./cse46d-unit1b";
+import { sectionU2 } from "./cse46d-unit2";
 
 export const cse46dSyllabus: SyllabusInfo = {
   units: [
@@ -212,6 +214,105 @@ const examBank: ExamQuestion[] = [
     hint: "Digit by digit — 1, then 3.",
     explanation: "1 → 0001, 3 → 0011 → 0001 0011. Plain binary 1101 is the trap: BCD codes each digit separately.",
   },
+  // ---- Authored for Unit 2's circles (CO2/CO3 per syllabus mapping) ----
+  {
+    id: "ca-u2q1", topicId: "ca-instr-categories", unit: 2, co: "CO3", level: "L1", source: "generated",
+    prompt: "Which category of instruction moves data without changing its value?",
+    options: ["Data manipulation", "Data transfer", "Program control", "Arithmetic"], answer: 1,
+    hint: "Move, don't compute.",
+    explanation: "Data transfer instructions (MOV, LOAD, STORE, PUSH, POP…) relocate data unchanged; manipulation computes, program control redirects.",
+  },
+  {
+    id: "ca-u2q2", topicId: "ca-data-manip", unit: 2, co: "CO3", level: "L2", source: "generated",
+    prompt: "Shift, complement and AND belong to which family of data manipulation instructions?",
+    options: [
+      "Arithmetic only",
+      "Shift is its own class; complement and AND are logical/bit-manipulation",
+      "All three are arithmetic",
+      "All three are program control",
+    ], answer: 1,
+    hint: "Three families: arithmetic, logical, shift.",
+    explanation: "Data manipulation splits into arithmetic (ADD, SUB…), logical/bit (AND, OR, complement…) and shift (SHL, SHR, rotate) instructions.",
+  },
+  {
+    id: "ca-u2q3", topicId: "ca-control-word", unit: 2, co: "CO2", level: "L2", source: "generated",
+    prompt: "In a control word, the SELA and SELB fields choose…",
+    options: [
+      "the destination register",
+      "the two source registers feeding the ALU buses",
+      "the ALU operation",
+      "the next instruction",
+    ], answer: 1,
+    hint: "A and B are the ALU's two input buses.",
+    explanation: "SELA and SELB pick which registers drive bus A and bus B into the ALU; SELD picks the destination and OPR picks the operation.",
+  },
+  {
+    id: "ca-u2q4", topicId: "ca-addr-immediate", unit: 2, co: "CO2", level: "L2", source: "generated",
+    prompt: "In immediate addressing, the operand is…",
+    options: [
+      "in a register named by the instruction",
+      "at the memory address given in the instruction",
+      "inside the instruction itself, as part of the address field",
+      "on top of the stack",
+    ], answer: 2,
+    hint: "No fetch needed — it's already here.",
+    explanation: "Immediate mode carries the operand value in the instruction, so no extra memory reference is needed — fast, but the value is fixed.",
+  },
+  {
+    id: "ca-u2q5", topicId: "ca-addr-direct-indirect", unit: 2, co: "CO2", level: "L4", source: "generated",
+    prompt: "How many memory references does INDIRECT addressing need to reach the operand?",
+    options: ["None", "One", "Two", "Three"], answer: 2,
+    hint: "One to get the address, then…",
+    explanation: "Indirect reads memory once to fetch the effective address, then again to fetch the operand — two references, versus direct's one.",
+  },
+  {
+    id: "ca-u2q6", topicId: "ca-addr-register", unit: 2, co: "CO2", level: "L2", source: "generated",
+    prompt: "Register INDIRECT addressing means the named register holds…",
+    options: [
+      "the operand itself",
+      "the memory address of the operand",
+      "the next instruction",
+      "the ALU operation code",
+    ], answer: 1,
+    hint: "Value vs address — which one lives in the register here?",
+    explanation: "In register-indirect mode the register holds the operand's ADDRESS (a pointer); plain register mode holds the value itself.",
+  },
+  // ---- Sample end-term paper, Unit 2 questions (CO/L tags as printed) ----
+  {
+    id: "ca-ppq4", topicId: "ca-addr-direct-indirect", unit: 2, co: "CO2", level: "L2", source: "pastpaper",
+    prompt: "What addressing mode allows you to directly specify the memory address of an operand in the instruction?",
+    options: ["Immediate", "Register", "Direct", "Indirect"], answer: 2,
+    hint: "The address field IS the effective address.",
+    explanation: "Direct (absolute) addressing carries the operand's memory address in the instruction — one memory reference.",
+  },
+  {
+    id: "ca-ppq5", topicId: "ca-cpu-alu", unit: 2, co: "CO1", level: "L2", source: "pastpaper",
+    prompt: "Who designed the computer's fundamental architecture?",
+    options: ["Pascal", "C. Babbage", "John von Neumann", "None of these"], answer: 2,
+    hint: "The stored-program architecture bears his name.",
+    explanation: "The von Neumann architecture — program and data in one memory — is the fundamental design.",
+  },
+  {
+    id: "ca-ppq15", topicId: "ca-cpu-alu", unit: 2, co: "CO1", level: "L4", source: "pastpaper",
+    prompt: "The processor's \"heart,\" which carries out numerous functions, is the…",
+    options: ["Arithmetic and Logic Unit", "Circuit boards", "Control Unit", "Memory"], answer: 0,
+    hint: "It does the computing itself.",
+    explanation: "The ALU performs the arithmetic and logical operations — the computational heart of the CPU.",
+  },
+  {
+    id: "ca-ppq17", topicId: "ca-instr-categories", unit: 2, co: "CO3", level: "L2", source: "pastpaper",
+    prompt: "Which of the following is a data transfer instruction?",
+    options: ["ADD", "MOV", "CMP", "SUB"], answer: 1,
+    hint: "Which one moves data without changing it?",
+    explanation: "MOV transfers data unchanged; ADD/SUB manipulate, CMP tests.",
+  },
+  {
+    id: "ca-ppq22", topicId: "ca-addr-extended", unit: 2, co: "CO2", level: "L6", source: "pastpaper",
+    prompt: "Which addressing mode calculates the effective address of the operand using the value in the program counter (PC)?",
+    options: ["Immediate", "PC-relative", "Indexed", "Base-indexed"], answer: 1,
+    hint: "Its name says which register anchors the address.",
+    explanation: "Relative (PC-relative) addressing adds an offset to the program counter — used for branches.",
+  },
 ];
 
 export const cse46d = buildCourseBundle(
@@ -219,7 +320,7 @@ export const cse46d = buildCourseBundle(
     id: "cse46d",
     code: "CSE46D",
     title: "Computer Architecture",
-    sections: [sectionU1A, sectionU1B],
+    sections: [sectionU1A, sectionU1B, sectionU2],
   },
   examBank
 );

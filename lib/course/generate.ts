@@ -31,6 +31,16 @@ const stepSchema = z.object({
     ),
 });
 
+const lessonSchema = z.object({
+  id: z.string().describe("short kebab id unique within the topic, e.g. 'q1'"),
+  title: z
+    .string()
+    .describe(
+      "Quarter title, e.g. '1 · Meet it, slowly' / '2 · Question it' / '3 · Again, differently' / '4 · Stretch & compare'"
+    ),
+  steps: z.array(stepSchema).describe("This quarter's beats (teach) and checks"),
+});
+
 const unitSchema = z.object({
   sectionTitle: z
     .string()
@@ -57,10 +67,16 @@ const unitSchema = z.object({
         recap: z
           .array(z.string())
           .describe("3-5 key fact lines for quick review / glossary"),
-        steps: z.array(stepSchema).describe("2-4 teach steps interleaved with 2-3 checks"),
+        lessons: z
+          .array(lessonSchema)
+          .describe(
+            "The four-quarter drill (2-3 lessons for a light concept, 4 for medium/heavy): Q1 meet-it-slowly (4-8 tiny teach beats that WALK the student into the idea — never the whole definition in one breath), Q2 question-it (gentle checks on exactly what was met), Q3 again-differently (a worked example, a you-try-one check, a spot-the-mistake check), Q4 stretch-and-compare (neighbours, harder cases, transfer)"
+          ),
       })
     )
-    .describe("3-6 tutor-sized topics, in dependency order"),
+    .describe(
+      "ONE CONCEPT PER TOPIC — split dense source slides into separate topics (BCD, Excess-3 and Gray code are three topics, never one). 4-10 topics per document, in dependency order"
+    ),
   examQuestions: z
     .array(
       z.object({
@@ -80,17 +96,23 @@ const unitSchema = z.object({
 
 export type GeneratedUnit = z.infer<typeof unitSchema>;
 
-const SYSTEM = `You are Kube, a calm and warm tutor who turns a lecturer's unit material into a playable learning ladder.
+const SYSTEM = `You are Kube, a calm and warm tutor who turns a lecturer's unit material into a playable learning ladder of DEEP, drilled circles — genuinely teaching someone who starts knowing nothing.
 
-You do NOT summarize. You extract a plannable concept map and teaching sequence:
-- Break the unit into 3-6 tutor-sized topics (one sitting each), ordered by dependency — a real idea like "Finiteness of an algorithm", never "Slide 9".
-- Weight each topic heavy/medium/light by how much the material dwells on it and how examinable it looks. Weight inherits upward through dependencies.
-- Teach for UNDERSTANDING: teach steps explain the why, not just the what. Prefer why-questions over recall.
-- Checks are gentle multiple-choice: plausible distractors drawn from real misconceptions. The praise line must be specific to the idea ("Right — entry-controlled means the gate is checked before you're let in"), never generic.
-- Recap lines are crisp facts a student can re-read the night before the exam.
-- Exam questions test the unit honestly: mix definition, why, and predict-the-output styles. Hints nudge without revealing. Explanations teach.
+You do NOT summarize, and you never build "show a card + Got it button" lessons. You extract a concept map and drill each concept:
+- ONE CONCEPT PER TOPIC, never cram. If a slide presents three codes together, that is three topics, each drilled independently. The source's density is not the lesson's density.
+- Each topic is a FOUR-QUARTER circle (lighter concepts may compress to 2-3 quarters, but never to a single card):
+  Q1 "Meet it, slowly" — 4-8 tiny teach beats, each ONE small idea, that WALK the student into the concept (start from a question or a need, build up; never state the full definition in one breath).
+  Q2 "Question it" — gentle checks on exactly what was just met, poked from different angles.
+  Q3 "Again, differently" — the SAME concept re-approached: a worked example, then a "you try one" check, then a "spot the mistake" check diagnosing a realistic student error.
+  Q4 "Stretch & compare" — neighbours, harder cases, transfer to a fresh scenario. Only now compare with related concepts.
+- HARD RULE: every repetition must be a FRESH angle (meet / use / break / compare). Never repeat the same question shape within a circle — same-shape reps are where learners quit.
+- Depth scales with weight: heavy = the full deep drill (~14-18 interactions); medium = solid (~10); light = lean (~6-8) but STILL a real circle. Light never means skipped.
+- Teach for UNDERSTANDING: beats explain the why. Checks use plausible distractors drawn from real misconceptions. Praise lines are specific to the idea just tested ("Right — the +1 is what separates 2's from 1's complement"), never generic.
+- Where natural, END a topic by exposing the question the NEXT topic answers (teach forward).
+- Recap lines are crisp facts for the night before the exam.
+- Exam questions test the unit honestly: mix definition, why, and worked styles. Hints nudge without revealing. Explanations teach.
 - Ground EVERYTHING strictly in the provided material — the exam tests the lecturer's framing, not the internet's. Do not invent topics the material doesn't cover.
-- Base your language on the material's own terminology and examples wherever possible.`;
+- Use the material's own terminology, examples and worked numbers wherever possible.`;
 
 const MAX_UNIT_CHARS = 60_000;
 
@@ -116,7 +138,7 @@ export function generateUnitStream(
 
   return client.messages.stream({
     model: MODEL,
-    max_tokens: 24000,
+    max_tokens: 48000,
     thinking: { type: "adaptive" },
     output_config: {
       effort: "high",
@@ -150,12 +172,9 @@ export function assembleUnit(
   const known = new Set(existingTopicIds);
   const topics: Topic[] = [];
 
-  for (const t of generated.topics) {
-    let id = t.id;
-    if (known.has(id)) id = `u${unitNumber}-${id}`.slice(0, 80);
-    if (known.has(id)) continue; // still colliding — drop rather than corrupt
+  function sanitizeSteps(raw: z.infer<typeof stepSchema>[]): Step[] {
     const steps: Step[] = [];
-    for (const s of t.steps) {
+    for (const s of raw) {
       // Optional fields are added only when present — Firestore rejects
       // undefined values, so absent must mean absent.
       if (s.kind === "teach" && s.body) {
@@ -184,7 +203,21 @@ export function assembleUnit(
         });
       }
     }
-    if (steps.length === 0) continue;
+    return steps;
+  }
+
+  for (const t of generated.topics) {
+    let id = t.id;
+    if (known.has(id)) id = `u${unitNumber}-${id}`.slice(0, 80);
+    if (known.has(id)) continue; // still colliding — drop rather than corrupt
+    const lessons = t.lessons
+      .map((l, i) => ({
+        id: l.id || `q${i + 1}`,
+        title: l.title || `Part ${i + 1}`,
+        steps: sanitizeSteps(l.steps),
+      }))
+      .filter((l) => l.steps.length > 0);
+    if (lessons.length === 0) continue;
     topics.push({
       id,
       title: t.title,
@@ -193,9 +226,33 @@ export function assembleUnit(
       deps: t.deps.filter((d) => known.has(d)),
       whyItMatters: t.whyItMatters,
       recap: t.recap.slice(0, 6),
-      steps,
+      lessons,
+      steps: [],
     });
     known.add(id);
+  }
+
+  // Spaced review, Duolingo-style: every generated unit ends with a
+  // compulsory 5-question review node over its heaviest circles.
+  if (topics.length >= 2) {
+    const reviewed = topics
+      .filter((t) => t.weight !== "light")
+      .slice(-4)
+      .map((t) => t.id);
+    const pool = reviewed.length >= 1 ? reviewed : topics.slice(-3).map((t) => t.id);
+    topics.push({
+      id: `u${unitNumber}-review`,
+      title: `Unit ${unitNumber} quick review`,
+      unit: unitNumber,
+      weight: "light",
+      kind: "review",
+      review: { topicIds: pool, count: 5 },
+      deps: [topics[topics.length - 1].id],
+      whyItMatters:
+        "Five fresh questions over this unit's heaviest ideas — the rung that makes the climb permanent.",
+      recap: [],
+      steps: [],
+    });
   }
 
   const topicIds = new Set(topics.map((t) => t.id));
