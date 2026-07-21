@@ -72,9 +72,22 @@ function checkPools(
   return { fresh, seen };
 }
 
+/** Prompt fingerprint for the no-repeat rule: case, punctuation and
+ *  parentheticals ("(your sample paper's question)") don't make a question
+ *  different — the words do. */
+function promptKey(prompt: string): string {
+  return prompt
+    .toLowerCase()
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
 /** Draw the review node's quiz: `count` checks sampled across the reviewed
  *  topics, fresh (unseen-in-lessons) questions strictly first, shuffled each
- *  sitting. Lesson checks only ever appear when a topic has nothing fresh. */
+ *  sitting. Lesson checks only ever appear when a topic has nothing fresh.
+ *  HARD RULE: no question — by prompt substance — appears twice in one
+ *  sitting, even when the exam bank and a lesson carry the same question. */
 export function buildReviewQuiz(bundle: CourseBundle, topic: Topic): ReviewCheck[] {
   const spec = topic.review;
   if (!spec) return [];
@@ -83,16 +96,19 @@ export function buildReviewQuiz(bundle: CourseBundle, topic: Topic): ReviewCheck
     return { fresh: shuffle(fresh), seen: shuffle(seen) };
   });
   const picked: ReviewCheck[] = [];
+  const used = new Set<string>();
   // Round-robin across topics, draining every topic's FRESH tier before any
-  // topic's SEEN tier is touched.
+  // topic's SEEN tier is touched; duplicates are skipped, never counted.
   for (const tier of ["fresh", "seen"] as const) {
     let i = 0;
     let idle = 0;
     while (picked.length < spec.count && idle < pools.length) {
       const pool = pools[i % pools.length][tier];
-      const q = pool.pop();
+      let q = pool.pop();
+      while (q && used.has(promptKey(q.prompt))) q = pool.pop();
       if (q) {
         picked.push(q);
+        used.add(promptKey(q.prompt));
         idle = 0;
       } else {
         idle += 1;

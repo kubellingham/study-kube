@@ -111,6 +111,7 @@ You do NOT summarize, and you never build "show a card + Got it button" lessons.
 - Where natural, END a topic by exposing the question the NEXT topic answers (teach forward).
 - Recap lines are crisp facts for the night before the exam.
 - Exam questions test the unit honestly: mix definition, why, and worked styles. Hints nudge without revealing. Explanations teach.
+- HARD RULE: exam-bank questions are the ASSESSMENT pool (reviews and mock exams draw from them) — no exam question may duplicate or lightly reword a check question that appears inside any lesson. A student must never meet the same question twice; write each exam question from an angle the lessons did not use.
 - Ground EVERYTHING strictly in the provided material — the exam tests the lecturer's framing, not the internet's. Do not invent topics the material doesn't cover.
 - Use the material's own terminology, examples and worked numbers wherever possible.`;
 

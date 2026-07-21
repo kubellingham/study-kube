@@ -42,7 +42,13 @@ export default function KubeShell({ children }: { children: React.ReactNode }) {
       const m = localStorage.getItem("kube-mood") as KubeMood | null;
       if (m && MOODS.some((x) => x.id === m)) setMoodState(m);
       const l = localStorage.getItem("kube-layout") as LadderLayout | null;
-      if (l === "horizontal" || l === "vertical") setLayoutState(l);
+      if (l === "horizontal" || l === "vertical") {
+        setLayoutState(l); // an explicit choice always wins
+      } else if (window.matchMedia("(min-width: 1024px)").matches) {
+        // No stored preference: desktops read the ladder sideways by
+        // default, phones keep the vertical climb.
+        setLayoutState("horizontal");
+      }
     } catch {
       // Private browsing — defaults are fine.
     }
