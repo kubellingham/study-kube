@@ -9,7 +9,8 @@ export default function Home() {
   const router = useRouter();
 
   useEffect(() => {
-    if (!loading) router.replace(user ? "/dashboard" : "/login");
+    // Kube IS the landing now — everything happens inside /learn.
+    if (!loading) router.replace(user ? "/learn" : "/login");
   }, [user, loading, router]);
 
   return (

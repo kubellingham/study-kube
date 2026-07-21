@@ -492,22 +492,41 @@ export default function CourseLadderPage() {
       </div>
 
       {ladder.length > 0 && (
-        <div className="mt-6 flex gap-3">
+        <>
           <Link
-            href={`/learn/${course.id}/exam`}
-            className="flex-1 rounded-2xl px-4 py-3 text-center text-sm font-semibold text-white"
-            style={{ background: "var(--kube)" }}
+            href={`/learn/${course.id}/practice`}
+            className="mt-6 flex items-center gap-3 rounded-2xl px-5 py-4 transition-transform hover:scale-[1.01]"
+            style={{ background: "var(--kube-soft)", border: "1px solid var(--kube-line)" }}
           >
-            Sit a mock exam
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-lg" style={{ background: "var(--kube)", color: "white" }} aria-hidden>
+              ⇄
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold" style={{ color: "var(--kube)" }}>
+                Practice Hub
+              </span>
+              <span className="block text-xs" style={{ color: "var(--ink-soft)" }}>
+                Matching, definitions, flashcards & a 60-second sprint — cram what&apos;s in this course.
+              </span>
+            </span>
           </Link>
-          <Link
-            href={`/learn/${course.id}/glossary`}
-            className="flex-1 rounded-2xl px-4 py-3 text-center text-sm font-semibold k-card"
-            style={{ color: "var(--kube)" }}
-          >
-            Notes &amp; glossary
-          </Link>
-        </div>
+          <div className="mt-3 flex gap-3">
+            <Link
+              href={`/learn/${course.id}/exam`}
+              className="flex-1 rounded-2xl px-4 py-3 text-center text-sm font-semibold text-white"
+              style={{ background: "var(--kube)" }}
+            >
+              Sit a mock exam
+            </Link>
+            <Link
+              href={`/learn/${course.id}/glossary`}
+              className="flex-1 rounded-2xl px-4 py-3 text-center text-sm font-semibold k-card"
+              style={{ color: "var(--kube)" }}
+            >
+              Notes &amp; glossary
+            </Link>
+          </div>
+        </>
       )}
 
       {(() => {

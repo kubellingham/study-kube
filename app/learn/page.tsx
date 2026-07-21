@@ -95,13 +95,11 @@ export default function LearnHomePage() {
     <main className="mx-auto w-full max-w-xl flex-1 px-4 pb-24 pt-10">
       <div className="mb-2 flex items-center justify-between">
         <span className="k-eyebrow">Kube</span>
-        <Link href="/dashboard" className="text-xs" style={{ color: "var(--faint)" }}>
-          ← studying kube
-        </Link>
       </div>
       <h1 className="text-3xl">Your subjects</h1>
       <p className="mt-2 text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>
-        One calm ladder per course, private to your account.
+        One calm ladder per course, private to your account — climb it, or
+        practise what&apos;s in it.
       </p>
 
       <div className="mt-8 flex flex-col gap-4">
