@@ -101,6 +101,35 @@ function ThumbButtons({
   );
 }
 
+/** True when lesson keyboard shortcuts must stay quiet: the student is
+ *  typing (chat input), a dialog is open, or a focused button/link already
+ *  owns the Enter key natively. */
+function keysBlocked(): boolean {
+  const el = document.activeElement;
+  if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) return true;
+  if (el instanceof HTMLElement && (el.isContentEditable || el.tagName === "BUTTON" || el.tagName === "A"))
+    return true;
+  return !!document.querySelector('[role="dialog"]');
+}
+
+/** Laptop navigation: Enter = forward, Backspace = back (where back exists). */
+function useLessonKeys(onForward: (() => void) | null, onBack: (() => void) | null) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.repeat || keysBlocked()) return;
+      if (e.key === "Enter" && onForward) {
+        e.preventDefault();
+        onForward();
+      } else if (e.key === "Backspace" && onBack) {
+        e.preventDefault();
+        onBack();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onForward, onBack]);
+}
+
 /** One quiet lap of the button's border — the clock-hand hint. */
 function SweepOverlay() {
   return (
@@ -129,6 +158,7 @@ function TeachCard({
   vote: SlideVote | undefined;
   onVote: (v: SlideVote | null) => void;
 }) {
+  useLessonKeys(onNext, canBack ? onBack : null);
   return (
     <div className="k-card k-rise px-6 py-6">
       <div className="flex items-start justify-between gap-3">
@@ -217,6 +247,10 @@ function CheckCard({
       if (sweepTimer.current) clearTimeout(sweepTimer.current);
     };
   }, [armIdle]);
+
+  // Enter continues only once the answer is in; Backspace steps back where
+  // back exists (never on review assessments).
+  useLessonKeys(passed ? onPass : null, canBack && onBack ? onBack : null);
 
   function tap(i: number) {
     if (passed || shaking !== null) return;
