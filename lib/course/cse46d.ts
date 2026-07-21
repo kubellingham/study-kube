@@ -1,10 +1,11 @@
 // CSE46D — Computer Architecture (Lovely Professional University).
 // REBUILT per KUBE_LESSON_DEPTH.md: one concept per circle, four-quarter
-// depth, one document at a time. Units 1–2 are fully built (Unit 1 from
-// Unit_1_1.pptx + Unit_12.pptx; Unit 2 from Data_Tranfer_and_Manipulation.ppt
-// + the Addressing Modes deck); Units 3–6 show as skeleton placeholders until
-// their documents are re-fed for deep processing. The previous shallow
-// sections live in git history (commit 105ba44) if ever needed.
+// depth, one document at a time. All six units are fully built:
+//   U1: Unit_1_1.pptx + Unit_12.pptx (sections A & B)
+//   U2: Data_Tranfer_and_Manipulation.ppt (CPU half) + Addressing Modes deck (C)
+//   U3: Data Transfer deck's image-based back half, read slide by slide (D)
+//   U4: UNIT_4_CSE46D.ppt (E)   U5: Unit5_ppt.pptx (F)   U6: UNIT_6_ppt.pptx (G)
+// The previous shallow sections live in git history (commit 105ba44).
 import { buildCourseBundle } from "./bundle";
 import type { ExamQuestion, SyllabusInfo } from "./types";
 import { sectionU1A } from "./cse46d-unit1a";
@@ -13,6 +14,7 @@ import { sectionU2 } from "./cse46d-unit2";
 import { sectionU3 } from "./cse46d-unit3";
 import { sectionU4 } from "./cse46d-unit4";
 import { sectionU5 } from "./cse46d-unit5";
+import { sectionU6 } from "./cse46d-unit6";
 
 export const cse46dSyllabus: SyllabusInfo = {
   units: [
@@ -525,6 +527,107 @@ const examBank: ExamQuestion[] = [
     hint: "The deck's one-word vocabulary flag.",
     explanation: "Online means under the computer's direct control — the deck's definition for connected peripherals.",
   },
+  // ---- Authored for Unit 6's circles (CO6 per syllabus mapping) ----
+  {
+    id: "ca-u6q1", topicId: "ca-mem-hierarchy", unit: 6, co: "CO6", level: "L2", source: "generated",
+    prompt: "Ordered fastest to slowest, the hierarchy is…",
+    options: [
+      "registers → cache → main memory → auxiliary",
+      "auxiliary → main → cache → registers",
+      "cache → registers → auxiliary → main",
+      "main → cache → registers → auxiliary",
+    ], answer: 0,
+    hint: "Smallest and closest to the CPU is fastest.",
+    explanation: "Registers, then cache, then RAM, then disks/tapes — speed falls and size grows down the pyramid.",
+  },
+  {
+    id: "ca-u6q2", topicId: "ca-mem-hierarchy", unit: 6, co: "CO6", level: "L1", source: "generated",
+    prompt: "Auxiliary memory access time compared to main memory is roughly…",
+    options: ["the same", "10× slower", "1000× slower", "1000× faster"], answer: 2,
+    hint: "It sits at the bottom of the hierarchy for a reason.",
+    explanation: "The slides put auxiliary access at about 1000 times main memory's — which is why it's the bottom layer.",
+  },
+  {
+    id: "ca-u6q3", topicId: "ca-main-ram-rom", unit: 6, co: "CO6", level: "L2", source: "generated",
+    prompt: "Which is TRUE of ROM?",
+    options: [
+      "Volatile and writable",
+      "Non-volatile, read-only, holds the bootstrap loader",
+      "Faster than registers",
+      "Cleared on every reboot",
+    ], answer: 1,
+    hint: "It must survive power-off to do its one job.",
+    explanation: "ROM keeps its contents without power and only reads — which is why the boot program lives there.",
+  },
+  {
+    id: "ca-u6q4", topicId: "ca-map-set", unit: 6, co: "CO6", level: "L2", source: "generated",
+    prompt: "Set-associative mapping is a compromise between…",
+    options: [
+      "RAM and ROM",
+      "direct mapping and fully associative mapping",
+      "cache and virtual memory",
+      "SRAM and DRAM",
+    ], answer: 1,
+    hint: "Direct-map to a set, then search only its K lines.",
+    explanation: "It keeps direct mapping's cheap indexing but allows K choices per set, avoiding full-search hardware costs.",
+  },
+  {
+    id: "ca-u6q5", topicId: "ca-virtual-mem", unit: 6, co: "CO6", level: "L2", source: "generated",
+    prompt: "Virtual memory's core promise is…",
+    options: [
+      "faster registers",
+      "the illusion of a large memory despite a small physical RAM, via pages swapped from disk",
+      "eliminating the cache",
+      "read-only main memory",
+    ], answer: 1,
+    hint: "Pages, swap space, page faults.",
+    explanation: "The OS pages memory between RAM and disk on demand, so programs can exceed physical RAM safely.",
+  },
+  {
+    id: "ca-u6q6", topicId: "ca-cache-hit", unit: 6, co: "CO6", level: "L4", source: "generated",
+    prompt: "With 950 cache hits out of 1000 total memory references, the hit ratio is…",
+    options: ["0.05", "0.95", "19", "950"], answer: 1,
+    hint: "Hit / (Hit + Miss).",
+    explanation: "950/(950+50) = 0.95 — hits over total references, always between 0 and 1.",
+  },
+  {
+    id: "ca-u6q7", topicId: "ca-map-direct", unit: 6, co: "CO6", level: "L2", source: "generated",
+    prompt: "In direct mapping, the address's INDEX field is used to…",
+    options: [
+      "verify the data",
+      "select the one cache line where the block may live",
+      "store the data",
+      "choose a replacement victim",
+    ], answer: 1,
+    hint: "Low bits find; high bits verify.",
+    explanation: "The index (lower bits) selects the line; the tag (higher bits) is stored and compared to confirm the hit.",
+  },
+  {
+    id: "ca-u6q8", topicId: "ca-cam", unit: 6, co: "CO6", level: "L1", source: "generated",
+    prompt: "Content Addressable Memory retrieves items by…",
+    options: [
+      "unique address",
+      "matching part of their content",
+      "sequential order",
+      "page number",
+    ], answer: 1,
+    hint: "Its other name is associative memory.",
+    explanation: "CAM searches all words in parallel for a content match — the argument, key and match registers do the work.",
+  },
+  {
+    id: "ca-u6q9", topicId: "ca-mem-access", unit: 6, co: "CO6", level: "L2", source: "generated",
+    prompt: "Magnetic tape uses which memory access method?",
+    options: ["Random", "Sequential", "Direct", "Associative"], answer: 1,
+    hint: "You must wind past everything before your data.",
+    explanation: "Tape reaches locations in order — sequential access; disks are direct; main memory is random.",
+  },
+  {
+    id: "ca-u6q10", topicId: "ca-mem-chips", unit: 6, co: "CO6", level: "L4", source: "generated",
+    prompt: "A 128 × 8 RAM chip needs how many address lines?",
+    options: ["8", "7", "128", "9"], answer: 1,
+    hint: "2 to what power gives 128?",
+    explanation: "2⁷ = 128 words, so a 7-bit unidirectional address bus suffices; the 512-byte ROM needs 9.",
+  },
   // ---- Sample end-term paper, Unit 2 questions (CO/L tags as printed) ----
   {
     id: "ca-ppq4", topicId: "ca-addr-direct-indirect", unit: 2, co: "CO2", level: "L2", source: "pastpaper",
@@ -650,6 +753,40 @@ const examBank: ExamQuestion[] = [
     hint: "The word 'synchronous' is the clue.",
     explanation: "Synchronous transfer runs sender and receiver off one shared clock — the opposite of start/stop framing.",
   },
+  // ---- Sample end-term paper, Unit 6 questions (CO/L tags as printed) ----
+  {
+    id: "ca-ppq10", topicId: "ca-mem-hierarchy", unit: 6, co: "CO6", level: "L2", source: "pastpaper",
+    prompt: "The purpose of the memory hierarchy in a computer system is to:",
+    options: [
+      "Increase memory access speed",
+      "Minimize data storage",
+      "Reduce CPU processing",
+      "None of these",
+    ], answer: 0,
+    hint: "Why layer fast-small over slow-big at all?",
+    explanation: "The hierarchy exists to raise effective access speed at reasonable cost by keeping hot data in fast layers.",
+  },
+  {
+    id: "ca-ppq12", topicId: "ca-main-ram-rom", unit: 6, co: "CO1", level: "L4", source: "pastpaper",
+    prompt: "Which memory holds the boot sector files for the system?",
+    options: ["RAM", "ROM", "Cache", "Register"], answer: 1,
+    hint: "It must survive the power being off.",
+    explanation: "The bootstrap loader lives in non-volatile ROM — RAM is empty at power-on.",
+  },
+  {
+    id: "ca-ppq16", topicId: "ca-mem-hierarchy", unit: 6, co: "CO1", level: "L4", source: "pastpaper",
+    prompt: "In the memory hierarchy, which of the following has the fastest speed?",
+    options: ["Memory", "CPU register", "Primary memory", "Memory cache"], answer: 1,
+    hint: "Inside the CPU itself.",
+    explanation: "Registers top the hierarchy — faster even than cache.",
+  },
+  {
+    id: "ca-ppq21", topicId: "ca-aux-memory", unit: 6, co: "CO1", level: "L4", source: "pastpaper",
+    prompt: "Which of the following memories is used in a digital camera?",
+    options: ["Virtual memory", "Flash memory", "Main memory", "Cache memory"], answer: 1,
+    hint: "Non-volatile, removable, solid-state.",
+    explanation: "Cameras store photos on flash memory cards — non-volatile solid-state storage.",
+  },
 ];
 
 export const cse46d = buildCourseBundle(
@@ -657,7 +794,7 @@ export const cse46d = buildCourseBundle(
     id: "cse46d",
     code: "CSE46D",
     title: "Computer Architecture",
-    sections: [sectionU1A, sectionU1B, sectionU2, sectionU3, sectionU4, sectionU5],
+    sections: [sectionU1A, sectionU1B, sectionU2, sectionU3, sectionU4, sectionU5, sectionU6],
   },
   examBank
 );
