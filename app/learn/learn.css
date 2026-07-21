@@ -103,6 +103,28 @@
     0 2px 8px rgba(15, 32, 50, 0.05);
 }
 
+/* The horizontal rail's scrollbar: a slim rounded thumb in the mood's
+   colors on an invisible track — present when useful, never clunky. Touch
+   devices hide it entirely and just swipe. */
+.kube .k-rail {
+  overflow-x: auto;
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: var(--kube-line) transparent;
+}
+.kube .k-rail::-webkit-scrollbar {
+  height: 6px;
+}
+.kube .k-rail::-webkit-scrollbar-track {
+  background: transparent;
+}
+.kube .k-rail::-webkit-scrollbar-thumb {
+  background: var(--kube-line);
+  border-radius: 999px;
+}
+.kube .k-rail::-webkit-scrollbar-thumb:hover {
+  background: var(--kube);
+}
+
 /* Done circles wear a double ring (card gap + kube line) per the redesign. */
 .kube .k-ring-done {
   box-shadow: 0 0 0 3px var(--card), 0 0 0 5px var(--kube-line);

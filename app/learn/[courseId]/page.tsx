@@ -543,7 +543,7 @@ export default function CourseLadderPage() {
                 </p>
               </div>
               {horizontal ? (
-                <div className="mt-2 overflow-x-auto pb-1">
+                <div className="k-rail mt-2 pb-1">
                   <div className="flex items-stretch" style={{ minWidth: "max-content" }}>
                     {row.section.topics.map((topic) => {
                       const alt = nodeIdx % 2 === 1; // odd slots carry the label on top
