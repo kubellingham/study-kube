@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getUid } from "@/lib/api-helpers";
-import { getAnthropic, MODEL } from "@/lib/anthropic";
+import { getAnthropic, CHAT_MODEL } from "@/lib/anthropic";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
 
   const client = getAnthropic();
   const stream = client.messages.stream({
-    model: MODEL,
+    model: CHAT_MODEL,
     max_tokens: 1200,
     output_config: { effort: "low" },
     system: [

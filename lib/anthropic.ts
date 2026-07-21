@@ -16,7 +16,13 @@ import {
   tutorMaterialBlock,
 } from "@/lib/prompts";
 
+/** The heavy-lift model: course generation, digestion, past papers. */
 export const MODEL = process.env.ANTHROPIC_MODEL || "claude-opus-4-8";
+
+/** The conversational model: in-lesson chat and its background struggle
+ *  notes — high-volume, low-stakes turns where Sonnet's speed and price fit.
+ *  Override with ANTHROPIC_CHAT_MODEL (e.g. claude-sonnet-4-6) to compare. */
+export const CHAT_MODEL = process.env.ANTHROPIC_CHAT_MODEL || "claude-sonnet-5";
 
 let cached: Anthropic | null = null;
 

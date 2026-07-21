@@ -1,7 +1,7 @@
 import { NextRequest, after } from "next/server";
 import { getUid } from "@/lib/api-helpers";
 import { adminDb } from "@/lib/firebase/admin";
-import { getAnthropic, MODEL } from "@/lib/anthropic";
+import { getAnthropic, CHAT_MODEL } from "@/lib/anthropic";
 import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 
@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
     try {
       const client = getAnthropic();
       const stream = client.messages.stream({
-        model: MODEL,
+        model: CHAT_MODEL,
         max_tokens: 800,
         output_config: { effort: "low", format: zodOutputFormat(noteSchema) },
         system:
