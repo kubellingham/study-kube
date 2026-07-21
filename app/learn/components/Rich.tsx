@@ -1,15 +1,24 @@
 // Tiny renderer for teach-step markup: paragraphs (blank line), **bold**,
-// `code` spans. Deliberately minimal — course content is trusted static data.
+// *italic*, `code` spans. Deliberately minimal — course content is trusted
+// static data.
 import { Fragment } from "react";
 
 function renderInline(text: string): React.ReactNode[] {
-  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
+  // Bold matches before italic so ** is never read as two lone asterisks.
+  const parts = text.split(/(\*\*[^*]+\*\*|\*[^*\n]+\*|`[^`]+`)/g);
   return parts.map((part, i) => {
     if (part.startsWith("**") && part.endsWith("**")) {
       return (
         <strong key={i} className="font-semibold" style={{ color: "var(--ink)" }}>
           {part.slice(2, -2)}
         </strong>
+      );
+    }
+    if (part.startsWith("*") && part.endsWith("*") && part.length > 2) {
+      return (
+        <em key={i} style={{ color: "var(--ink)" }}>
+          {part.slice(1, -1)}
+        </em>
       );
     }
     if (part.startsWith("`") && part.endsWith("`")) {
