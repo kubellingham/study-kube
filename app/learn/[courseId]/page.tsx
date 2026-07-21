@@ -8,6 +8,7 @@ import { topicLessons, lessonKey } from "@/lib/course/lessons";
 import { useCourse } from "@/lib/learn/use-course";
 import { loadProgress, type LearnProgress } from "@/lib/learn/progress";
 import AddMaterial from "@/app/learn/components/AddMaterial";
+import { useKubeTheme, MOODS } from "@/app/learn/components/KubeShell";
 
 type NodeState = "completed" | "current" | "available" | "locked";
 
@@ -96,19 +97,17 @@ function SegmentRing({ total, done }: { total: number; done: number }) {
   );
 }
 
-function LadderNode({
-  courseId,
+/** The circle itself — shared between the vertical zig-zag and the
+ *  horizontal rail. Ring shadow on done, amber glow + pill on current. */
+function TopicCircle({
   topic,
   state,
-  side,
   number,
   lessonsTotal,
   lessonsDone,
 }: {
-  courseId: string;
   topic: Topic;
   state: NodeState;
-  side: "left" | "right";
   number: number;
   lessonsTotal: number;
   lessonsDone: number;
@@ -132,7 +131,88 @@ function LadderNode({
       color: "var(--faint)",
     },
   };
+  const startHerePill = (
+    <div
+      className="k-bob absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase"
+      style={{
+        background: "var(--amber)",
+        color: "white",
+        fontFamily: "var(--font-mono)",
+        letterSpacing: "0.1em",
+      }}
+    >
+      start here
+    </div>
+  );
 
+  return (
+    <div className="relative">
+      {state === "current" && startHerePill}
+      {isReview ? (
+        <div
+          className="grid h-12 w-12 place-items-center rounded-full border-2 text-base font-semibold"
+          style={{
+            ...(state === "completed"
+              ? { background: "var(--kube)", borderColor: "var(--kube)", color: "white" }
+              : state === "locked"
+                ? { background: "var(--line)", borderColor: "var(--line)", color: "var(--faint)" }
+                : {
+                    background: "var(--kube-soft)",
+                    borderColor: "var(--kube-line)",
+                    color: "var(--kube)",
+                    borderStyle: "dashed",
+                    ...(state === "current"
+                      ? { boxShadow: "0 0 0 6px var(--amber-soft)" }
+                      : {}),
+                  }),
+          }}
+        >
+          {state === "completed" ? <CheckIcon /> : "↻"}
+        </div>
+      ) : (
+        <div
+          className={`grid h-16 w-16 place-items-center rounded-full border-2 text-lg font-semibold text-white ${state === "completed" ? "k-ring-done" : ""}`}
+          style={circle[state]}
+        >
+          {state !== "locked" && (
+            <SegmentRing total={lessonsTotal} done={lessonsDone} />
+          )}
+          {state === "completed" ? (
+            <CheckIcon />
+          ) : state === "locked" ? (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <rect x="5" y="10" width="14" height="10" rx="2" stroke="var(--faint)" strokeWidth="2" />
+              <path d="M8 10V7a4 4 0 018 0v3" stroke="var(--faint)" strokeWidth="2" />
+            </svg>
+          ) : (
+            <span style={state === "available" ? { color: "var(--kube)" } : undefined}>
+              {number}
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LadderNode({
+  courseId,
+  topic,
+  state,
+  side,
+  number,
+  lessonsTotal,
+  lessonsDone,
+}: {
+  courseId: string;
+  topic: Topic;
+  state: NodeState;
+  side: "left" | "right";
+  number: number;
+  lessonsTotal: number;
+  lessonsDone: number;
+}) {
+  const isReview = topic.kind === "review";
   const label = (
     <div
       className={`flex flex-col ${side === "left" ? "items-start text-left" : "items-end text-right"} max-w-[11rem]`}
@@ -170,59 +250,13 @@ function LadderNode({
     <div
       className={`flex items-center gap-4 ${side === "left" ? "flex-row" : "flex-row-reverse"}`}
     >
-      <div className="relative">
-        {state === "current" && (
-          <div
-            className="k-bob absolute -top-9 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold"
-            style={{ background: "var(--amber)", color: "white" }}
-          >
-            start here
-          </div>
-        )}
-        {isReview ? (
-          <div
-            className="grid h-12 w-12 place-items-center rounded-full border-2 text-base font-semibold"
-            style={{
-              ...(state === "completed"
-                ? { background: "var(--kube)", borderColor: "var(--kube)", color: "white" }
-                : state === "locked"
-                  ? { background: "var(--line)", borderColor: "var(--line)", color: "var(--faint)" }
-                  : {
-                      background: "var(--kube-soft)",
-                      borderColor: "var(--kube-line)",
-                      color: "var(--kube)",
-                      borderStyle: "dashed",
-                      ...(state === "current"
-                        ? { boxShadow: "0 0 0 6px var(--amber-soft)" }
-                        : {}),
-                    }),
-            }}
-          >
-            {state === "completed" ? <CheckIcon /> : "↻"}
-          </div>
-        ) : (
-          <div
-            className="grid h-16 w-16 place-items-center rounded-full border-2 text-lg font-semibold text-white"
-            style={circle[state]}
-          >
-            {state !== "locked" && (
-              <SegmentRing total={lessonsTotal} done={lessonsDone} />
-            )}
-            {state === "completed" ? (
-              <CheckIcon />
-            ) : state === "locked" ? (
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-                <rect x="5" y="10" width="14" height="10" rx="2" stroke="var(--faint)" strokeWidth="2" />
-                <path d="M8 10V7a4 4 0 018 0v3" stroke="var(--faint)" strokeWidth="2" />
-              </svg>
-            ) : (
-              <span style={state === "available" ? { color: "var(--kube)" } : undefined}>
-                {number}
-              </span>
-            )}
-          </div>
-        )}
-      </div>
+      <TopicCircle
+        topic={topic}
+        state={state}
+        number={number}
+        lessonsTotal={lessonsTotal}
+        lessonsDone={lessonsDone}
+      />
       {label}
     </div>
   );
@@ -240,12 +274,79 @@ function LadderNode({
   );
 }
 
+/** One slot of the horizontal rail: label above or below, circle centered —
+ *  the redesign's top/bottom alternation, scaled to real ladders by letting
+ *  each section's rail scroll sideways. */
+function RailNode({
+  courseId,
+  topic,
+  state,
+  alt,
+  number,
+  lessonsTotal,
+  lessonsDone,
+}: {
+  courseId: string;
+  topic: Topic;
+  state: NodeState;
+  alt: boolean; // true = label above (the "top" position)
+  number: number;
+  lessonsTotal: number;
+  lessonsDone: number;
+}) {
+  const isReview = topic.kind === "review";
+  const label = (
+    <div className="flex w-[130px] flex-col items-center text-center">
+      <span
+        className="text-[13px] font-semibold leading-tight"
+        style={{ color: state === "locked" ? "var(--faint)" : "var(--ink)" }}
+      >
+        {topic.title}
+      </span>
+      {isReview && state !== "locked" && (
+        <span className="k-eyebrow mt-0.5" style={{ color: "var(--kube)", fontSize: "9.5px" }}>
+          5 questions
+        </span>
+      )}
+      {!isReview && topic.weight === "heavy" && state !== "locked" && (
+        <span className="k-eyebrow mt-0.5" style={{ color: "var(--amber)", fontSize: "9.5px" }}>
+          core
+        </span>
+      )}
+    </div>
+  );
+  const body = (
+    <div className="flex w-[150px] flex-none flex-col items-center">
+      <div className="flex h-20 items-end justify-center pb-2.5">{alt && label}</div>
+      <TopicCircle
+        topic={topic}
+        state={state}
+        number={number}
+        lessonsTotal={lessonsTotal}
+        lessonsDone={lessonsDone}
+      />
+      <div className="flex h-20 items-start justify-center pt-2.5">{!alt && label}</div>
+    </div>
+  );
+  if (state === "locked") return body;
+  return (
+    <Link
+      href={`/learn/${courseId}/lesson/${topic.id}`}
+      className="transition-transform hover:scale-[1.03]"
+    >
+      {body}
+    </Link>
+  );
+}
+
 export default function CourseLadderPage() {
   const params = useParams<{ courseId: string }>();
   const { user, userLoading, status, bundle, owned, syllabus, files, reload } =
     useCourse(params.courseId);
   const router = useRouter();
   const [progress, setProgress] = useState<LearnProgress | null>(null);
+  const { mood, setMood, layout, setLayout } = useKubeTheme();
+  const horizontal = layout === "horizontal";
 
   useEffect(() => {
     if (!userLoading && !user) router.replace("/login");
@@ -278,13 +379,82 @@ export default function CourseLadderPage() {
   const done = ladder.filter((t) => progress.completed[t.id]).length;
   let nodeIdx = 0;
 
+  const controls = (
+    <div className="flex items-center gap-3">
+      {/* Mood dots — same tokens, different weather */}
+      <div className="flex items-center gap-1.5" role="group" aria-label="Mood">
+        {MOODS.map((m) => (
+          <button
+            key={m.id}
+            aria-label={`${m.label} mood`}
+            aria-pressed={mood === m.id}
+            onClick={() => setMood(m.id)}
+            className="h-4.5 w-4.5 rounded-full transition-transform hover:scale-110"
+            style={{
+              width: 18,
+              height: 18,
+              background: m.dot,
+              border: `2px solid ${mood === m.id ? m.ring : "var(--line)"}`,
+              boxShadow: mood === m.id ? `0 0 0 2px var(--card)` : undefined,
+            }}
+          />
+        ))}
+      </div>
+      {/* Orientation toggle — one ladder, two ways to lay it down */}
+      {ladder.length > 0 && (
+        <div
+          className="flex overflow-hidden rounded-lg border"
+          style={{ borderColor: "var(--line)" }}
+          role="group"
+          aria-label="Ladder orientation"
+        >
+          {(["vertical", "horizontal"] as const).map((l) => (
+            <button
+              key={l}
+              aria-label={`${l} ladder`}
+              aria-pressed={layout === l}
+              onClick={() => setLayout(l)}
+              className="grid h-7 w-8 place-items-center"
+              style={{
+                background: layout === l ? "var(--kube-soft)" : "transparent",
+                color: layout === l ? "var(--kube)" : "var(--faint)",
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden>
+                {l === "vertical" ? (
+                  <>
+                    <circle cx="4" cy="2.5" r="2" fill="currentColor" />
+                    <circle cx="10" cy="7" r="2" fill="currentColor" />
+                    <circle cx="4" cy="11.5" r="2" fill="currentColor" />
+                  </>
+                ) : (
+                  <>
+                    <circle cx="2.5" cy="10" r="2" fill="currentColor" />
+                    <circle cx="7" cy="4" r="2" fill="currentColor" />
+                    <circle cx="11.5" cy="10" r="2" fill="currentColor" />
+                  </>
+                )}
+              </svg>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
   return (
-    <main className="mx-auto w-full max-w-xl flex-1 px-4 pb-24 pt-10">
-      <div className="mb-2 flex items-center justify-between">
+    <main className="w-full flex-1 px-3 pb-24 pt-8 sm:px-6" style={{ background: "var(--bg-deep)" }}>
+      <div
+        className={`k-frame mx-auto w-full px-4 py-7 sm:px-8 ${horizontal ? "max-w-5xl" : "max-w-xl"}`}
+      >
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
         <span className="k-eyebrow">{course.code} · Kube</span>
-        <Link href="/learn" className="text-xs" style={{ color: "var(--faint)" }}>
-          ← subjects
-        </Link>
+        <div className="flex items-center gap-4">
+          {controls}
+          <Link href="/learn" className="text-xs" style={{ color: "var(--faint)" }}>
+            ← subjects
+          </Link>
+        </div>
       </div>
       <h1 className="text-3xl">{course.title}</h1>
       <p className="mt-2 text-sm" style={{ color: "var(--ink-soft)" }}>
@@ -372,30 +542,59 @@ export default function CourseLadderPage() {
                   {row.section.tagline}
                 </p>
               </div>
-              <div className="mt-8 flex flex-col gap-9">
-                {row.section.topics.map((topic) => {
-                  const side = nodeIdx % 2 === 0 ? "left" : "right";
-                  nodeIdx += 1;
-                  const lessons = topicLessons(topic);
-                  const lessonsDone = lessons.filter(
-                    (l) => progress.lessons[lessonKey(topic.id, l.id)]
-                  ).length;
-                  return (
-                    <LadderNode
-                      key={topic.id}
-                      courseId={course.id}
-                      topic={topic}
-                      state={states[topic.id]}
-                      side={side}
-                      number={bundle.topicPosition(topic.id) + 1}
-                      lessonsTotal={lessons.length}
-                      lessonsDone={
-                        progress.completed[topic.id] ? lessons.length : lessonsDone
-                      }
-                    />
-                  );
-                })}
-              </div>
+              {horizontal ? (
+                <div className="mt-2 overflow-x-auto pb-1">
+                  <div className="flex items-stretch" style={{ minWidth: "max-content" }}>
+                    {row.section.topics.map((topic) => {
+                      const alt = nodeIdx % 2 === 1; // odd slots carry the label on top
+                      nodeIdx += 1;
+                      const lessons = topicLessons(topic);
+                      const lessonsDone = lessons.filter(
+                        (l) => progress.lessons[lessonKey(topic.id, l.id)]
+                      ).length;
+                      return (
+                        <RailNode
+                          key={topic.id}
+                          courseId={course.id}
+                          topic={topic}
+                          state={states[topic.id]}
+                          alt={alt}
+                          number={bundle.topicPosition(topic.id) + 1}
+                          lessonsTotal={lessons.length}
+                          lessonsDone={
+                            progress.completed[topic.id] ? lessons.length : lessonsDone
+                          }
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-8 flex flex-col gap-9">
+                  {row.section.topics.map((topic) => {
+                    const side = nodeIdx % 2 === 0 ? "left" : "right";
+                    nodeIdx += 1;
+                    const lessons = topicLessons(topic);
+                    const lessonsDone = lessons.filter(
+                      (l) => progress.lessons[lessonKey(topic.id, l.id)]
+                    ).length;
+                    return (
+                      <LadderNode
+                        key={topic.id}
+                        courseId={course.id}
+                        topic={topic}
+                        state={states[topic.id]}
+                        side={side}
+                        number={bundle.topicPosition(topic.id) + 1}
+                        lessonsTotal={lessons.length}
+                        lessonsDone={
+                          progress.completed[topic.id] ? lessons.length : lessonsDone
+                        }
+                      />
+                    );
+                  })}
+                </div>
+              )}
             </section>
           )
         );
@@ -410,6 +609,7 @@ export default function CourseLadderPage() {
           invitation={ladder.length === 0 && !syllabus}
         />
       )}
+      </div>
     </main>
   );
 }

@@ -1,10 +1,13 @@
-/* Kube design system — FIXED per the build brief §7. Do not restyle. */
+/* Kube design system — base tokens per the build brief §7. The "Study Kube
+   Redesign" (claude.ai/design) adds four switchable moods that remap these
+   same variables; "studious" is the original palette and stays the default. */
 
 .kube {
   --ink: #16202b;
   --ink-soft: #46566a;
   --faint: #8593a3;
   --bg: #eef1f4;
+  --bg-deep: #e5e8ec;
   --card: #ffffff;
   --line: #dce2e8;
   --kube: #1f6f6b;
@@ -12,6 +15,7 @@
   --kube-line: #b4d8d5;
   --amber: #d98a1f;
   --amber-soft: #f8ecd7;
+  --amber-line: #eccb85;
   --red: #c9463a;
   --red-soft: #f7e2df;
   --radius: 16px;
@@ -26,6 +30,82 @@
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
+}
+
+/* ---- Moods (Study Kube Redesign): same tokens, different weather. ---- */
+
+.kube[data-mood="bookshelf"] {
+  --ink: #1c1a17;
+  --ink-soft: #4a4640;
+  --faint: #8a827a;
+  --bg: #f4efe6;
+  --bg-deep: #e8e5df;
+  --card: #fffdf8;
+  --line: #e4dccf;
+  --kube: #1f6f6b;
+  --kube-soft: #e2eeed;
+  --kube-line: #b4d6d3;
+  --amber: #c07a1c;
+  --amber-soft: #f6e8d0;
+  --amber-line: #e6c78a;
+  --red: #b8443a;
+  --red-soft: #f4dfdc;
+}
+
+.kube[data-mood="midnight"] {
+  --ink: #f2e8d3;
+  --ink-soft: #c8bda3;
+  --faint: #8a7f6c;
+  --bg: #1a1612;
+  --bg-deep: #0f0c08;
+  --card: #241d17;
+  --line: #3a2f24;
+  --kube: #5cbdb6;
+  --kube-soft: #1e3a37;
+  --kube-line: #2f5651;
+  --amber: #e0a660;
+  --amber-soft: #3a2a15;
+  --amber-line: #5a3f1e;
+  --red: #e07064;
+  --red-soft: #3a1e1c;
+}
+
+.kube[data-mood="meadow"] {
+  --ink: #1c2820;
+  --ink-soft: #4a5a50;
+  --faint: #7a8a7f;
+  --bg: #e8efe4;
+  --bg-deep: #dde3d5;
+  --card: #fdfdfa;
+  --line: #c8d4bd;
+  --kube: #3d7a4a;
+  --kube-soft: #dfebe0;
+  --kube-line: #a5c8ab;
+  --amber: #b57a2a;
+  --amber-soft: #f0e4c8;
+  --amber-line: #dec394;
+  --red: #a94238;
+  --red-soft: #eed8d3;
+}
+
+.kube[data-mood="midnight"] .k-code {
+  background: #1e1813;
+}
+
+/* The redesign's framed surface: the ladder sits in a soft-shadowed frame on
+   a slightly deeper backdrop. */
+.kube .k-frame {
+  background: var(--bg);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: var(--radius);
+  box-shadow:
+    0 24px 48px -24px rgba(15, 32, 50, 0.22),
+    0 2px 8px rgba(15, 32, 50, 0.05);
+}
+
+/* Done circles wear a double ring (card gap + kube line) per the redesign. */
+.kube .k-ring-done {
+  box-shadow: 0 0 0 3px var(--card), 0 0 0 5px var(--kube-line);
 }
 
 .kube h1,

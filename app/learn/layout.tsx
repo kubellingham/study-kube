@@ -8,13 +8,15 @@ export const metadata: Metadata = {
 const FONTS_URL =
   "https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap";
 
+import KubeShell from "@/app/learn/components/KubeShell";
+
 export default function LearnLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    <div className="kube flex-1">
+    <KubeShell>
       {/* React hoists these into <head>. Runtime Google Fonts keeps the build
           offline-safe (no next/font network fetch at build time). */}
       <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -25,6 +27,6 @@ export default function LearnLayout({
       />
       <link rel="stylesheet" href={FONTS_URL} />
       {children}
-    </div>
+    </KubeShell>
   );
 }
