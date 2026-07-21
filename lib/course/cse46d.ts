@@ -10,6 +10,7 @@ import type { ExamQuestion, SyllabusInfo } from "./types";
 import { sectionU1A } from "./cse46d-unit1a";
 import { sectionU1B } from "./cse46d-unit1b";
 import { sectionU2 } from "./cse46d-unit2";
+import { sectionU3 } from "./cse46d-unit3";
 
 export const cse46dSyllabus: SyllabusInfo = {
   units: [
@@ -277,6 +278,92 @@ const examBank: ExamQuestion[] = [
     hint: "Value vs address — which one lives in the register here?",
     explanation: "In register-indirect mode the register holds the operand's ADDRESS (a pointer); plain register mode holds the value itself.",
   },
+  // ---- Authored for Unit 3's circles (CO3 per syllabus mapping) ----
+  {
+    id: "ca-u3q1", topicId: "ca-stack-lifo", unit: 3, co: "CO3", level: "L1", source: "generated",
+    prompt: "A stack follows which order?",
+    options: ["FIFO", "LIFO", "Random", "Priority"], answer: 1,
+    hint: "Think of a stack of plates.",
+    explanation: "Last In, First Out — only the top is accessible, via PUSH and POP.",
+  },
+  {
+    id: "ca-u3q2", topicId: "ca-stack-sp", unit: 3, co: "CO3", level: "L2", source: "generated",
+    prompt: "In a descending stack, a PUSH operation…",
+    options: [
+      "increments SP, then stores",
+      "decrements SP (SP = SP − 1), then stores at the new top",
+      "stores, then decrements SP",
+      "never moves SP",
+    ], answer: 1,
+    hint: "Make room first, in the direction the stack grows.",
+    explanation: "A descending stack grows toward lower addresses: PUSH decrements SP to open a new top, then stores; POP reads then increments.",
+  },
+  {
+    id: "ca-u3q3", topicId: "ca-rpn-notation", unit: 3, co: "CO3", level: "L2", source: "generated",
+    prompt: "The RPN (postfix) form of (A + B) is…",
+    options: ["+ A B", "A B +", "A + B", "B A -"], answer: 1,
+    hint: "Operator after the operands.",
+    explanation: "Postfix places the operator last: A B +. No parentheses are ever needed.",
+  },
+  {
+    id: "ca-u3q4", topicId: "ca-rpn-stack", unit: 3, co: "CO3", level: "L4", source: "generated",
+    prompt: "Evaluating 3 5 + 2 * with a stack gives…",
+    options: ["13", "16", "30", "10"], answer: 1,
+    hint: "Numbers push; operators pop two, compute, push back.",
+    explanation: "3 5 + leaves 8 on the stack; 2 pushes; * pops 8,2 and pushes 16 — the lesson's worked trace.",
+  },
+  {
+    id: "ca-u3q5", topicId: "ca-fmt-01", unit: 3, co: "CO3", level: "L2", source: "generated",
+    prompt: "Zero-address instructions are natural on…",
+    options: [
+      "accumulator machines",
+      "stack-based CPUs like the JVM",
+      "three-address RISC machines",
+      "DMA controllers",
+    ], answer: 1,
+    hint: "Where do their operands implicitly come from?",
+    explanation: "With operands implicit on the stack, no addresses are needed — the JVM and HP calculators work this way.",
+  },
+  {
+    id: "ca-u3q6", topicId: "ca-fmt-23", unit: 3, co: "CO3", level: "L2", source: "generated",
+    prompt: "ADD A, B (result overwrites A) is which instruction format?",
+    options: ["Zero-address", "One-address", "Two-address", "Three-address"], answer: 2,
+    hint: "Count the named operands.",
+    explanation: "Two named operands with the result replacing one — the two-address format of general-register machines.",
+  },
+  {
+    id: "ca-u3q7", topicId: "ca-jumps-loops", unit: 3, co: "CO3", level: "L2", source: "generated",
+    prompt: "A conditional branch like JNZ decides using…",
+    options: ["the stack pointer", "the flags register", "the DMA controller", "ROM"], answer: 1,
+    hint: "Zero, Carry, Sign, Overflow.",
+    explanation: "Condition codes in the flags register, set by earlier operations, steer conditional jumps.",
+  },
+  {
+    id: "ca-u3q8", topicId: "ca-call-ret", unit: 3, co: "CO3", level: "L2", source: "generated",
+    prompt: "During a subroutine CALL, the return address is stored…",
+    options: ["in the ALU", "on the stack", "in ROM", "in the cache"], answer: 1,
+    hint: "It must come back off in LIFO order when RET runs.",
+    explanation: "CALL pushes the return address onto the stack; RET pops it — nested calls unwind correctly because of LIFO.",
+  },
+  {
+    id: "ca-u3q9", topicId: "ca-interrupts", unit: 3, co: "CO3", level: "L1", source: "generated",
+    prompt: "An interrupt triggered by the INT instruction is…",
+    options: ["a hardware interrupt", "a software interrupt", "non-maskable", "a page fault"], answer: 1,
+    hint: "It came from code, not from a device.",
+    explanation: "Instruction-triggered interrupts are software interrupts; external events (keyboard, failures) raise hardware interrupts.",
+  },
+  {
+    id: "ca-u3q10", topicId: "ca-flow-anatomy", unit: 3, co: "CO3", level: "L1", source: "generated",
+    prompt: "The Program Counter (PC) holds…",
+    options: [
+      "the current instruction",
+      "the address of the next instruction to be executed",
+      "the top of the stack",
+      "the ALU result",
+    ], answer: 1,
+    hint: "It auto-increments after each instruction.",
+    explanation: "The PC always points at the NEXT instruction's address; the current instruction sits in the IR.",
+  },
   // ---- Sample end-term paper, Unit 2 questions (CO/L tags as printed) ----
   {
     id: "ca-ppq4", topicId: "ca-addr-direct-indirect", unit: 2, co: "CO2", level: "L2", source: "pastpaper",
@@ -313,6 +400,14 @@ const examBank: ExamQuestion[] = [
     hint: "Its name says which register anchors the address.",
     explanation: "Relative (PC-relative) addressing adds an offset to the program counter — used for branches.",
   },
+  // ---- Sample end-term paper, Unit 3 questions (CO/L tags as printed) ----
+  {
+    id: "ca-ppq1", topicId: "ca-fmt-23", unit: 3, co: "CO3", level: "L2", source: "pastpaper",
+    prompt: "Which of the following is NOT a valid instruction format?",
+    options: ["Zero-address", "One-address", "Two-address", "Four-address"], answer: 3,
+    hint: "Count how many formats the comparison table actually has.",
+    explanation: "The standard formats are zero through three address; four-address is the invented option.",
+  },
 ];
 
 export const cse46d = buildCourseBundle(
@@ -320,7 +415,7 @@ export const cse46d = buildCourseBundle(
     id: "cse46d",
     code: "CSE46D",
     title: "Computer Architecture",
-    sections: [sectionU1A, sectionU1B, sectionU2],
+    sections: [sectionU1A, sectionU1B, sectionU2, sectionU3],
   },
   examBank
 );
