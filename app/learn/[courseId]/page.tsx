@@ -146,7 +146,10 @@ function TopicCircle({
   );
 
   return (
-    <div className="relative">
+    <div
+      className={`relative rounded-full ${state === "current" ? "k-locate" : ""}`}
+      {...(state === "current" ? { "data-kube-current": "" } : {})}
+    >
       {state === "current" && startHerePill}
       {isReview ? (
         <div
@@ -354,6 +357,19 @@ export default function CourseLadderPage() {
       loadProgress(user.uid, bundle.course.id).then(setProgress);
     }
   }, [user, userLoading, router, bundle]);
+
+  // Find-me-on-load: once the ladder is rendered, bring the "start here"
+  // circle into view — vertically down the page AND sideways along the rail
+  // in horizontal mode — so a refresh never dumps you back at the top.
+  useEffect(() => {
+    if (!progress || !bundle) return;
+    const t = setTimeout(() => {
+      document
+        .querySelector("[data-kube-current]")
+        ?.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+    }, 200);
+    return () => clearTimeout(t);
+  }, [progress, bundle, layout]);
 
   if (status === "notfound") {
     return (

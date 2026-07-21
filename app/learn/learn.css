@@ -130,6 +130,24 @@
   background: var(--kube);
 }
 
+/* Arrival pulse: two soft amber halos around the current circle right after
+   the page finds it for you — a quick "you are here". */
+@keyframes k-locate {
+  0% {
+    box-shadow: 0 0 0 0 var(--amber-soft);
+  }
+  70% {
+    box-shadow: 0 0 0 22px rgba(0, 0, 0, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(0, 0, 0, 0);
+  }
+}
+
+.kube .k-locate {
+  animation: k-locate 1.1s ease-out 0.35s 2;
+}
+
 /* Done circles wear a double ring (card gap + kube line) per the redesign. */
 .kube .k-ring-done {
   box-shadow: 0 0 0 3px var(--card), 0 0 0 5px var(--kube-line);
@@ -260,6 +278,7 @@
   .kube .k-shake,
   .kube .k-bob,
   .kube .k-rise,
+  .kube .k-locate,
   .kube .k-sweep rect {
     animation: none;
   }
