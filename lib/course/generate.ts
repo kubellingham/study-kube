@@ -122,11 +122,47 @@ export interface ExistingTopicRef {
 }
 
 /** Returns the SDK message stream generating one unit's structure. */
+/** Slide pictures / scanned pages / photos that accompany a file's text.
+ *  The client compresses them; here they become vision blocks so Kube can
+ *  teach from image-carried material (diagrams, image-only slides, scans). */
+export interface SourceImage {
+  mediaType: string;
+  data: string; // bare base64
+}
+
+type ContentBlock =
+  | { type: "text"; text: string }
+  | {
+      type: "image";
+      source: { type: "base64"; media_type: "image/jpeg" | "image/png"; data: string };
+    };
+
+function withImages(text: string, images?: SourceImage[]): string | ContentBlock[] {
+  if (!images || images.length === 0) return text;
+  const blocks: ContentBlock[] = [{ type: "text", text }];
+  for (const img of images) {
+    blocks.push({
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: img.mediaType === "image/png" ? "image/png" : "image/jpeg",
+        data: img.data,
+      },
+    });
+  }
+  blocks.push({
+    type: "text",
+    text: `The ${images.length} image(s) above are part of this material — slides, diagrams or scanned pages whose content is NOT in the text. Read them as carefully as the text; anything they teach must appear in your output.`,
+  });
+  return blocks;
+}
+
 export function generateUnitStream(
   courseTitle: string,
   unitNumber: number,
   rawText: string,
-  existingTopics: ExistingTopicRef[]
+  existingTopics: ExistingTopicRef[],
+  images?: SourceImage[]
 ) {
   const client = getAnthropic();
   const existing =
@@ -148,10 +184,13 @@ export function generateUnitStream(
     messages: [
       {
         role: "user",
-        content: `Course: ${courseTitle}\nUnit number: ${unitNumber}\nPrefix all topic ids with "u${unitNumber}-".\n\n${existing}\n\n--- UNIT MATERIAL ---\n${rawText.slice(
-          0,
-          MAX_UNIT_CHARS
-        )}`,
+        content: withImages(
+          `Course: ${courseTitle}\nUnit number: ${unitNumber}\nPrefix all topic ids with "u${unitNumber}-".\n\n${existing}\n\n--- UNIT MATERIAL ---\n${rawText.slice(
+            0,
+            MAX_UNIT_CHARS
+          )}`,
+          images
+        ),
       },
     ],
   });
@@ -312,18 +351,21 @@ const classifySchema = z.object({
 
 export type Classification = z.infer<typeof classifySchema>;
 
-export function classifyStream(courseTitle: string, rawText: string) {
+export function classifyStream(courseTitle: string, rawText: string, images?: SourceImage[]) {
   const client = getAnthropic();
   return client.messages.stream({
     model: MODEL,
     max_tokens: 2000,
     output_config: { effort: "low", format: zodOutputFormat(classifySchema) },
     system:
-      "Classify what role a file plays in a university course. A syllabus/course outline is the driving file (defines units + Course Outcomes, usually with little teaching content). Past papers are exam/question papers. Lecture slide decks and teaching documents are 'unit' — even when they cover only PART of a unit (e.g. a single lecture); infer the unit number from the title or content. Reserve 'notes' for supplementary handouts that clearly aren't the main teaching material.",
+      "Classify what role a file plays in a university course. A syllabus/course outline is the driving file (defines units + Course Outcomes, usually with little teaching content). Past papers are exam/question papers. Lecture slide decks and teaching documents are 'unit' — even when they cover only PART of a unit (e.g. a single lecture); infer the unit number from the title or content. Reserve 'notes' for supplementary handouts that clearly aren't the main teaching material. Some files arrive as images (scanned pages, photographed notes, slide pictures) — classify from what the images show.",
     messages: [
       {
         role: "user",
-        content: `Course: ${courseTitle}\n\n--- FILE CONTENT (start) ---\n${rawText.slice(0, 10_000)}`,
+        content: withImages(
+          `Course: ${courseTitle}\n\n--- FILE CONTENT (start) ---\n${rawText.slice(0, 10_000)}`,
+          images
+        ),
       },
     ],
   });
@@ -342,18 +384,21 @@ const syllabusSchema = z.object({
     .describe("The Course Outcomes, if listed; empty array if none"),
 });
 
-export function syllabusStream(courseTitle: string, rawText: string) {
+export function syllabusStream(courseTitle: string, rawText: string, images?: SourceImage[]) {
   const client = getAnthropic();
   return client.messages.stream({
     model: MODEL,
     max_tokens: 6000,
     output_config: { effort: "low", format: zodOutputFormat(syllabusSchema) },
     system:
-      "Extract the skeleton of a course from its syllabus/outline: the numbered units with their titles, and the Course Outcomes (COs). Faithful to the document — do not invent units it doesn't define.",
+      "Extract the skeleton of a course from its syllabus/outline: the numbered units with their titles, and the Course Outcomes (COs). Faithful to the document — do not invent units it doesn't define. The syllabus may arrive as scanned page images; read them as the document.",
     messages: [
       {
         role: "user",
-        content: `Course: ${courseTitle}\n\n--- SYLLABUS ---\n${rawText.slice(0, 40_000)}`,
+        content: withImages(
+          `Course: ${courseTitle}\n\n--- SYLLABUS ---\n${rawText.slice(0, 40_000)}`,
+          images
+        ),
       },
     ],
   });
@@ -386,7 +431,8 @@ const pastPaperSchema = z.object({
 export function pastPaperStream(
   courseTitle: string,
   rawText: string,
-  existingTopics: ExistingTopicRef[]
+  existingTopics: ExistingTopicRef[],
+  images?: SourceImage[]
 ) {
   const client = getAnthropic();
   return client.messages.stream({
@@ -395,13 +441,16 @@ export function pastPaperStream(
     thinking: { type: "adaptive" },
     output_config: { effort: "high", format: zodOutputFormat(pastPaperSchema) },
     system:
-      "You convert a real past exam paper into Kube assessment questions. Keep each question's substance and difficulty faithful to the paper — these show how the course is actually tested. Convert non-MCQ questions into fair 4-option MCQs testing the same idea. Preserve printed CO and Bloom's/RBT level tags per question (null if absent). Map every question onto the closest topic id from the provided ladder; skip questions that fit no topic.",
+      "You convert a real past exam paper into Kube assessment questions. Keep each question's substance and difficulty faithful to the paper — these show how the course is actually tested. Convert non-MCQ questions into fair 4-option MCQs testing the same idea. Preserve printed CO and Bloom's/RBT level tags per question (null if absent). Map every question onto the closest topic id from the provided ladder; skip questions that fit no topic. Papers often arrive as scanned page images — read every page image carefully and convert its questions exactly as if it were text.",
     messages: [
       {
         role: "user",
-        content: `Course: ${courseTitle}\n\nLadder topics (map each question to one of these ids):\n${existingTopics
-          .map((t) => `- ${t.id}: ${t.title}`)
-          .join("\n")}\n\n--- PAST PAPER ---\n${rawText.slice(0, MAX_UNIT_CHARS)}`,
+        content: withImages(
+          `Course: ${courseTitle}\n\nLadder topics (map each question to one of these ids):\n${existingTopics
+            .map((t) => `- ${t.id}: ${t.title}`)
+            .join("\n")}\n\n--- PAST PAPER ---\n${rawText.slice(0, MAX_UNIT_CHARS)}`,
+          images
+        ),
       },
     ],
   });

@@ -23,6 +23,28 @@ export const maxDuration = 300;
 
 const MAX_FILE_BYTES = 4 * 1024 * 1024; // fallback multipart path only
 const MAX_TEXT_CHARS = 400_000;
+const MAX_IMAGES = 30;
+const MAX_IMAGE_B64 = 400_000; // per image, base64 chars (~300 KB binary)
+
+type IngestImage = { mediaType: string; data: string };
+
+function sanitizeImages(raw: unknown): IngestImage[] {
+  if (!Array.isArray(raw)) return [];
+  const out: IngestImage[] = [];
+  for (const item of raw) {
+    if (out.length >= MAX_IMAGES) break;
+    if (!item || typeof item !== "object") continue;
+    const mediaType = (item as { mediaType?: unknown }).mediaType;
+    const data = (item as { data?: unknown }).data;
+    if (typeof data !== "string" || data.length === 0 || data.length > MAX_IMAGE_B64) continue;
+    if (!/^[A-Za-z0-9+/=]+$/.test(data.slice(0, 256))) continue;
+    out.push({
+      mediaType: mediaType === "image/png" ? "image/png" : "image/jpeg",
+      data,
+    });
+  }
+  return out;
+}
 
 /** Intake endpoint (KUBE_INTAKE_FLOW.md), background-job edition. The client
  *  extracts text in the browser and POSTs JSON {courseId, name, text}; this
@@ -38,6 +60,7 @@ export async function POST(req: NextRequest) {
   let courseId = "";
   let fileName = "pasted text";
   let rawText = "";
+  let images: IngestImage[] = [];
 
   try {
     const contentType = req.headers.get("content-type") || "";
@@ -46,6 +69,7 @@ export async function POST(req: NextRequest) {
       courseId = (body.courseId || "").toString();
       fileName = (body.name || "pasted text").toString().slice(0, 200);
       rawText = (body.text || "").toString();
+      images = sanitizeImages(body.images);
     } else {
       // Fallback for clients that couldn't extract locally (small files only).
       const form = await req.formData();
@@ -70,7 +94,9 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: "Missing course." }, { status: 400 });
     }
     rawText = rawText.slice(0, MAX_TEXT_CHARS).trim();
-    if (rawText.length < 100) {
+    // Image-carried material (photos of notes, scanned papers, picture-heavy
+    // decks) is welcome with little or no text — Kube reads the images.
+    if (rawText.length < 100 && images.length === 0) {
       return Response.json(
         { error: "That file had too little readable text to work from." },
         { status: 400 }
@@ -91,7 +117,11 @@ export async function POST(req: NextRequest) {
   const priorFiles = ((snap.get("files") as IngestedFile[]) ?? []).slice();
 
   // Durable per-file memory: same content already digested → nothing to do.
-  const fileId = createHash("sha256").update(rawText).digest("hex").slice(0, 16);
+  // Images count as content — a deck whose text is identical but whose
+  // pictures differ is a different file.
+  const hasher = createHash("sha256").update(rawText);
+  for (const img of images) hasher.update(img.data.slice(0, 4096));
+  const fileId = hasher.digest("hex").slice(0, 16);
   const already = priorFiles.find((f) => f.id === fileId);
   if (already) {
     return Response.json({
@@ -130,8 +160,9 @@ export async function POST(req: NextRequest) {
 
     try {
       const classification = parseClassification(
+        // A few images are enough to classify; generation gets them all.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await runToText(classifyStream(courseTitle, rawText) as AsyncIterable<any>)
+        await runToText(classifyStream(courseTitle, rawText, images.slice(0, 4)) as AsyncIterable<any>)
       );
       await setJob({ note: `Filed as: ${classification.label}. Digesting…`, label: classification.label, kind: classification.kind });
 
@@ -149,7 +180,7 @@ export async function POST(req: NextRequest) {
       if (classification.kind === "syllabus") {
         const parsed = parseSyllabus(
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await runToText(syllabusStream(courseTitle, rawText) as AsyncIterable<any>)
+          await runToText(syllabusStream(courseTitle, rawText, images) as AsyncIterable<any>)
         );
         await db.runTransaction(async (tx) => {
           const fresh = await tx.get(courseRef);
@@ -181,7 +212,7 @@ export async function POST(req: NextRequest) {
         const generated = parseGeneratedUnit(
           await runToText(
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            generateUnitStream(courseTitle, unitNumber, rawText, existingTopics) as AsyncIterable<any>
+            generateUnitStream(courseTitle, unitNumber, rawText, existingTopics, images) as AsyncIterable<any>
           )
         );
 
@@ -247,7 +278,8 @@ export async function POST(req: NextRequest) {
             pastPaperStream(
               courseTitle,
               rawText,
-              topics.map((t) => ({ id: t.id, title: t.title }))
+              topics.map((t) => ({ id: t.id, title: t.title })),
+              images
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
             ) as AsyncIterable<any>
           )

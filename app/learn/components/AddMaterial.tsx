@@ -15,7 +15,7 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { authedFetch } from "@/lib/authed-fetch";
-import { extractFileTextInBrowser } from "@/lib/ingest/client-extract";
+import { extractFileInBrowser, type ExtractedMaterial } from "@/lib/ingest/client-extract";
 import type { IngestedFile } from "@/lib/course/types";
 
 interface JobLine {
@@ -116,12 +116,17 @@ export default function AddMaterial({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [courseId, uid]);
 
-  async function submitOne(key: string, name: string, extracted: string) {
+  async function submitOne(key: string, name: string, extracted: ExtractedMaterial) {
     try {
       const res = await authedFetch("/api/course/ingest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ courseId, name, text: extracted }),
+        body: JSON.stringify({
+          courseId,
+          name,
+          text: extracted.text,
+          images: extracted.images,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Digestion failed.");
@@ -151,8 +156,12 @@ export default function AddMaterial({
     for (let i = 0; i < picked.length; i++) {
       const key = batch[i].key;
       try {
-        const extracted = await extractFileTextInBrowser(picked[i]);
-        updateLine(key, { note: "Sending the text to Kube…" });
+        const extracted = await extractFileInBrowser(picked[i]);
+        updateLine(key, {
+          note: extracted.images.length
+            ? `Sending text + ${extracted.images.length} image${extracted.images.length === 1 ? "" : "s"} to Kube…`
+            : "Sending the text to Kube…",
+        });
         await submitOne(key, picked[i].name, extracted);
       } catch (err) {
         updateLine(key, {
@@ -171,7 +180,7 @@ export default function AddMaterial({
       ...prev,
       { key, name: "pasted text", state: "working", note: "Sending to Kube…" },
     ]);
-    await submitOne(key, "pasted text", text);
+    await submitOne(key, "pasted text", { text, images: [] });
     setText("");
   }
 
@@ -249,13 +258,14 @@ export default function AddMaterial({
             Drop files here — or tap to choose
           </p>
           <p className="mt-1 text-xs" style={{ color: "var(--faint)" }}>
-            PDF, PPTX, DOCX, TXT, MD · any size — text is read on your device.
-            Old .ppt/.doc need a quick Save-As first.
+            PDF, PPT(X), DOC(X), XLSX, images, TXT, MD · any size — read on
+            your device. Scanned PDFs and picture-heavy slides work too: Kube
+            looks at the images.
           </p>
           <input
             ref={inputRef}
             type="file"
-            accept=".pdf,.pptx,.docx,.txt,.md,.ppt,.doc,application/pdf"
+            accept=".pdf,.pptx,.potx,.docx,.dotx,.xlsx,.xltx,.txt,.md,.csv,.ppt,.doc,.png,.jpg,.jpeg,.webp,.gif,.bmp,application/pdf,image/*"
             multiple
             className="hidden"
             onChange={(e) => {
