@@ -64,11 +64,16 @@ function cubeSVG(top: string, left: string, right: string, seam: string) {
 }
 const CUBE_DARK = cubeSVG("#ffffff", "rgba(255,255,255,.82)", "rgba(255,255,255,.6)", "#1f6f6b");
 
-const FEATURES = [
-  { text: "Summaries & key concepts", ic: "doc" as const },
-  { text: "Flashcards, spaced for recall", ic: "cards" as const },
-  { text: "Quizzes that grade & explain", ic: "check" as const },
-  { text: "An AI tutor, grounded in your notes", ic: "chat" as const },
+const FEATURES: { text: string; ic: keyof typeof ICONS }[] = [
+  { text: "Summaries & key concepts", ic: "doc" },
+  { text: "Flashcards, spaced for recall", ic: "cards" },
+  { text: "Quizzes that grade & explain", ic: "check" },
+  { text: "An AI tutor in your pocket", ic: "chat" },
+  { text: "Past-paper practice, sorted", ic: "doc" },
+  { text: "Every mistake, tracked for you", ic: "check" },
+  { text: "One calm ladder per course", ic: "cards" },
+  { text: "Spaced repetition that sticks", ic: "chat" },
+  { text: "Your notes, turned into a glossary", ic: "doc" },
 ];
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -86,7 +91,6 @@ export default function LoginPage() {
   const [note, setNote] = useState<string | null>(null);
   const [errEmail, setErrEmail] = useState<string | null>(null);
   const [errPassword, setErrPassword] = useState<string | null>(null);
-  const [fi, setFi] = useState(0); // rotating feature highlight
   const [pi, setPi] = useState(0); // rotating headline
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [focused, setFocused] = useState(false);
@@ -95,14 +99,9 @@ export default function LoginPage() {
   const interactingRef = useRef(interacting);
   interactingRef.current = interacting;
 
-  // Rotate the highlighted feature.
-  useEffect(() => {
-    const t = setInterval(() => setFi((i) => (i + 1) % FEATURES.length), 2200);
-    return () => clearInterval(t);
-  }, []);
-
   // Cycle day↔night while idle; hold day while the user is engaged.
   useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const t = setInterval(() => {
       if (interactingRef.current) {
         setTheme("light");
@@ -211,12 +210,14 @@ export default function LoginPage() {
         @keyframes kl-spin { to { transform: rotate(360deg); } }
         @keyframes kl-fade { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes kl-cube { 0% { opacity: 0; transform: rotateY(-85deg); } 55% { opacity: 1; transform: rotateY(12deg); } 100% { opacity: 1; transform: rotateY(0); } }
+        @keyframes kl-reel { 0%,7.94% { transform: translateY(0); } 11.11%,19.05% { transform: translateY(-44px); } 22.22%,30.16% { transform: translateY(-88px); } 33.33%,41.27% { transform: translateY(-132px); } 44.44%,52.38% { transform: translateY(-176px); } 55.56%,63.49% { transform: translateY(-220px); } 66.67%,74.6% { transform: translateY(-264px); } 77.78%,85.71% { transform: translateY(-308px); } 88.89%,96.83% { transform: translateY(-352px); } 100% { transform: translateY(-396px); } }
         .kl input::placeholder { color: var(--faint); }
         .kl input:focus { border-color: var(--kube) !important; box-shadow: 0 0 0 3px var(--kube-soft); }
         .kl a { color: var(--kube); text-decoration: none; }
         .kl a:hover { text-decoration: underline; }
         .kl-google:hover { background: var(--bg-deep); }
         @media (max-width: 860px) { .kl-brand { display: none !important; } .kl-form { width: 100% !important; } }
+        @media (prefers-reduced-motion: reduce) { .kl [style] { animation: none !important; } }
       `}</style>
 
       <main className="kl" style={rootStyle}>
@@ -233,23 +234,24 @@ export default function LoginPage() {
           <div style={{ position: "relative", zIndex: 2 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
               <span dangerouslySetInnerHTML={H(CUBE_DARK)} />
-              <span style={{ fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 30, letterSpacing: "-.02em", color: "#fff" }}>StudyingKube</span>
+              <span style={{ fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 33, letterSpacing: "-.02em", color: "#fff" }}>StudyingKube</span>
             </div>
-            <div style={{ perspective: 850, margin: "34px 0 0", minHeight: 120 }}>
-              <h2 key={pi} style={{ fontFamily: FONT_DISPLAY, fontWeight: 500, fontSize: "clamp(26px,3vw,34px)", lineHeight: 1.15, letterSpacing: "-.02em", color: "#fff", margin: 0, maxWidth: "15ch", transformOrigin: "center", animation: "kl-cube .62s cubic-bezier(.34,1.3,.5,1) both" }}>
+            <div style={{ perspective: 850, margin: "30px 0 0", minHeight: 96 }}>
+              <h2 key={pi} style={{ fontFamily: FONT_DISPLAY, fontWeight: 500, fontSize: "clamp(30px,3.4vw,40px)", lineHeight: 1.12, letterSpacing: "-.02em", color: "#fff", margin: 0, maxWidth: "15ch", transformOrigin: "center", animation: "kl-cube .62s cubic-bezier(.34,1.3,.5,1) both" }}>
                 {PHRASES[pi].t}
               </h2>
             </div>
-            <div style={{ marginTop: 34, display: "flex", flexDirection: "column", gap: 4 }}>
-              {FEATURES.map((f, i) => {
-                const active = i === fi;
-                return (
-                  <div key={f.text} style={{ display: "flex", alignItems: "center", gap: 13, padding: "9px 12px", borderRadius: 12, transition: "all .3s ease", background: active ? "rgba(255,255,255,.14)" : "transparent", opacity: active ? 1 : 0.55 }}>
-                    <span style={{ flex: "none", display: "grid", placeItems: "center", width: 30, height: 30, borderRadius: 9, background: active ? "#fff" : "rgba(255,255,255,.16)", color: active ? "var(--kube)" : "#fff" }} dangerouslySetInnerHTML={H(ICONS[f.ic])} />
-                    <span style={{ fontSize: 14, fontWeight: active ? 600 : 500, color: "#fff" }}>{f.text}</span>
+            {/* Slot-machine reel: features scroll continuously, the centre row lit. */}
+            <div style={{ position: "relative", marginTop: 16, height: 220, overflow: "hidden", WebkitMaskImage: "linear-gradient(180deg,transparent 0%,#000 28%,#000 72%,transparent 100%)", maskImage: "linear-gradient(180deg,transparent 0%,#000 28%,#000 72%,transparent 100%)" }}>
+              <div style={{ position: "absolute", left: 0, right: 0, top: 88, height: 44, background: "rgba(255,255,255,.16)", borderRadius: 12 }} />
+              <div style={{ position: "absolute", left: 0, right: 0, top: 0, animation: "kl-reel 12.6s ease-in-out infinite" }}>
+                {[...FEATURES, ...FEATURES].map((f, i) => (
+                  <div key={i} style={{ height: 44, display: "flex", alignItems: "center", gap: 13, padding: "0 12px" }}>
+                    <span style={{ flex: "none", display: "grid", placeItems: "center", width: 30, height: 30, borderRadius: 9, background: "rgba(255,255,255,.16)", color: "#fff" }} dangerouslySetInnerHTML={H(ICONS[f.ic])} />
+                    <span style={{ fontSize: 15, fontWeight: 500, color: "#fff" }}>{f.text}</span>
                   </div>
-                );
-              })}
+                ))}
+              </div>
             </div>
           </div>
         </div>
