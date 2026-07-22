@@ -491,42 +491,29 @@ export default function CourseLadderPage() {
         />
       </div>
 
+      {/* Sticky tool bar — always reachable while you scroll the ladder. */}
       {ladder.length > 0 && (
-        <>
-          <Link
-            href={`/learn/${course.id}/practice`}
-            className="mt-6 flex items-center gap-3 rounded-2xl px-5 py-4 transition-transform hover:scale-[1.01]"
-            style={{ background: "var(--kube-soft)", border: "1px solid var(--kube-line)" }}
-          >
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-lg" style={{ background: "var(--kube)", color: "white" }} aria-hidden>
-              ⇄
-            </span>
-            <span className="min-w-0">
-              <span className="block text-sm font-semibold" style={{ color: "var(--kube)" }}>
-                Practice Hub
-              </span>
-              <span className="block text-xs" style={{ color: "var(--ink-soft)" }}>
-                Matching, definitions, flashcards & a 60-second sprint — cram what&apos;s in this course.
-              </span>
-            </span>
-          </Link>
-          <div className="mt-3 flex gap-3">
+        <div
+          className="sticky top-0 z-30 -mx-4 mt-5 flex gap-1 border-b px-4 py-2 sm:-mx-8 sm:px-8"
+          style={{ background: "var(--bg)", borderColor: "var(--line)" }}
+        >
+          {[
+            { href: `/learn/${course.id}/practice`, label: "Practice", icon: "⇄" },
+            { href: `/learn/${course.id}/exam`, label: "Exam", icon: "✎" },
+            { href: `/learn/${course.id}/glossary`, label: "Notes", icon: "▦" },
+            { href: `/learn/${course.id}/mistakes`, label: "Mistakes", icon: "⚑" },
+          ].map((a) => (
             <Link
-              href={`/learn/${course.id}/exam`}
-              className="flex-1 rounded-2xl px-4 py-3 text-center text-sm font-semibold text-white"
-              style={{ background: "var(--kube)" }}
-            >
-              Sit a mock exam
-            </Link>
-            <Link
-              href={`/learn/${course.id}/glossary`}
-              className="flex-1 rounded-2xl px-4 py-3 text-center text-sm font-semibold k-card"
+              key={a.label}
+              href={a.href}
+              className="flex flex-1 flex-col items-center gap-0.5 rounded-xl py-1.5 text-[11px] font-semibold transition-colors hover:opacity-80"
               style={{ color: "var(--kube)" }}
             >
-              Notes &amp; glossary
+              <span className="text-base leading-none" aria-hidden>{a.icon}</span>
+              {a.label}
             </Link>
-          </div>
-        </>
+          ))}
+        </div>
       )}
 
       {(() => {
@@ -552,8 +539,8 @@ export default function CourseLadderPage() {
           row.type === "skeleton" ? (
             <section key={`skeleton-${row.unit}`} className="mt-12">
               <div
-                className="rounded-2xl border-2 border-dashed px-5 py-4"
-                style={{ borderColor: "var(--line)" }}
+                className="sticky top-[46px] z-20 rounded-2xl border-2 border-dashed px-5 py-4"
+                style={{ borderColor: "var(--line)", background: "var(--bg)" }}
               >
                 <span className="k-eyebrow">Unit {row.unit} · not fed yet</span>
                 <h2 className="mt-1 text-xl" style={{ color: "var(--faint)" }}>
@@ -568,7 +555,9 @@ export default function CourseLadderPage() {
             </section>
           ) : (
             <section key={row.section.id} className="mt-12">
-              <div className="k-card px-5 py-4" style={{ borderColor: "var(--amber-soft)" }}>
+              {/* Sticky unit banner — stays on top so you always know where
+                  you are; the next unit's banner pushes it up as you scroll. */}
+              <div className="k-card sticky top-[46px] z-20 px-5 py-4" style={{ borderColor: "var(--amber-soft)" }}>
                 <span className="k-eyebrow" style={{ color: "var(--amber)" }}>
                   Section {row.section.letter} · Unit {row.section.unit} · digested
                 </span>

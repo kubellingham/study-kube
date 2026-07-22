@@ -4,19 +4,49 @@
 // Open mode offers hints; closed mode is real exam conditions. After
 // submission: the diagnosis screen — solid / shaky / gap per topic, a warm
 // honest verdict read from the shape of the misses, and a targeted plan.
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { type CourseBundle } from "@/lib/course";
 import { useCourse } from "@/lib/learn/use-course";
 import type { ExamQuestion } from "@/lib/course/types";
 import { shuffledOptions } from "@/lib/course/lessons";
 import { saveExamAttempt } from "@/lib/learn/progress";
 import { loadFlags, saveFlag, type Flags } from "@/lib/learn/flags";
+import { loadMistakes, recordMistakes } from "@/lib/learn/mistakes";
 import FlagButton from "@/app/learn/components/FlagButton";
 
 type Mode = "open" | "closed";
 type TopicStatus = "solid" | "shaky" | "gap";
+
+/** ~25 a sitting — a full 82-question run is exhausting, not learning. */
+const EXAM_CAP = 25;
+
+function shuffleArr<T>(a: T[]): T[] {
+  const r = [...a];
+  for (let i = r.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [r[i], r[j]] = [r[j], r[i]];
+  }
+  return r;
+}
+
+/** Cap the sitting at `cap`, spread evenly across topics (round-robin) so a
+ *  short exam still touches everything rather than clustering. */
+function sampleSpread(qs: ExamQuestion[], cap: number): ExamQuestion[] {
+  if (qs.length <= cap) return shuffleArr(qs);
+  const byTopic = new Map<string, ExamQuestion[]>();
+  for (const q of qs) (byTopic.get(q.topicId) ?? byTopic.set(q.topicId, []).get(q.topicId)!).push(q);
+  const pools = [...byTopic.values()].map(shuffleArr);
+  const out: ExamQuestion[] = [];
+  let i = 0;
+  while (out.length < cap && pools.some((p) => p.length)) {
+    const q = pools[i % pools.length].pop();
+    if (q) out.push(q);
+    i++;
+  }
+  return shuffleArr(out);
+}
 
 interface TopicResult {
   topicId: string;
@@ -67,13 +97,29 @@ const STATUS_META: Record<TopicStatus, { label: string; color: string; soft: str
 };
 
 export default function ExamPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex-1 grid place-items-center text-sm" style={{ color: "var(--faint)" }}>
+          Loading…
+        </div>
+      }
+    >
+      <ExamInner />
+    </Suspense>
+  );
+}
+
+function ExamInner() {
   const params = useParams<{ courseId: string }>();
+  const searchParams = useSearchParams();
   const { user, userLoading: loading, status, bundle } = useCourse(params.courseId);
   const router = useRouter();
 
   const [phase, setPhase] = useState<"config" | "exam" | "analysis">("config");
   const [scope, setScope] = useState<number | "all">("all");
   const [mode, setMode] = useState<Mode>("closed");
+  const [study, setStudy] = useState(false); // review retakes: explanations inline
   const [scopeLabel, setScopeLabel] = useState("whole course");
   const [questions, setQuestions] = useState<ExamQuestion[]>([]);
   const [answers, setAnswers] = useState<(number | null)[]>([]);
@@ -81,11 +127,29 @@ export default function ExamPage() {
   const [hintShown, setHintShown] = useState<Record<number, true>>({});
   const [reviewOpen, setReviewOpen] = useState(false);
   const [flags, setFlags] = useState<Flags>({});
+  const [reviewStarted, setReviewStarted] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
     if (user && bundle) loadFlags(user.uid, bundle.course.id).then(setFlags);
   }, [user, loading, router, bundle]);
+
+  // "Re-do my mistakes & flags as an open exam" (from the Mistakes page).
+  useEffect(() => {
+    if (reviewStarted || !user || !bundle || searchParams.get("set") !== "review") return;
+    setReviewStarted(true);
+    (async () => {
+      const [mistakes, flg] = await Promise.all([
+        loadMistakes(user.uid, bundle.course.id),
+        loadFlags(user.uid, bundle.course.id),
+      ]);
+      const ids = new Set([...Object.keys(mistakes), ...Object.keys(flg)]);
+      const qs = bundle.examBank.filter((q) => ids.has(q.id));
+      if (qs.length === 0) return; // nothing to redo — leave them on config
+      beginSession(qs, "your mistakes & flags", "open", true);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, bundle, searchParams, reviewStarted]);
 
   function toggleFlag(q: ExamQuestion) {
     setFlags((prev) => {
@@ -125,21 +189,19 @@ export default function ExamPage() {
 
   const courseId = bundle.course.id;
 
-  function begin(qs: ExamQuestion[], label: string, m: Mode) {
-    // Shuffle each question's options (remapping the answer) so the correct
-    // choice isn't stuck at a fixed position — and re-order the questions too.
-    const served = qs.map((q) => {
+  function beginSession(qs: ExamQuestion[], label: string, m: Mode, isStudy = false) {
+    // Cap the sitting (~25) with an even topic spread, then shuffle each
+    // question's options (remapping the answer) so the correct choice isn't
+    // stuck at a fixed position.
+    const served = sampleSpread(qs, EXAM_CAP).map((q) => {
       const s = shuffledOptions(q);
       return { ...q, options: s.options, answer: s.answer };
     });
-    for (let i = served.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [served[i], served[j]] = [served[j], served[i]];
-    }
     setQuestions(served);
     setScopeLabel(label);
     setMode(m);
-    setAnswers(new Array(qs.length).fill(null));
+    setStudy(isStudy);
+    setAnswers(new Array(served.length).fill(null));
     setQIdx(0);
     setHintShown({});
     setReviewOpen(false);
@@ -169,6 +231,11 @@ export default function ExamPage() {
       }).catch(() => {
         // A failed save shouldn't interrupt the diagnosis the student needs.
       });
+      // Ledger the missed questions for the Mistakes & Flags page.
+      const missed = questions
+        .filter((q, i) => finalAnswers[i] !== q.answer)
+        .map((q) => ({ id: q.id, topicId: q.topicId }));
+      recordMistakes(user.uid, courseId, missed).catch(() => {});
     }
   }
 
@@ -248,13 +315,19 @@ export default function ExamPage() {
           <button
             onClick={() => {
               const qs = bundle.questionsForUnit(scope);
-              begin(qs, scope === "all" ? "whole course" : `unit-${scope}`, mode);
+              beginSession(qs, scope === "all" ? "whole course" : `unit-${scope}`, mode);
             }}
             className="mt-6 w-full rounded-2xl py-3 text-sm font-semibold text-white"
             style={{ background: "var(--kube)" }}
           >
-            Start · {bundle.questionsForUnit(scope).length} questions
+            Start · {Math.min(bundle.questionsForUnit(scope).length, EXAM_CAP)} questions
           </button>
+          {bundle.questionsForUnit(scope).length > EXAM_CAP && (
+            <p className="mt-2 text-center text-xs" style={{ color: "var(--faint)" }}>
+              A focused {EXAM_CAP} drawn evenly across topics — not all{" "}
+              {bundle.questionsForUnit(scope).length} at once.
+            </p>
+          )}
         </div>
       </main>
     );
@@ -269,7 +342,7 @@ export default function ExamPage() {
       <main className="mx-auto w-full max-w-lg flex-1 px-4 pb-20 pt-10">
         <div className="mb-4 flex items-center justify-between">
           <span className="k-eyebrow">
-            {mode} book · {qIdx + 1} / {questions.length}
+            {study ? "review" : `${mode} book`} · {qIdx + 1} / {questions.length}
           </span>
           <Link href={`/learn/${courseId}`} className="text-xs" style={{ color: "var(--faint)" }}>
             abandon
@@ -289,27 +362,44 @@ export default function ExamPage() {
           </div>
           {q.code && <pre className="k-code mt-4">{q.code}</pre>}
           <div className="mt-5 flex flex-col gap-3">
-            {q.options.map((opt, i) => (
-              <button
-                key={i}
-                onClick={() => {
-                  const next = [...answers];
-                  next[qIdx] = i;
-                  setAnswers(next);
-                }}
-                className="rounded-2xl border px-4 py-3 text-left text-sm font-medium"
-                style={
-                  chosen === i
-                    ? { borderColor: "var(--kube)", background: "var(--kube-soft)", color: "var(--ink)" }
-                    : { borderColor: "var(--line)", color: "var(--ink)" }
-                }
-              >
-                {opt}
-              </button>
-            ))}
+            {q.options.map((opt, i) => {
+              // Study (review-retake) mode reveals correctness as you answer.
+              const revealed = study && chosen !== null;
+              const isCorrect = revealed && i === q.answer;
+              const isWrongPick = revealed && chosen === i && i !== q.answer;
+              let st: React.CSSProperties = { borderColor: "var(--line)", color: "var(--ink)" };
+              if (isCorrect) st = { borderColor: "var(--kube)", background: "var(--kube-soft)", color: "var(--ink)" };
+              else if (isWrongPick) st = { borderColor: "var(--red)", background: "var(--red-soft)", color: "var(--red)" };
+              else if (chosen === i) st = { borderColor: "var(--kube)", background: "var(--kube-soft)", color: "var(--ink)" };
+              return (
+                <button
+                  key={i}
+                  disabled={revealed}
+                  onClick={() => {
+                    const next = [...answers];
+                    next[qIdx] = i;
+                    setAnswers(next);
+                  }}
+                  className="rounded-2xl border px-4 py-3 text-left text-sm font-medium"
+                  style={st}
+                >
+                  {opt}
+                </button>
+              );
+            })}
           </div>
 
-          {mode === "open" && (
+          {/* Study/review mode: the explanation sits right next to the question. */}
+          {study && chosen !== null && (
+            <div className="k-rise mt-4 rounded-xl px-4 py-3" style={{ background: "var(--kube-soft)" }}>
+              <p className="text-xs font-semibold" style={{ color: chosen === q.answer ? "var(--kube)" : "var(--red)" }}>
+                {chosen === q.answer ? "Right." : `Answer: ${q.options[q.answer]}`}
+              </p>
+              <p className="mt-1 text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>{q.explanation}</p>
+            </div>
+          )}
+
+          {mode === "open" && !study && (
             <div className="mt-4">
               {hintShown[qIdx] ? (
                 <p
@@ -465,7 +555,7 @@ export default function ExamPage() {
             <button
               onClick={() => {
                 const qs = bundle.questionsForTopics(weak.map((r) => r.topicId));
-                begin(qs, "retest of weak topics", "closed");
+                beginSession(qs, "retest of weak topics", "closed");
               }}
               className="mt-2 rounded-2xl py-3 text-sm font-semibold text-white"
               style={{ background: "var(--amber)" }}
