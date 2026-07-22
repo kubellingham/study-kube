@@ -17,6 +17,7 @@ import { db } from "@/lib/firebase/client";
 import { authedFetch } from "@/lib/authed-fetch";
 import { extractFileInBrowser, type ExtractedMaterial } from "@/lib/ingest/client-extract";
 import type { IngestedFile } from "@/lib/course/types";
+import DigestingAnimation from "./DigestingAnimation";
 
 interface JobLine {
   key: string;
@@ -50,6 +51,7 @@ export default function AddMaterial({
   const [lines, setLines] = useState<JobLine[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
+  const [digestHidden, setDigestHidden] = useState(false);
   const unsubs = useRef<(() => void)[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -146,6 +148,7 @@ export default function AddMaterial({
 
   async function ingestFiles(picked: File[]) {
     if (picked.length === 0) return;
+    setDigestHidden(false);
     const batch: JobLine[] = picked.map((f, i) => ({
       key: `${Date.now()}-${i}-${f.name}`,
       name: f.name,
@@ -175,6 +178,7 @@ export default function AddMaterial({
   async function submitText(e: React.FormEvent) {
     e.preventDefault();
     if (text.trim().length < 100) return;
+    setDigestHidden(false);
     const key = `${Date.now()}-pasted`;
     setLines((prev) => [
       ...prev,
@@ -187,6 +191,43 @@ export default function AddMaterial({
   const anyWorking = lines.some((l) => l.state === "working" || l.state === "extracting");
 
   return (
+    <>
+    {anyWorking && !digestHidden && (
+      <div
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 180,
+          background: "rgba(238,241,244,0.96)",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <div style={{ flex: 1, minHeight: 0 }}>
+          <DigestingAnimation accent="#1f6f6b" />
+        </div>
+        <button
+          type="button"
+          onClick={() => setDigestHidden(true)}
+          style={{
+            position: "absolute",
+            top: 20,
+            right: 24,
+            zIndex: 2,
+            border: "1px solid #b4d8d5",
+            background: "#ffffff",
+            color: "#1f6f6b",
+            borderRadius: 999,
+            padding: "8px 16px",
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: "pointer",
+          }}
+        >
+          Keep working in the background →
+        </button>
+      </div>
+    )}
     <div className="k-card mt-8 px-6 py-6">
       <span className="k-eyebrow" style={{ color: "var(--kube)" }}>
         {invitation ? "start here" : "add material"}
@@ -367,5 +408,6 @@ export default function AddMaterial({
         </div>
       )}
     </div>
+    </>
   );
 }

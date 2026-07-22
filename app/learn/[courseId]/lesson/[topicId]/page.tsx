@@ -478,6 +478,11 @@ export default function TopicPage() {
         </span>
         <Link
           href={`/learn/${courseId}`}
+          onClick={() => {
+            try {
+              sessionStorage.setItem("kube-open-replay", "1");
+            } catch {}
+          }}
           className="text-xs"
           style={{ color: "var(--faint)" }}
         >
@@ -717,6 +722,11 @@ export default function TopicPage() {
             )}
             <Link
               href={`/learn/${courseId}`}
+              onClick={() => {
+                try {
+                  sessionStorage.setItem("kube-open-replay", "1");
+                } catch {}
+              }}
               className="rounded-2xl border py-3 text-sm font-semibold"
               style={{ borderColor: "var(--line)", color: "var(--ink-soft)" }}
             >
