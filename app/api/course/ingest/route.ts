@@ -8,8 +8,11 @@ import {
   parseClassification,
   syllabusStream,
   parseSyllabus,
-  generateUnitStream,
-  parseGeneratedUnit,
+  generateUnitSkeleton,
+  generateTopicLessons,
+  generateExamBank,
+  mapWithConcurrency,
+  composeGeneratedUnit,
   assembleUnit,
   pastPaperStream,
   parsePastPaper,
@@ -19,7 +22,27 @@ import {
 import type { Section, ExamQuestion, IngestedFile } from "@/lib/course/types";
 
 export const runtime = "nodejs";
-export const maxDuration = 300;
+// Digestion runs in the background via after(), bounded by this ceiling. The
+// generation pipeline is chunked + parallel (skeleton → per-topic drills +
+// exam bank at once), so real files finish well inside this; the headroom is
+// insurance, and DIGEST_DEADLINE_MS below trips first with a clean error so a
+// job can never hang on "Digesting…".
+export const maxDuration = 800;
+
+// Bail with a friendly status a little before the hard function limit, so an
+// unusually heavy file reports something actionable instead of being killed
+// mid-flight (which would leave the job stuck "working" forever).
+const DIGEST_DEADLINE_MS = 760_000;
+
+/** Reject if the wrapped work outruns the deadline, so the catch can write a
+ *  clean error status before Vercel hard-kills the function. */
+function withDeadline<T>(work: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const guard = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms);
+  });
+  return Promise.race([work, guard]).finally(() => clearTimeout(timer)) as Promise<T>;
+}
 
 const MAX_FILE_BYTES = 4 * 1024 * 1024; // fallback multipart path only
 const MAX_TEXT_CHARS = 400_000;
@@ -209,11 +232,51 @@ export async function POST(req: NextRequest) {
           .flatMap((s) => s.topics)
           .map((t) => ({ id: t.id, title: t.title }));
 
-        const generated = parseGeneratedUnit(
-          await runToText(
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            generateUnitStream(courseTitle, unitNumber, rawText, existingTopics, images) as AsyncIterable<any>
-          )
+        // Chunked + parallel generation (see lib/course/generate.ts): a fast
+        // skeleton call, then every topic's four-quarter drill and the exam
+        // bank generated concurrently. Each call is small, so wall-clock is
+        // the slowest single call — not a 48k-token serial stream that would
+        // outrun the function limit.
+        const generated = await withDeadline(
+          (async () => {
+            const skeleton = await generateUnitSkeleton(
+              courseTitle,
+              unitNumber,
+              rawText,
+              existingTopics,
+              images
+            );
+            await setJob({
+              note: `Mapped ${skeleton.topics.length} concept${skeleton.topics.length === 1 ? "" : "s"} — drilling each into a full circle…`,
+            });
+
+            const titles = skeleton.topics.map((t) => t.title);
+            let done = 0;
+            const [lessonsByTopic, examQuestions] = await Promise.all([
+              mapWithConcurrency(skeleton.topics, 4, async (topic) => {
+                const lessons = await generateTopicLessons(
+                  courseTitle,
+                  unitNumber,
+                  rawText,
+                  topic,
+                  titles,
+                  images
+                ).catch(() => null);
+                done += 1;
+                await setJob({
+                  note: `Drilling circles — ${done}/${skeleton.topics.length} done…`,
+                });
+                return lessons;
+              }),
+              generateExamBank(courseTitle, unitNumber, rawText, skeleton.topics, images).catch(
+                () => []
+              ),
+            ]);
+
+            return composeGeneratedUnit(skeleton, lessonsByTopic, examQuestions);
+          })(),
+          DIGEST_DEADLINE_MS,
+          "This file was heavy and Kube ran out of time digesting it in one go. Split it into smaller chunks (e.g. per lecture) and add each — every piece will digest and stack onto the same unit."
         );
 
         let added = 0;

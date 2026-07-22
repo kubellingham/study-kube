@@ -202,6 +202,295 @@ export function parseGeneratedUnit(jsonText: string): GeneratedUnit {
   return unitSchema.parse(JSON.parse(jsonText));
 }
 
+/* ------------------------------------------------------------------ *
+ * CHUNKED, PARALLEL GENERATION
+ *
+ * The single generateUnitStream call above emits the ENTIRE unit — every
+ * topic's four quarters plus the exam bank — as one serial token stream of
+ * up to 48k tokens. Token generation is serial, so a substantial file blows
+ * past the serverless function's time limit and the job hangs.
+ *
+ * Instead we split the work into small calls that fit any timeout and run
+ * concurrently:
+ *   1. skeleton   — section header + the topic list (no lessons). Fast.
+ *   2. per-topic  — one call generates ONE topic's four-quarter drill.
+ *   3. exam bank  — one call writes the assessment questions.
+ * Steps 2 and 3 depend only on the skeleton, so they all run in parallel.
+ * Each call emits a few thousand tokens, not tens of thousands, so wall-clock
+ * is the slowest single call, not the sum of everything.
+ * ------------------------------------------------------------------ */
+
+const CONCEPT_RULES = `You are Kube, a calm, warm tutor mapping a lecturer's unit material into a learning ladder.
+- ONE CONCEPT PER TOPIC, never cram. If a slide presents three codes together, that is three topics. The source's density is not the lesson's density (BCD, Excess-3 and Gray code are three topics, never one).
+- 4-10 topics per document, in dependency order. Weight inherits upward: a foundation a heavy topic depends on is itself heavy.
+- Recap lines are crisp, exam-night facts.
+- Ground EVERYTHING strictly in the provided material — do not invent topics it doesn't cover. Use the material's own terminology, examples and worked numbers.`;
+
+const DRILL_RULES = `You are Kube, a calm, warm tutor. You drill ONE concept into a FOUR-QUARTER circle — genuinely teaching someone who starts knowing nothing. You never build "show a card + Got it button" lessons.
+- Q1 "Meet it, slowly" — 4-8 tiny teach beats, each ONE small idea, that WALK the student into the concept (start from a question or a need; never state the full definition in one breath).
+- Q2 "Question it" — gentle checks on exactly what was just met, poked from different angles.
+- Q3 "Again, differently" — the SAME concept re-approached: a worked example, then a "you try one" check, then a "spot the mistake" check diagnosing a realistic student error.
+- Q4 "Stretch & compare" — neighbours, harder cases, transfer to a fresh scenario; only now compare with related concepts.
+- Lighter concepts may compress to 2-3 quarters, but NEVER to a single card. Depth scales with weight: heavy = full deep drill (~14-18 interactions); medium ~10; light ~6-8 but still a real circle.
+- HARD RULE: every repetition is a FRESH angle (meet / use / break / compare). Never repeat the same question shape within a circle.
+- Teach for UNDERSTANDING: beats explain the why; checks use plausible distractors from real misconceptions; praise is specific to the idea just tested ("Right — the +1 is what separates 2's from 1's complement"), never a generic "Correct!".
+- HARD RULE — ungameable options (EVERY check): all options PARALLEL in length, specificity and grammar. The correct answer is never the longest or the only fully-explained one. Distractors are genuine, plausible misconceptions stated with the same confidence and length. Vary which option is correct.
+- Ground everything strictly in the provided material; use its own terminology and worked numbers.`;
+
+const EXAM_RULES = `You are Kube. You write a unit's ASSESSMENT pool — the exam-bank questions that reviews and mock exams draw from.
+- Test the unit honestly: mix definition, why, and worked styles, spread across the topics.
+- Hints nudge toward the idea WITHOUT revealing the answer. Explanations teach why the right answer is right.
+- HARD RULE: no exam question may duplicate or lightly reword a check that appears inside a lesson — write each from an angle the lessons did not use. A student must never meet the same question twice.
+- HARD RULE — ungameable options: all four options PARALLEL in length, specificity and grammar. The correct answer is never the longest or the only fully-explained one; distractors are genuine plausible misconceptions, not throwaways. Vary which option is correct — never habitually place it in one slot.
+- Ground everything strictly in the provided material; use its own terminology and worked numbers.`;
+
+const skeletonTopicSchema = z.object({
+  id: z
+    .string()
+    .describe("kebab-case id, unique, prefixed with the unit, e.g. 'u3-recursion'"),
+  title: z.string(),
+  weight: z
+    .enum(["heavy", "medium", "light"])
+    .describe(
+      "How examinable/load-bearing this concept is. A foundation a heavy topic depends on is itself heavy."
+    ),
+  deps: z
+    .array(z.string())
+    .describe(
+      "Topic ids that must be understood FIRST — earlier topics of this unit or the existing-topic ids provided."
+    ),
+  whyItMatters: z.string().describe("One line: why this topic matters for the exam"),
+  recap: z.array(z.string()).describe("3-5 key fact lines for quick review / glossary"),
+});
+
+const skeletonSchema = z.object({
+  sectionTitle: z.string().describe("Short section name for this unit, e.g. 'Control Flow'"),
+  tagline: z.string().describe("One calm line under the section header"),
+  topics: z
+    .array(skeletonTopicSchema)
+    .describe(
+      "ONE CONCEPT PER TOPIC — split dense source slides into separate topics. 4-10 topics, in dependency order. No lessons here — just the concept map."
+    ),
+});
+
+export type UnitSkeleton = z.infer<typeof skeletonSchema>;
+export type SkeletonTopic = z.infer<typeof skeletonTopicSchema>;
+
+const topicLessonsSchema = z.object({
+  lessons: z
+    .array(lessonSchema)
+    .describe(
+      "The four-quarter drill for THIS ONE topic (2-3 lessons for a light concept, 4 for medium/heavy)."
+    ),
+});
+
+const examBankSchema = z.object({
+  examQuestions: z
+    .array(
+      z.object({
+        topicId: z.string().describe("id of one of the unit's topics"),
+        prompt: z.string(),
+        code: z.string().optional(),
+        options: z.array(z.string()).describe("exactly 4 options"),
+        answer: z.number().int().describe("index of the correct option"),
+        hint: z
+          .string()
+          .describe("open-mode hint: nudges toward the idea WITHOUT giving the answer"),
+        explanation: z.string().describe("why the right answer is right"),
+      })
+    )
+    .describe("8-12 exam questions spread across the topics, tagged by topicId"),
+});
+
+/** The whole unit's material, sent to every sub-call as a cache-marked block so
+ *  the parallel calls reuse one prompt-cache entry instead of re-billing it. */
+function materialBlocks(
+  header: string,
+  rawText: string,
+  images?: SourceImage[]
+): ContentBlock[] {
+  const blocks: ContentBlock[] = [
+    { type: "text", text: `${header}\n\n--- UNIT MATERIAL ---\n${rawText.slice(0, MAX_UNIT_CHARS)}` },
+  ];
+  for (const img of images ?? []) {
+    blocks.push({
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: img.mediaType === "image/png" ? "image/png" : "image/jpeg",
+        data: img.data,
+      },
+    });
+  }
+  if (images && images.length > 0) {
+    blocks.push({
+      type: "text",
+      text: `The ${images.length} image(s) above are part of this material — slides, diagrams or scanned pages whose content is NOT in the text. Read them as carefully as the text.`,
+    });
+  }
+  // Mark the shared material for prompt caching so the per-topic / exam calls
+  // that follow reuse it rather than re-billing the whole document each time.
+  const last = blocks[blocks.length - 1] as { cache_control?: { type: "ephemeral" } };
+  last.cache_control = { type: "ephemeral" };
+  return blocks;
+}
+
+/** Step 1: the concept map — section header + topic list, no lessons. Fast. */
+export async function generateUnitSkeleton(
+  courseTitle: string,
+  unitNumber: number,
+  rawText: string,
+  existingTopics: ExistingTopicRef[],
+  images?: SourceImage[]
+): Promise<UnitSkeleton> {
+  const client = getAnthropic();
+  const existing =
+    existingTopics.length > 0
+      ? `Topics already on this course's ladder (you may list their ids as dependencies — and do NOT recreate any of them; produce only topics genuinely new in this material):\n${existingTopics
+          .map((t) => `- ${t.id}: ${t.title}`)
+          .join("\n")}`
+      : "This is the first material — the ladder is empty so far.";
+  const res = await client.messages.parse({
+    model: MODEL,
+    max_tokens: 8000,
+    thinking: { type: "adaptive" },
+    output_config: { effort: "medium", format: zodOutputFormat(skeletonSchema) },
+    system: CONCEPT_RULES,
+    messages: [
+      {
+        role: "user",
+        content: materialBlocks(
+          `Course: ${courseTitle}\nUnit number: ${unitNumber}\nPrefix all topic ids with "u${unitNumber}-".\n\n${existing}\n\nProduce ONLY the concept map for this unit: the section title, a one-line tagline, and the ordered list of topics (id, title, weight, deps, whyItMatters, recap). Do NOT write any lessons — those come next.`,
+          rawText,
+          images
+        ),
+      },
+    ],
+  });
+  if (!res.parsed_output) throw new Error("Kube couldn't map this unit's concepts.");
+  return res.parsed_output;
+}
+
+/** Step 2: one topic's four-quarter drill. Called once per topic, in parallel. */
+export async function generateTopicLessons(
+  courseTitle: string,
+  unitNumber: number,
+  rawText: string,
+  topic: SkeletonTopic,
+  allTopicTitles: string[],
+  images?: SourceImage[]
+): Promise<z.infer<typeof lessonSchema>[]> {
+  const client = getAnthropic();
+  const res = await client.messages.parse({
+    model: MODEL,
+    max_tokens: 16000,
+    thinking: { type: "adaptive" },
+    output_config: { effort: "high", format: zodOutputFormat(topicLessonsSchema) },
+    system: DRILL_RULES,
+    messages: [
+      {
+        role: "user",
+        content: materialBlocks(
+          `Course: ${courseTitle} · Unit ${unitNumber}\n\nThis unit's topics (for context — teach forward toward later ones where natural):\n${allTopicTitles
+            .map((t, i) => `${i + 1}. ${t}`)
+            .join(
+              "\n"
+            )}\n\nBUILD THE FOUR-QUARTER CIRCLE FOR EXACTLY ONE TOPIC:\n- id: ${topic.id}\n- title: ${topic.title}\n- weight: ${topic.weight}\n- why it matters: ${topic.whyItMatters}\n- its recap facts: ${topic.recap.join(
+            " | "
+          )}\n\nDrill ONLY this concept, grounded in the material above. Return just its lessons array. Use lesson ids like 'q1','q2','q3','q4'.`,
+          rawText,
+          images
+        ),
+      },
+    ],
+  });
+  if (!res.parsed_output) throw new Error(`Kube couldn't drill "${topic.title}".`);
+  return res.parsed_output.lessons;
+}
+
+/** Step 3: the unit's exam bank. Runs in parallel with the topic drills. */
+export async function generateExamBank(
+  courseTitle: string,
+  unitNumber: number,
+  rawText: string,
+  topics: SkeletonTopic[],
+  images?: SourceImage[]
+): Promise<z.infer<typeof examBankSchema>["examQuestions"]> {
+  const client = getAnthropic();
+  const res = await client.messages.parse({
+    model: MODEL,
+    max_tokens: 16000,
+    thinking: { type: "adaptive" },
+    output_config: { effort: "high", format: zodOutputFormat(examBankSchema) },
+    system: EXAM_RULES,
+    messages: [
+      {
+        role: "user",
+        content: materialBlocks(
+          `Course: ${courseTitle} · Unit ${unitNumber}\n\nTopics in this unit (tag every question with one of these ids):\n${topics
+            .map((t) => `- ${t.id}: ${t.title} — ${t.whyItMatters}`)
+            .join(
+              "\n"
+            )}\n\nWrite 8-12 exam-bank questions spread across these topics, grounded in the material above.`,
+          rawText,
+          images
+        ),
+      },
+    ],
+  });
+  if (!res.parsed_output) throw new Error("Kube couldn't write this unit's exam questions.");
+  return res.parsed_output.examQuestions;
+}
+
+/** Run tasks with a small concurrency cap so we parallelize without opening
+ *  dozens of Opus calls at once (rate limits, memory). */
+export async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i], i);
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, () => worker())
+  );
+  return out;
+}
+
+/** Stitch a skeleton + its per-topic lessons + exam questions into the exact
+ *  GeneratedUnit shape assembleUnit already consumes. Topics whose drill call
+ *  failed (null lessons) are dropped rather than shipped empty. */
+export function composeGeneratedUnit(
+  skeleton: UnitSkeleton,
+  lessonsByTopic: (z.infer<typeof lessonSchema>[] | null)[],
+  examQuestions: z.infer<typeof examBankSchema>["examQuestions"]
+): GeneratedUnit {
+  const topics = skeleton.topics
+    .map((t, i) => ({ t, lessons: lessonsByTopic[i] }))
+    .filter((x) => x.lessons && x.lessons.length > 0)
+    .map((x) => ({
+      id: x.t.id,
+      title: x.t.title,
+      weight: x.t.weight,
+      deps: x.t.deps,
+      whyItMatters: x.t.whyItMatters,
+      recap: x.t.recap,
+      lessons: x.lessons!,
+    }));
+  return {
+    sectionTitle: skeleton.sectionTitle,
+    tagline: skeleton.tagline,
+    topics,
+    examQuestions,
+  };
+}
+
 /** Convert + sanitize a generated unit into a Section and exam questions that
  *  are guaranteed valid against the existing ladder (deps only point at known
  *  earlier topics, answers in range, questions tagged to real topics). */
