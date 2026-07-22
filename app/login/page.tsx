@@ -40,10 +40,16 @@ const FONT_DISPLAY = "'Fraunces',Georgia,serif";
 const FONT_BODY = "'Inter',ui-sans-serif,system-ui,sans-serif";
 const FONT_MONO = "'JetBrains Mono',ui-monospace,monospace";
 
+// The headline rotates through two-slide "variations". Each variation is one
+// thought whose background arcs with the words (day→night, or night→morning);
+// the theme then carries across the seam into the next variation unchanged.
+// Blend of calm-over-cram and always-there warmth. Starts on a day slide so
+// the first paint is the clean light slate.
 const PHRASES: { t: string; theme: "light" | "dark" }[] = [
-  { t: "Always with you — by day", theme: "light" },
-  { t: "…and right through the night", theme: "dark" },
-  { t: "We've got you, night or day", theme: "light" },
+  { t: "Cram less. Actually know it.", theme: "light" },          // ↓ day → night
+  { t: "Ready long before the night before.", theme: "dark" },    // seam: night → night
+  { t: "Here for the 2am panic", theme: "dark" },                 // ↓ night → morning
+  { t: "…and the morning after", theme: "light" },                // seam: day → day
 ];
 
 const ICONS = {
@@ -65,12 +71,12 @@ function cubeSVG(top: string, left: string, right: string, seam: string) {
 const CUBE_DARK = cubeSVG("#ffffff", "rgba(255,255,255,.82)", "rgba(255,255,255,.6)", "#1f6f6b");
 
 const FEATURES: { text: string; ic: keyof typeof ICONS }[] = [
-  { text: "Summaries & key concepts", ic: "doc" },
-  { text: "Flashcards, spaced for recall", ic: "cards" },
-  { text: "Quizzes that grade & explain", ic: "check" },
-  { text: "An AI tutor in your pocket", ic: "chat" },
-  { text: "Past-paper practice, sorted", ic: "doc" },
-  { text: "Every mistake, tracked for you", ic: "check" },
+  { text: "Dense PDFs → summaries you'll read", ic: "doc" },
+  { text: "Flashcards timed to when you'd forget", ic: "cards" },
+  { text: "Quizzes that grade and explain", ic: "check" },
+  { text: "An AI tutor that knows your notes", ic: "chat" },
+  { text: "Past papers, sorted into practice", ic: "doc" },
+  { text: "Every mistake, saved to redo", ic: "check" },
   { text: "One calm ladder per course", ic: "cards" },
   { text: "Spaced repetition that sticks", ic: "chat" },
   { text: "Your notes, turned into a glossary", ic: "doc" },
