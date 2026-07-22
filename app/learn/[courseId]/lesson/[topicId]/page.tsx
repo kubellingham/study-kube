@@ -5,7 +5,7 @@
 // Each slice plays §5A mechanics — shake-not-judge, warm specific praise —
 // and fills one segment of the circle. Review nodes play a short compulsory
 // quiz drawn from earlier topics, keeping old rungs warm (Duolingo-style).
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCourse } from "@/lib/learn/use-course";
@@ -14,6 +14,7 @@ import {
   topicLessons,
   lessonKey,
   buildReviewQuiz,
+  shuffledOptions,
   type ReviewCheck,
 } from "@/lib/course/lessons";
 import {
@@ -221,6 +222,10 @@ function CheckCard({
   const shakeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sweepTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Shuffle option order once per presentation so the correct choice isn't
+  // stuck at a fixed position. CheckCard remounts per question (key=stepIdx),
+  // so this runs once per card.
+  const opts = useMemo(() => shuffledOptions(step), [step]);
 
   const sweepCorrect = useCallback(() => {
     setSweeping(false);
@@ -254,7 +259,7 @@ function CheckCard({
 
   function tap(i: number) {
     if (passed || shaking !== null) return;
-    if (i === step.answer) {
+    if (i === opts.answer) {
       setPassed(true);
       if (idleTimer.current) clearTimeout(idleTimer.current);
       return;
@@ -287,10 +292,10 @@ function CheckCard({
       <h2 className="mt-2 text-xl leading-snug">{step.prompt}</h2>
       {step.code && <pre className="k-code mt-4">{step.code}</pre>}
       <div className="mt-5 flex flex-col gap-3">
-        {step.options.map((opt, i) => {
+        {opts.options.map((opt, i) => {
           const isShaking = shaking === i;
-          const isRight = passed && i === step.answer;
-          const isSweeping = sweeping && i === step.answer && !passed;
+          const isRight = passed && i === opts.answer;
+          const isSweeping = sweeping && i === opts.answer && !passed;
           return (
             <button
               key={i}

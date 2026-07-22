@@ -10,6 +10,7 @@ import { useParams, useRouter } from "next/navigation";
 import { type CourseBundle } from "@/lib/course";
 import { useCourse } from "@/lib/learn/use-course";
 import type { ExamQuestion } from "@/lib/course/types";
+import { shuffledOptions } from "@/lib/course/lessons";
 import { saveExamAttempt } from "@/lib/learn/progress";
 
 type Mode = "open" | "closed";
@@ -109,7 +110,17 @@ export default function ExamPage() {
   const courseId = bundle.course.id;
 
   function begin(qs: ExamQuestion[], label: string, m: Mode) {
-    setQuestions(qs);
+    // Shuffle each question's options (remapping the answer) so the correct
+    // choice isn't stuck at a fixed position — and re-order the questions too.
+    const served = qs.map((q) => {
+      const s = shuffledOptions(q);
+      return { ...q, options: s.options, answer: s.answer };
+    });
+    for (let i = served.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [served[i], served[j]] = [served[j], served[i]];
+    }
+    setQuestions(served);
     setScopeLabel(label);
     setMode(m);
     setAnswers(new Array(qs.length).fill(null));

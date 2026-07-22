@@ -112,6 +112,7 @@ You do NOT summarize, and you never build "show a card + Got it button" lessons.
 - Recap lines are crisp facts for the night before the exam.
 - Exam questions test the unit honestly: mix definition, why, and worked styles. Hints nudge without revealing. Explanations teach.
 - HARD RULE: exam-bank questions are the ASSESSMENT pool (reviews and mock exams draw from them) — no exam question may duplicate or lightly reword a check question that appears inside any lesson. A student must never meet the same question twice; write each exam question from an angle the lessons did not use.
+- HARD RULE — ungameable options (applies to EVERY check and exam question): all options must be PARALLEL in length, specificity and grammar. The correct answer must NEVER be the longest, the most detailed, or the only one written as a full explanation while the distractors are terse throwaways — a student must not be able to pick the answer by feel. Make each distractor a genuine, plausible misconception stated with the same confidence and length as the correct option. Vary which option is correct — do not habitually place it in the same slot.
 - Ground EVERYTHING strictly in the provided material — the exam tests the lecturer's framing, not the internet's. Do not invent topics the material doesn't cover.
 - Use the material's own terminology, examples and worked numbers wherever possible.`;
 
@@ -442,7 +443,7 @@ export function pastPaperStream(
     thinking: { type: "adaptive" },
     output_config: { effort: "high", format: zodOutputFormat(pastPaperSchema) },
     system:
-      "You convert a real past exam paper into Kube assessment questions. Keep each question's substance and difficulty faithful to the paper — these show how the course is actually tested. Convert non-MCQ questions into fair 4-option MCQs testing the same idea. Preserve printed CO and Bloom's/RBT level tags per question (null if absent). Map every question onto the closest topic id from the provided ladder; skip questions that fit no topic. Papers often arrive as scanned page images — read every page image carefully and convert its questions exactly as if it were text.",
+      "You convert a real past exam paper into Kube assessment questions. Keep each question's substance and difficulty faithful to the paper — these show how the course is actually tested. Convert non-MCQ questions into fair 4-option MCQs testing the same idea. Preserve printed CO and Bloom's/RBT level tags per question (null if absent). Map every question onto the closest topic id from the provided ladder; skip questions that fit no topic. Papers often arrive as scanned page images — read every page image carefully and convert its questions exactly as if it were text. UNGAMEABLE OPTIONS: make all four options parallel in length, specificity and grammar; the correct answer must never be the longest or the only fully-explained one, and the distractors must be genuine plausible misconceptions, not obvious throwaways. Vary which option is correct — never habitually place it in one slot.",
     messages: [
       {
         role: "user",

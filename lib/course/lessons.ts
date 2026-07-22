@@ -37,6 +37,22 @@ export function lessonKey(topicId: string, lessonId: string): string {
   return `${topicId}::${lessonId}`;
 }
 
+/** Shuffle an MCQ's options at serve time, remapping the answer index — so
+ *  the correct choice never sits at one predictable position across a course
+ *  (authored banks drift toward "always B"). Call it wherever options are
+ *  presented; it's a pure re-order, safe for every question we author (none
+ *  reference option positions like "all of the above"). */
+export function shuffledOptions<T extends { options: string[]; answer: number }>(
+  q: T
+): { options: string[]; answer: number } {
+  const order = q.options.map((_, i) => i);
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  return { options: order.map((i) => q.options[i]), answer: order.indexOf(q.answer) };
+}
+
 /** The questions that can re-test a topic, in two tiers:
  *  FRESH — exam-bank questions the learner has NOT met inside the lessons
  *  (reviews are assessments; a crammer must not recognize the question), and
