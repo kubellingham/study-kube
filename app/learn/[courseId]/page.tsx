@@ -10,7 +10,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { collection, getDocs, query, where } from "firebase/firestore";
-import { db } from "@/lib/firebase/client";
+import { signOut } from "firebase/auth";
+import { db, auth } from "@/lib/firebase/client";
 import type { Topic } from "@/lib/course/types";
 import { topicLessons, lessonKey } from "@/lib/course/lessons";
 import { buildConceptPool } from "@/lib/course/concepts";
@@ -227,7 +228,7 @@ export default function CourseLadderPage() {
             </Link>
           ))}
         </nav>
-        <div style={{ marginTop: "auto", paddingTop: 16, borderTop: `1px solid ${T.line}`, display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ marginTop: "auto", paddingTop: 16, borderTop: `1px solid ${T.line}`, display: "flex", alignItems: "center", gap: 8 }}>
           <Link href="/learn" style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 11, padding: "9px 10px", borderRadius: 13 }}>
             <span style={{ flex: "none", display: "grid", placeItems: "center", width: 38, height: 38, borderRadius: "50%", background: T.kube, color: "#fff", fontFamily: T.display, fontWeight: 600, fontSize: 15 }}>
               {(user?.email?.[0] || "K").toUpperCase()}
@@ -237,6 +238,15 @@ export default function CourseLadderPage() {
               <span style={{ display: "block", fontFamily: T.mono, fontSize: 10, letterSpacing: ".04em", color: T.faint }}>Your subjects</span>
             </span>
           </Link>
+          <button
+            type="button"
+            onClick={async () => { await signOut(auth()); window.location.assign("/login"); }}
+            title="Sign out"
+            aria-label="Sign out"
+            style={{ flex: "none", display: "grid", placeItems: "center", width: 38, height: 38, borderRadius: 12, border: `1px solid ${T.line}`, background: T.card, color: T.faint, cursor: "pointer" }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5" /><path d="M21 12H9" /></svg>
+          </button>
         </div>
       </aside>
 

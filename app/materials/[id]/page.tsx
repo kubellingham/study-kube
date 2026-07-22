@@ -6,6 +6,7 @@ import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useUser } from "@/lib/use-user";
 import Header from "@/app/components/Header";
+import BrandLoader from "@/app/components/BrandLoader";
 import MaterialWorkspace from "./MaterialWorkspace";
 import type { Material } from "@/lib/types";
 
@@ -33,11 +34,7 @@ export default function MaterialPage() {
   }, [id, user, loading, router]);
 
   if (loading || !checked) {
-    return (
-      <div className="flex-1 grid place-items-center text-sm text-slate-400">
-        Loading…
-      </div>
-    );
+    return <BrandLoader />;
   }
 
   if (!material || !user) {

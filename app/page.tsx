@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useUser } from "@/lib/use-user";
+import BrandLoader from "@/app/components/BrandLoader";
 
 export default function Home() {
   const { user, loading } = useUser();
@@ -13,9 +14,5 @@ export default function Home() {
     if (!loading) router.replace(user ? "/learn" : "/login");
   }, [user, loading, router]);
 
-  return (
-    <div className="flex-1 grid place-items-center text-sm text-slate-400">
-      Loading…
-    </div>
-  );
+  return <BrandLoader label="Getting your ladder ready…" />;
 }

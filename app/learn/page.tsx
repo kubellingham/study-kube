@@ -6,7 +6,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { collection, getDocs, query, where } from "firebase/firestore";
-import { db } from "@/lib/firebase/client";
+import { signOut } from "firebase/auth";
+import { db, auth } from "@/lib/firebase/client";
 import { useUser } from "@/lib/use-user";
 import { listBuiltinBundles } from "@/lib/course";
 import { loadProgress } from "@/lib/learn/progress";
@@ -92,9 +93,46 @@ export default function LearnHomePage() {
   }
 
   return (
-    <main className="mx-auto w-full max-w-xl flex-1 px-4 pb-24 pt-10">
-      <div className="mb-2 flex items-center justify-between">
-        <span className="k-eyebrow">Kube</span>
+    <main className="mx-auto w-full max-w-xl flex-1 px-4 pb-24 pt-6">
+      <div className="mb-8 flex items-center justify-between">
+        <span
+          style={{
+            fontFamily: "var(--font-display)",
+            fontWeight: 600,
+            fontSize: 22,
+            letterSpacing: "-.02em",
+            lineHeight: 1,
+          }}
+        >
+          <span style={{ color: "var(--ink)" }}>Studying</span>
+          <span style={{ color: "var(--kube)" }}>Kube</span>
+        </span>
+        <div className="flex items-center gap-3">
+          {user.email && (
+            <span
+              className="hidden text-xs sm:inline"
+              style={{ color: "var(--faint)", fontFamily: "var(--font-mono)" }}
+            >
+              {user.email}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={async () => {
+              await signOut(auth());
+              window.location.assign("/login");
+            }}
+            className="flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-semibold"
+            style={{ borderColor: "var(--line)", color: "var(--ink-soft)", background: "var(--card)" }}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <path d="M16 17l5-5-5-5" />
+              <path d="M21 12H9" />
+            </svg>
+            Sign out
+          </button>
+        </div>
       </div>
       <h1 className="text-3xl">Your subjects</h1>
       <p className="mt-2 text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>

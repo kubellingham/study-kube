@@ -1,9 +1,17 @@
 "use client";
 
+// Shared top bar for the legacy material pages (/dashboard, /materials).
+// These render outside the /learn token scope, so the Kube palette is inlined.
 import Link from "next/link";
 import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase/client";
 import { useUser } from "@/lib/use-user";
+
+const KUBE = "#1f6f6b";
+const INK = "#16202b";
+const FAINT = "#8593a3";
+const LINE = "#dce2e8";
+const DISPLAY = "'Fraunces',Georgia,serif";
 
 export default function Header() {
   const { user } = useUser();
@@ -14,27 +22,56 @@ export default function Header() {
   }
 
   return (
-    <header className="border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-      <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-        <Link href="/dashboard" className="text-lg font-bold tracking-tight">
-          Studying <span className="text-indigo-600">Kube</span>
+    <header style={{ borderBottom: `1px solid ${LINE}`, background: "#ffffff" }}>
+      <div
+        className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3"
+      >
+        <Link
+          href="/learn"
+          style={{ fontFamily: DISPLAY, fontWeight: 600, fontSize: 20, letterSpacing: "-.02em" }}
+        >
+          <span style={{ color: INK }}>Studying</span>
+          <span style={{ color: KUBE }}>Kube</span>
         </Link>
         <div className="flex items-center gap-3 text-sm">
           <Link
             href="/learn"
-            className="rounded-lg bg-teal-700 px-3 py-1.5 font-medium text-white hover:bg-teal-800"
+            style={{
+              borderRadius: 999,
+              background: KUBE,
+              padding: "7px 15px",
+              fontWeight: 600,
+              color: "#fff",
+              boxShadow: "0 3px 0 rgba(20,32,43,.16)",
+            }}
           >
             Learn
           </Link>
           {user?.email && (
-            <span className="hidden text-slate-500 sm:inline dark:text-slate-400">
+            <span className="hidden sm:inline" style={{ color: FAINT }}>
               {user.email}
             </span>
           )}
           <button
             onClick={handleSignOut}
-            className="rounded-lg border border-slate-300 px-3 py-1.5 font-medium hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 7,
+              borderRadius: 999,
+              border: `1px solid ${LINE}`,
+              padding: "7px 14px",
+              fontWeight: 600,
+              color: "#46566a",
+              background: "#fff",
+              cursor: "pointer",
+            }}
           >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <path d="M16 17l5-5-5-5" />
+              <path d="M21 12H9" />
+            </svg>
             Sign out
           </button>
         </div>

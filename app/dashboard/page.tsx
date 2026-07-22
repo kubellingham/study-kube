@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useUser } from "@/lib/use-user";
 import Header from "@/app/components/Header";
+import BrandLoader from "@/app/components/BrandLoader";
 import DashboardClient from "./DashboardClient";
 
 export default function DashboardPage() {
@@ -15,11 +16,7 @@ export default function DashboardPage() {
   }, [user, loading, router]);
 
   if (loading || !user) {
-    return (
-      <div className="flex-1 grid place-items-center text-sm text-slate-400">
-        Loading…
-      </div>
-    );
+    return <BrandLoader />;
   }
 
   return (
