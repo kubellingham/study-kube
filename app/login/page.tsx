@@ -229,8 +229,6 @@ export default function LoginPage() {
             justifyContent: "center", padding: "0 40px 0 clamp(40px,6vw,88px)", overflow: "hidden", zIndex: 1,
           }}
         >
-          <div style={{ position: "absolute", width: 560, height: 560, borderRadius: "50%", border: "1px solid rgba(255,255,255,.14)", right: -200, top: -180, pointerEvents: "none" }} />
-          <div style={{ position: "absolute", width: 420, height: 420, borderRadius: "50%", background: "rgba(255,255,255,.06)", left: -160, bottom: -150, pointerEvents: "none" }} />
           <div style={{ position: "relative", zIndex: 2 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
               <span dangerouslySetInnerHTML={H(CUBE_DARK)} />
