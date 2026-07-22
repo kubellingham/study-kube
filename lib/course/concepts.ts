@@ -15,9 +15,12 @@ export interface Concept {
   /** Section letter — used to cluster confusables (same area = the things
    *  students blur together). */
   section: string;
-  /** The full definition: the topic's recap lines, for flashcards & the
-   *  definitions drill. */
+  /** The full definition: all the topic's recap lines. Kept for the glossary
+   *  and anywhere the whole picture is wanted. */
   definition: string;
+  /** A SHORT, one-sentence definition — the flashcard back and the drill's
+   *  target. Small enough to digest one-handed. */
+  brief: string;
   lines: string[];
   /** A SHORT fingerprint for the matching board — a "tell", not a paragraph. */
   tell: string;
@@ -75,6 +78,23 @@ function bestTell(lines: string[], term: string): string {
   return candidates.sort((a, b) => score(b) - score(a) || a.length - b.length)[0];
 }
 
+/** The single crisp definition line for a flashcard back / drill target:
+ *  the pithiest recap line that reads as a definition, cut to one sentence. */
+function toBrief(lines: string[]): string {
+  // Prefer a line that actually defines (mentions "is/are/means" or is the
+  // first line), then the shortest such — kept to one sentence, ~22 words.
+  const defish = lines.filter((l) => /\b(is|are|means|refers to)\b/i.test(l));
+  const pick = (defish.length ? defish : lines).slice();
+  pick.sort((a, b) => a.length - b.length);
+  let s = (pick[0] ?? lines[0] ?? "").trim();
+  // First sentence only.
+  const dot = s.search(/[.!?](\s|$)/);
+  if (dot > 20) s = s.slice(0, dot + 1);
+  const words = s.split(/\s+/);
+  if (words.length > 24) s = words.slice(0, 24).join(" ") + "…";
+  return s.replace(/\s+/g, " ").trim();
+}
+
 /** Build the course's concept pool from its teaching topics. Review nodes,
  *  and topics with no recap, are skipped. */
 export function buildConceptPool(bundle: CourseBundle): Concept[] {
@@ -90,6 +110,7 @@ export function buildConceptPool(bundle: CourseBundle): Concept[] {
       unit: topic.unit,
       section,
       definition: lines.join(" "),
+      brief: toBrief(lines),
       lines,
       tell: bestTell(lines, topic.title),
     });

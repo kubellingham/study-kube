@@ -68,7 +68,7 @@ export default function Definitions({ pool }: { pool: Concept[] }) {
 
   const concept = deck[i % Math.max(1, deck.length)];
   const template = useMemo(
-    () => (concept ? buildTemplate(concept.definition, level) : { tokens: [], count: 0 }),
+    () => (concept ? buildTemplate(concept.brief, level) : { tokens: [], count: 0 }),
     [concept, level]
   );
 
@@ -93,7 +93,7 @@ export default function Definitions({ pool }: { pool: Concept[] }) {
       const res = await authedFetch("/api/learn/define-check", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ term: concept.term, definition: concept.definition, level, answer }),
+        body: JSON.stringify({ term: concept.term, definition: concept.brief, level, answer }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Kube couldn't check that.");

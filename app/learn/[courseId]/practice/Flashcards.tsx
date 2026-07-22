@@ -144,21 +144,22 @@ export default function Flashcards({
   const hint = dx > 40 ? "got it" : dx < -40 ? "needs work" : null;
 
   return (
-    <div className="mt-6 select-none">
-      <div className="mb-3 flex items-center justify-between text-xs" style={{ color: "var(--faint)" }}>
-        <span className="k-eyebrow">card {i + 1} / {deck.length}</span>
-        <span>tap to flip · swipe to grade</span>
+    <div className="mt-4 select-none">
+      <div className="mx-auto mb-2 flex max-w-[19rem] items-center justify-between text-[11px]" style={{ color: "var(--faint)" }}>
+        <span className="k-eyebrow">{i + 1} / {deck.length}</span>
+        <span>tap flips · swipe grades</span>
       </div>
 
+      {/* Small on purpose — one hand, one glance. */}
       <div
-        className="relative mx-auto grid min-h-[220px] max-w-md cursor-pointer place-items-center rounded-3xl border px-6 py-8 text-center"
+        className="relative mx-auto grid min-h-[130px] max-w-[19rem] cursor-pointer place-items-center rounded-2xl border px-5 py-5 text-center"
         style={{
           background: "var(--card)",
           borderColor: hint === "got it" ? "var(--kube)" : hint === "needs work" ? "var(--amber)" : "var(--line)",
           transform: leaving
             ? `translateX(${leaving === "right" ? 500 : -500}px) rotate(${leaving === "right" ? 16 : -16}deg)`
             : `translateX(${dx}px) rotate(${rot}deg)`,
-          transition: drag.current.active ? "none" : "transform 0.26s ease, border-color 0.2s",
+          transition: drag.current.active ? "none" : "transform 0.24s ease, border-color 0.2s",
           touchAction: "pan-y",
         }}
         onClick={() => !drag.current.active && dx === 0 && setFlipped((f) => !f)}
@@ -169,39 +170,36 @@ export default function Flashcards({
       >
         {hint && (
           <span
-            className="k-eyebrow absolute top-3"
+            className="k-eyebrow absolute top-2 text-[10px]"
             style={{ color: hint === "got it" ? "var(--kube)" : "var(--amber)" }}
           >
             {hint}
           </span>
         )}
         {!flipped ? (
-          <div>
-            <span className="k-eyebrow">concept</span>
-            <p className="mt-2 text-xl font-semibold" style={{ color: "var(--ink)" }}>{card.term}</p>
-          </div>
+          <p className="text-base font-semibold leading-snug" style={{ color: "var(--ink)" }}>{card.term}</p>
         ) : (
-          <div>
-            <span className="k-eyebrow" style={{ color: "var(--kube)" }}>definition</span>
-            <p className="mt-2 text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>{card.definition}</p>
-          </div>
+          <p className="text-[13px] leading-snug" style={{ color: "var(--ink-soft)" }}>{card.brief}</p>
         )}
       </div>
 
-      <div className="mx-auto mt-5 flex max-w-md gap-3">
+      {/* Swipe is the point; these stay as a quiet fallback. */}
+      <div className="mx-auto mt-3 flex max-w-[19rem] gap-2">
         <button
           onClick={() => grade(false)}
-          className="flex-1 rounded-2xl border py-3 text-sm font-semibold"
+          aria-label="Needs work"
+          className="flex-1 rounded-xl border py-2 text-xs font-semibold"
           style={{ borderColor: "var(--amber-line)", color: "var(--amber)" }}
         >
-          ← Needs work
+          ←
         </button>
         <button
           onClick={() => grade(true)}
-          className="flex-1 rounded-2xl py-3 text-sm font-semibold text-white"
+          aria-label="Got it"
+          className="flex-1 rounded-xl py-2 text-xs font-semibold text-white"
           style={{ background: "var(--kube)" }}
         >
-          Got it →
+          →
         </button>
       </div>
     </div>
