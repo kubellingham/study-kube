@@ -8,7 +8,17 @@
 // getDoc REJECTS with permission-denied rather than returning "no doc".
 // loadProgress must treat that as a fresh start, never throw — otherwise the
 // path page hangs on "Loading your path" forever.
-import { doc, getDoc, setDoc, addDoc, collection, increment } from "firebase/firestore";
+import {
+  doc,
+  getDoc,
+  setDoc,
+  addDoc,
+  collection,
+  increment,
+  getDocs,
+  query,
+  where,
+} from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 
 export interface LearnProgress {
@@ -104,4 +114,25 @@ export async function saveExamAttempt(
   attempt: ExamAttemptRecord
 ): Promise<void> {
   await addDoc(collection(db(), "examAttempts"), { userId: uid, ...attempt });
+}
+
+/** Best score (%) and attempt count for a course — the Exam hub's live count.
+ *  Filtered on userId (single-field, no composite index) then by course. */
+export async function loadExamSummary(
+  uid: string,
+  courseId: string
+): Promise<{ best: number; tries: number }> {
+  try {
+    const snap = await getDocs(
+      query(collection(db(), "examAttempts"), where("userId", "==", uid))
+    );
+    const rows = snap.docs
+      .map((d) => d.data() as ExamAttemptRecord)
+      .filter((a) => a.courseId === courseId && a.total > 0);
+    if (rows.length === 0) return { best: 0, tries: 0 };
+    const best = Math.max(...rows.map((a) => Math.round((a.score / a.total) * 100)));
+    return { best, tries: rows.length };
+  } catch {
+    return { best: 0, tries: 0 };
+  }
 }
