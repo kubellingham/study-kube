@@ -151,7 +151,9 @@ export default function PracticePage() {
 
           {/* key forces a fresh round when the unit changes */}
           {tool === "matching" && <Matching key={`m-${unit}`} pool={pool} />}
-          {tool === "definitions" && <Definitions key={`d-${unit}`} pool={pool} />}
+          {tool === "definitions" && (
+            <Definitions key={`d-${unit}`} pool={pool} uid={user.uid} courseId={course.id} />
+          )}
           {tool === "flashcards" && (
             <Flashcards key={`f-${unit}`} pool={pool} uid={user.uid} courseId={course.id} cards={cards} onCards={setCards} />
           )}

@@ -12,6 +12,8 @@ import { useCourse } from "@/lib/learn/use-course";
 import type { ExamQuestion } from "@/lib/course/types";
 import { shuffledOptions } from "@/lib/course/lessons";
 import { saveExamAttempt } from "@/lib/learn/progress";
+import { loadFlags, saveFlag, type Flags } from "@/lib/learn/flags";
+import FlagButton from "@/app/learn/components/FlagButton";
 
 type Mode = "open" | "closed";
 type TopicStatus = "solid" | "shaky" | "gap";
@@ -78,10 +80,24 @@ export default function ExamPage() {
   const [qIdx, setQIdx] = useState(0);
   const [hintShown, setHintShown] = useState<Record<number, true>>({});
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [flags, setFlags] = useState<Flags>({});
 
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
-  }, [user, loading, router]);
+    if (user && bundle) loadFlags(user.uid, bundle.course.id).then(setFlags);
+  }, [user, loading, router, bundle]);
+
+  function toggleFlag(q: ExamQuestion) {
+    setFlags((prev) => {
+      const next = { ...prev };
+      const on = !next[q.id];
+      if (on) next[q.id] = { topicId: q.topicId, prompt: q.prompt, at: Date.now() };
+      else delete next[q.id];
+      if (user && bundle)
+        void saveFlag(user.uid, bundle.course.id, q.id, on ? next[q.id] : null).catch(() => {});
+      return next;
+    });
+  }
 
   const results = useMemo(
     () => (phase === "analysis" ? diagnose(questions, answers) : []),
@@ -267,7 +283,10 @@ export default function ExamPage() {
         </div>
 
         <div className="k-card k-rise mt-6 px-6 py-6" key={qIdx}>
-          <h2 className="text-xl leading-snug">{q.prompt}</h2>
+          <div className="flex items-start justify-between gap-3">
+            <h2 className="text-xl leading-snug">{q.prompt}</h2>
+            <FlagButton on={!!flags[q.id]} onToggle={() => toggleFlag(q)} />
+          </div>
           {q.code && <pre className="k-code mt-4">{q.code}</pre>}
           <div className="mt-5 flex flex-col gap-3">
             {q.options.map((opt, i) => (
@@ -354,6 +373,10 @@ export default function ExamPage() {
     .map((q, i) => ({ q, chosen: answers[i] }))
     .filter(({ q, chosen }) => chosen !== q.answer);
   const hintsUsed = Object.keys(hintShown).length;
+  // Flagged-but-answered-right: the honest "I guessed it" list Kube explains.
+  const flaggedRight = questions
+    .map((q, i) => ({ q, chosen: answers[i] }))
+    .filter(({ q, chosen }) => flags[q.id] && chosen === q.answer);
 
   return (
     <main className="mx-auto w-full max-w-lg flex-1 px-4 pb-24 pt-10">
@@ -451,6 +474,28 @@ export default function ExamPage() {
             </button>
           </div>
         </>
+      )}
+
+      {flaggedRight.length > 0 && (
+        <div className="mt-8">
+          <div className="flex items-center gap-2">
+            <FlagButton on onToggle={() => {}} size={16} />
+            <h2 className="text-xl">You flagged {flaggedRight.length} you got right</h2>
+          </div>
+          <p className="mt-1 text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>
+            Right, but you told Kube you weren&apos;t sure — so a guess doesn&apos;t get to
+            pass as knowing. Here&apos;s each one explained.
+          </p>
+          <div className="mt-3 flex flex-col gap-3">
+            {flaggedRight.map(({ q }) => (
+              <div key={q.id} className="k-card px-5 py-4">
+                <p className="text-sm font-semibold" style={{ color: "var(--ink)" }}>{q.prompt}</p>
+                <p className="mt-1 text-xs" style={{ color: "var(--kube)" }}>Answer: {q.options[q.answer]}</p>
+                <p className="mt-2 text-xs leading-relaxed" style={{ color: "var(--ink-soft)" }}>{q.explanation}</p>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
       {missed.length > 0 && (

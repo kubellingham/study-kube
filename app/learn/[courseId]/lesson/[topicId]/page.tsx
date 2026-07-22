@@ -30,6 +30,8 @@ import {
   type SlideVote,
   type SlideVotes,
 } from "@/lib/learn/feedback";
+import { loadFlags, saveFlag, flagKey, type Flags } from "@/lib/learn/flags";
+import FlagButton from "@/app/learn/components/FlagButton";
 import Rich from "@/app/learn/components/Rich";
 import KubeChat, {
   type KubeChatContext,
@@ -202,6 +204,8 @@ function CheckCard({
   onAskKube,
   onBack,
   canBack,
+  flagged,
+  onFlag,
 }: {
   step: CheckStep;
   /** learn = teaching check (quiet sweep hint, nothing recorded);
@@ -212,6 +216,8 @@ function CheckCard({
   onAskKube?: (question: string) => void;
   onBack?: () => void;
   canBack?: boolean;
+  flagged: boolean;
+  onFlag: () => void;
 }) {
   const [shaking, setShaking] = useState<number | null>(null);
   const [passed, setPassed] = useState(false);
@@ -288,8 +294,11 @@ function CheckCard({
 
   return (
     <div className="k-card k-rise px-6 py-6">
-      <span className="k-eyebrow">{mode === "assess" ? "review — this one counts" : "check yourself"}</span>
-      <h2 className="mt-2 text-xl leading-snug">{step.prompt}</h2>
+      <div className="flex items-start justify-between gap-3">
+        <span className="k-eyebrow">{mode === "assess" ? "review — this one counts" : "check yourself"}</span>
+        <FlagButton on={flagged} onToggle={onFlag} size={16} />
+      </div>
+      <h2 className="mt-1 text-xl leading-snug">{step.prompt}</h2>
       {step.code && <pre className="k-code mt-4">{step.code}</pre>}
       <div className="mt-5 flex flex-col gap-3">
         {opts.options.map((opt, i) => {
@@ -376,6 +385,7 @@ export default function TopicPage() {
   const [stepIdx, setStepIdx] = useState(0);
   const [reviewSteps, setReviewSteps] = useState<ReviewCheck[] | null>(null);
   const [votes, setVotes] = useState<SlideVotes>({});
+  const [flags, setFlags] = useState<Flags>({});
   const [chatOpen, setChatOpen] = useState(false);
   const [chatSeed, setChatSeed] = useState<string | undefined>(undefined);
   // One chat per SLIDE: moving forward starts fresh; stepping back restores
@@ -389,9 +399,11 @@ export default function TopicPage() {
       Promise.all([
         loadProgress(user.uid, bundle.course.id),
         loadSlideVotes(user.uid, bundle.course.id),
-      ]).then(([p, v]) => {
+        loadFlags(user.uid, bundle.course.id),
+      ]).then(([p, v, f]) => {
         setProgress(p);
         setVotes(v);
+        setFlags(f);
         setPhase("overview");
       });
     }
@@ -616,6 +628,18 @@ export default function TopicPage() {
             onPass={advance}
             onBack={goBack}
             canBack={!isReview}
+            flagged={!!flags[flagKey(step.prompt)]}
+            onFlag={() => {
+              const key = flagKey(step.prompt);
+              setFlags((prev) => {
+                const next = { ...prev };
+                const on = !next[key];
+                if (on) next[key] = { topicId: topic!.id, prompt: (step as CheckStep).prompt, at: Date.now() };
+                else delete next[key];
+                if (user) void saveFlag(user.uid, courseId, key, on ? next[key] : null).catch(() => {});
+                return next;
+              });
+            }}
             onMiss={
               isReview
                 ? () => {

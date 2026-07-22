@@ -6,10 +6,12 @@
 // never forces it. Every answer is judged by MEANING (a real model call),
 // teaching on the miss: "almost" shows Kube's wording then two corrections to
 // choose between; "wrong" states the idea plainly.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Concept } from "@/lib/course/concepts";
 import { keyWords } from "@/lib/course/concepts";
 import { authedFetch } from "@/lib/authed-fetch";
+import { loadFlags, saveFlag, type Flags } from "@/lib/learn/flags";
+import FlagButton from "@/app/learn/components/FlagButton";
 
 type Level = "easy" | "normal" | "hard";
 const LEVELS: { id: Level; label: string; blurb: string }[] = [
@@ -53,8 +55,20 @@ function buildTemplate(def: string, level: Level) {
   return { tokens, count: bi };
 }
 
-export default function Definitions({ pool }: { pool: Concept[] }) {
+export default function Definitions({
+  pool,
+  uid,
+  courseId,
+}: {
+  pool: Concept[];
+  uid: string;
+  courseId: string;
+}) {
   const deck = useMemo(() => shuffle(pool), [pool]);
+  const [flags, setFlags] = useState<Flags>({});
+  useEffect(() => {
+    loadFlags(uid, courseId).then(setFlags);
+  }, [uid, courseId]);
   const [level, setLevel] = useState<Level>("easy");
   const [i, setI] = useState(0);
   const [fills, setFills] = useState<Record<number, string>>({});
@@ -179,7 +193,24 @@ export default function Definitions({ pool }: { pool: Concept[] }) {
       )}
 
       <div className="k-card mt-4 px-5 py-5">
-        <span className="k-eyebrow" style={{ color: "var(--kube)" }}>define</span>
+        <div className="flex items-start justify-between gap-3">
+          <span className="k-eyebrow" style={{ color: "var(--kube)" }}>define</span>
+          <FlagButton
+            on={!!flags[`def-${concept.id}`]}
+            onToggle={() => {
+              const key = `def-${concept.id}`;
+              setFlags((prev) => {
+                const next = { ...prev };
+                const on = !next[key];
+                if (on) next[key] = { topicId: concept.id, prompt: `Define: ${concept.term}`, at: Date.now() };
+                else delete next[key];
+                void saveFlag(uid, courseId, key, on ? next[key] : null).catch(() => {});
+                return next;
+              });
+            }}
+            size={16}
+          />
+        </div>
         <h2 className="mt-1 text-xl">{concept.term}</h2>
 
         {!verdict ? (
