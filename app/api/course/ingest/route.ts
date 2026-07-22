@@ -22,17 +22,17 @@ import {
 import type { Section, ExamQuestion, IngestedFile } from "@/lib/course/types";
 
 export const runtime = "nodejs";
-// Digestion runs in the background via after(), bounded by this ceiling. The
-// generation pipeline is chunked + parallel (skeleton → per-topic drills +
-// exam bank at once), so real files finish well inside this; the headroom is
-// insurance, and DIGEST_DEADLINE_MS below trips first with a clean error so a
-// job can never hang on "Digesting…".
-export const maxDuration = 800;
+// 300s is the hard ceiling on Vercel's Hobby plan — it can't be raised. The
+// win comes from the generation pipeline being chunked + parallel (skeleton →
+// per-topic drills + exam bank all at once), so wall-clock is the slowest
+// single call, not a 48k-token serial stream. That fits comfortably inside
+// 300s where the old one-shot call did not.
+export const maxDuration = 300;
 
-// Bail with a friendly status a little before the hard function limit, so an
+// Bail with a friendly status a little before the hard 300s limit, so an
 // unusually heavy file reports something actionable instead of being killed
-// mid-flight (which would leave the job stuck "working" forever).
-const DIGEST_DEADLINE_MS = 760_000;
+// mid-flight (which would leave the job stuck "working"/"Digesting…" forever).
+const DIGEST_DEADLINE_MS = 270_000;
 
 /** Reject if the wrapped work outruns the deadline, so the catch can write a
  *  clean error status before Vercel hard-kills the function. */
@@ -253,7 +253,7 @@ export async function POST(req: NextRequest) {
             const titles = skeleton.topics.map((t) => t.title);
             let done = 0;
             const [lessonsByTopic, examQuestions] = await Promise.all([
-              mapWithConcurrency(skeleton.topics, 4, async (topic) => {
+              mapWithConcurrency(skeleton.topics, 5, async (topic) => {
                 const lessons = await generateTopicLessons(
                   courseTitle,
                   unitNumber,
