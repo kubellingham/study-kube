@@ -263,7 +263,13 @@ export default function CourseLadderPage() {
       <main ref={mainRef} onScroll={onScroll} style={{ flex: 1, minWidth: 0, overflowY: "auto", position: "relative" }}>
         {/* Sticky header */}
         <div style={{ position: "sticky", top: 0, zIndex: 40, padding: "16px 32px", background: T.bgDeep }}>
-          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+          <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 10, marginBottom: 12 }}>
+            {owned && (
+              <Link href={`/learn/${params.courseId}/manage`} title="Add files, rename, or delete" style={{ display: "flex", alignItems: "center", gap: 8, background: T.card, border: `1px solid ${T.line}`, borderRadius: 14, padding: "10px 14px", color: T.inkSoft, fontFamily: T.mono, fontWeight: 600, fontSize: 11.5, letterSpacing: ".06em", textTransform: "uppercase" }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><path d="M12 5v14M5 12h14" strokeLinecap="round" /></svg>
+                Add / manage
+              </Link>
+            )}
             <div style={{ position: "relative" }}>
               <button onClick={() => setSubjectOpen((v) => !v)} style={{ display: "flex", alignItems: "center", gap: 11, background: T.card, border: `1px solid ${T.line}`, borderRadius: 14, padding: "8px 12px", cursor: "pointer" }}>
                 <span style={{ flex: "none", display: "grid", placeItems: "center", width: 32, height: 32, borderRadius: 9, background: T.kubeSoft, color: T.kube, fontFamily: T.mono, fontWeight: 600, fontSize: 11 }}>
