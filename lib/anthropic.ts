@@ -16,8 +16,12 @@ import {
   tutorMaterialBlock,
 } from "@/lib/prompts";
 
-/** The heavy-lift model: course generation, digestion, past papers. */
-export const MODEL = process.env.ANTHROPIC_MODEL || "claude-opus-4-8";
+/** The generation model: course digestion, the intake read, past papers,
+ *  summaries. Defaults to Sonnet 5 — Opus 4.8 costs 5×/1.7× (in/out) more and
+ *  digestion is our most token-heavy work, so it is NOT a safe default. Set
+ *  ANTHROPIC_MODEL to override (e.g. claude-opus-4-8 for a premium "deep" tier
+ *  once we route by plan — see KUBE_MONETIZATION_STRATEGY.md §6). */
+export const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
 
 /** The conversational model: in-lesson chat and its background struggle
  *  notes — high-volume, low-stakes turns where Sonnet's speed and price fit.
