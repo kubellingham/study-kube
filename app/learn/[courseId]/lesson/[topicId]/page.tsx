@@ -9,6 +9,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCourse } from "@/lib/learn/use-course";
+import { useEntitlement } from "@/lib/use-entitlement";
+import { hasSummit } from "@/lib/entitlement";
 import type { CheckStep, TeachStep, Step, Lesson } from "@/lib/course/types";
 import {
   topicLessons,
@@ -378,6 +380,7 @@ export default function TopicPage() {
   const { user, userLoading, status, bundle } = useCourse(params.courseId);
   const topic = bundle?.getTopic(params.topicId);
   const router = useRouter();
+  const { entitlement } = useEntitlement();
 
   const [progress, setProgress] = useState<LearnProgress | null>(null);
   const [phase, setPhase] = useState<Phase>("loading");
@@ -425,6 +428,28 @@ export default function TopicPage() {
       <div className="flex-1 grid place-items-center text-sm" style={{ color: "var(--faint)" }}>
         Loading…
       </div>
+    );
+  }
+
+  // The climb itself is Summit. The tree is shown behind glass on the ladder;
+  // reaching a lesson without Summit lands here — warm, inviting, never a scold.
+  if (entitlement !== null && !hasSummit(entitlement)) {
+    return (
+      <main className="mx-auto max-w-md flex-1 px-4 py-20 text-center">
+        <div className="mx-auto grid place-items-center" style={{ width: 56, height: 56, borderRadius: "50%", background: "var(--kube-soft)", color: "var(--kube)" }}>
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0" strokeLinecap="round" /></svg>
+        </div>
+        <h1 className="mt-5 text-2xl">{topic.title}</h1>
+        <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>
+          Ready when you are. Summit turns this circle — and every circle — into the full slow walk-through, with your daily plan and the tutor on tap.
+        </p>
+        <Link href="/learn" className="mt-6 inline-block rounded-2xl px-6 py-3 text-sm font-semibold text-white" style={{ background: "var(--kube)", boxShadow: "0 4px 0 rgba(20,32,43,.18)" }}>
+          Unlock with Summit
+        </Link>
+        <div className="mt-4">
+          <Link href={`/learn/${params.courseId}`} className="text-xs font-semibold" style={{ color: "var(--faint)" }}>← back to your path</Link>
+        </div>
+      </main>
     );
   }
 

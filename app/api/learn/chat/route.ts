@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
-import { getUid } from "@/lib/api-helpers";
+import { requireEntitlement } from "@/lib/entitlement-server";
 import { getAnthropic, CHAT_MODEL } from "@/lib/anthropic";
 
 export const runtime = "nodejs";
@@ -51,10 +51,10 @@ interface ChatTurn {
 }
 
 export async function POST(req: NextRequest) {
-  const uid = await getUid(req);
-  if (!uid) {
-    return Response.json({ error: "Not signed in." }, { status: 401 });
-  }
+  // The live tutor is a Summit feature (per-message AI spend).
+  const gate = await requireEntitlement(req, "summit");
+  if (!gate.ok) return gate.response;
+  const uid = gate.uid;
 
   let courseTitle = "";
   let topicTitle = "";

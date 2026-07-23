@@ -1,6 +1,6 @@
 import { createHash } from "crypto";
 import { NextRequest, after } from "next/server";
-import { getUid } from "@/lib/api-helpers";
+import { requireEntitlement } from "@/lib/entitlement-server";
 import { adminDb } from "@/lib/firebase/admin";
 import { extractDocumentText } from "@/lib/ingest/office";
 import {
@@ -75,10 +75,11 @@ function sanitizeImages(raw: unknown): IngestImage[] {
  *  ingestJobs doc the client watches. Closing the tab is safe — the job
  *  finishes on its own and the course updates when it's done. */
 export async function POST(req: NextRequest) {
-  const uid = await getUid(req);
-  if (!uid) {
-    return Response.json({ error: "Not signed in." }, { status: 401 });
-  }
+  // Building/digesting a subject needs at least Climb (protects digestion spend
+  // and enforces the "every digested user has paid something" rule).
+  const gate = await requireEntitlement(req, "climb");
+  if (!gate.ok) return gate.response;
+  const uid = gate.uid;
 
   let courseId = "";
   let fileName = "pasted text";

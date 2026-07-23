@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
-import { getUid } from "@/lib/api-helpers";
+import { requireEntitlement } from "@/lib/entitlement-server";
 import { getAnthropic, CHAT_MODEL } from "@/lib/anthropic";
 
 export const runtime = "nodejs";
@@ -32,8 +32,9 @@ const verdictSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  const uid = await getUid(req);
-  if (!uid) return Response.json({ error: "Not signed in." }, { status: 401 });
+  // The practice meaning-judge is a Climb feature (cram gym).
+  const gate = await requireEntitlement(req, "climb");
+  if (!gate.ok) return gate.response;
 
   let term = "";
   let definition = "";

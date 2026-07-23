@@ -1,13 +1,41 @@
 // Server-side access resolution + promo-code machinery. All reads/writes here
 // go through the Admin SDK (bypasses client rules), so entitlement can never be
 // forged from the browser — the client copy is UX only; this is the real gate.
+import type { NextRequest } from "next/server";
 import { adminDb } from "@/lib/firebase/admin";
+import { getAuth } from "@/lib/api-helpers";
 import {
+  meetsTier,
   resolveEntitlement,
+  TIER_LABEL,
   type Entitlement,
   type Grant,
   type Tier,
 } from "@/lib/entitlement";
+
+// ── Route guard ──────────────────────────────────────────────────────────
+
+/** Gate an API route on a minimum tier. 402 (Payment Required) with the tier
+ *  the caller needs, so the client can surface the right warm upsell. */
+export async function requireEntitlement(
+  req: NextRequest,
+  min: Tier
+): Promise<{ ok: true; uid: string; email: string | null } | { ok: false; response: Response }> {
+  const auth = await getAuth(req);
+  if (!auth)
+    return { ok: false, response: Response.json({ error: "Not signed in." }, { status: 401 }) };
+  const ent = await getEntitlement(auth.uid);
+  if (!meetsTier(ent, min)) {
+    return {
+      ok: false,
+      response: Response.json(
+        { error: `This needs ${TIER_LABEL[min]}.`, needsTier: min },
+        { status: 402 }
+      ),
+    };
+  }
+  return { ok: true, uid: auth.uid, email: auth.email };
+}
 
 // ── Access resolution ────────────────────────────────────────────────────
 
