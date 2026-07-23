@@ -41,5 +41,20 @@ export const PLANS: Record<
 export const lookupKey = (tier: "climb" | "summit", interval: Interval) => `${tier}_${interval}`;
 export const introCouponId = (tier: "climb" | "summit") => `${tier}_intro`;
 
+// Kube Crew — group billing (leader pays, everyone gets Summit + a shared
+// library). Two seat sizes; annual ≈ 2 months free. No intro coupon.
+export type CrewSize = 4 | 6;
+export const CREW = {
+  tier: "crew" as Tier,
+  name: "Kube Crew",
+  blurb: "Everything in Summit for your whole crew, plus a shared material library — cheaper per head.",
+  sizes: {
+    4: { month: 2399, annual: 23999 },
+    6: { month: 2999, annual: 29999 },
+  } as Record<CrewSize, { month: number; annual: number }>,
+};
+export const crewLookup = (size: CrewSize, interval: Interval) => `crew${size}_${interval}`;
+export const CREW_SIZES: CrewSize[] = [4, 6];
+
 export const usd = (cents: number) =>
   cents % 100 === 0 ? `$${cents / 100}` : `$${(cents / 100).toFixed(2)}`;

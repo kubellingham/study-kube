@@ -14,6 +14,7 @@ import { listBuiltinBundles } from "@/lib/course";
 import { loadProgress } from "@/lib/learn/progress";
 import RedeemCode from "@/app/learn/components/RedeemCode";
 import ManageBilling from "@/app/learn/components/ManageBilling";
+import { useEntitlement } from "@/lib/use-entitlement";
 
 interface SubjectCard {
   id: string;
@@ -26,6 +27,8 @@ interface SubjectCard {
 
 export default function LearnHomePage() {
   const { user, loading } = useUser();
+  const { entitlement } = useEntitlement();
+  const inCrew = entitlement?.tier === "crew" || entitlement?.source === "crew";
   const router = useRouter();
   const [subjects, setSubjects] = useState<SubjectCard[] | null>(null);
 
@@ -111,6 +114,11 @@ export default function LearnHomePage() {
           <span style={{ color: "var(--kube)" }}>Kube</span>
         </span>
         <div className="flex items-center gap-3">
+          {inCrew && (
+            <Link href="/learn/crew" className="rounded-full border px-3.5 py-1.5 text-xs font-semibold" style={{ borderColor: "var(--kube-line)", color: "var(--kube)", background: "var(--kube-soft)" }}>
+              Crew
+            </Link>
+          )}
           <ManageBilling />
           <RedeemCode />
           {isOwner(user.email) && (

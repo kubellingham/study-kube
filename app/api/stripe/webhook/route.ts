@@ -1,8 +1,9 @@
 import { NextRequest } from "next/server";
 import type Stripe from "stripe";
 import { adminDb } from "@/lib/firebase/admin";
-import { stripe, stripeReady } from "@/lib/stripe";
+import { stripe, stripeReady, type CrewSize } from "@/lib/stripe";
 import type { Tier } from "@/lib/entitlement";
+import { provisionCrew } from "@/lib/crew";
 
 export const runtime = "nodejs";
 
@@ -32,6 +33,11 @@ function periodEndMs(sub: Stripe.Subscription): number | null {
   return typeof raw === "number" ? raw * 1000 : null;
 }
 
+function crewSizeOf(sub: Stripe.Subscription): CrewSize {
+  const raw = (sub.metadata?.size as string | undefined) || (sub.items?.data?.[0]?.price?.metadata?.size as string | undefined);
+  return raw === "4" ? 4 : 6;
+}
+
 async function apply(sub: Stripe.Subscription) {
   const uid = await uidForSubscription(sub);
   if (!uid) return;
@@ -50,6 +56,9 @@ async function apply(sub: Stripe.Subscription) {
   );
   // Reverse map for later customer-only events.
   await adminDb().collection("stripeCustomers").doc(customerId).set({ uid }, { merge: true });
+
+  // Crew: provision (or wind down) the group so members can join / lose access.
+  if (tier === "crew") await provisionCrew(uid, null, crewSizeOf(sub), active);
 }
 
 export async function POST(req: NextRequest) {

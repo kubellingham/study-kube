@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { requireOwner } from "@/lib/admin-guard";
 import { adminDb } from "@/lib/firebase/admin";
-import { stripe, stripeReady, PLANS, lookupKey, introCouponId } from "@/lib/stripe";
+import { stripe, stripeReady, PLANS, lookupKey, introCouponId, CREW, CREW_SIZES, crewLookup } from "@/lib/stripe";
 
 export const runtime = "nodejs";
 
@@ -50,6 +50,29 @@ export async function POST(req: NextRequest) {
         await s.coupons.create({ id: couponId, amount_off: off, currency: "usd", duration: "once", name: `${plan.name} intro` });
       }
     }
+    // ── Kube Crew (group billing) — one product, a price per seat size × interval ──
+    if (!products.crew) {
+      const p = await s.products.create({ name: CREW.name, description: CREW.blurb, metadata: { tier: "crew" } });
+      products.crew = p.id;
+    }
+    for (const size of CREW_SIZES) {
+      for (const interval of ["month", "annual"] as const) {
+        const lk = crewLookup(size, interval);
+        const found = await s.prices.list({ lookup_keys: [lk], limit: 1 });
+        if (found.data[0]) { prices[lk] = found.data[0].id; continue; }
+        const created = await s.prices.create({
+          product: products.crew,
+          currency: "usd",
+          unit_amount: interval === "month" ? CREW.sizes[size].month : CREW.sizes[size].annual,
+          recurring: { interval: interval === "month" ? "month" : "year" },
+          lookup_key: lk,
+          transfer_lookup_key: true,
+          metadata: { tier: "crew", size: String(size), interval },
+        });
+        prices[lk] = created.id;
+      }
+    }
+
     await cfgRef.set({ products, prices, updatedAt: Date.now() }, { merge: true });
     return Response.json({ ok: true, products, prices });
   } catch (err) {
