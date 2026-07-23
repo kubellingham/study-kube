@@ -417,6 +417,35 @@ function materialBlocks(
   return blocks;
 }
 
+// One shared system prompt for the whole unit build. Keeping system + the
+// material block byte-identical across the skeleton, every per-topic drill and
+// the exam call means they form ONE cached prefix: the skeleton call warms it,
+// and every call after reads the document at ~0.1× instead of re-billing it.
+// The task-specific rules move into the user message (after the cached
+// material), where they cost a few hundred tokens instead of the whole doc.
+const UNIT_SYSTEM = `You are Kube, a calm, warm tutor turning a course's material into a genuine learning ladder — one concept per step, taught for real understanding, never a "show a card + Got it" lesson. Follow the specific task instructions in each message exactly.`;
+
+/** The document as a stable, cache-marked prefix — identical across every call
+ *  of one build (same rawText, images and label), so caching actually hits. */
+function cachedMaterial(rawText: string, images: SourceImage[] | undefined, label: string): ContentBlock[] {
+  const blocks: ContentBlock[] = [
+    { type: "text", text: `--- ${label} ---\n${rawText.slice(0, MAX_UNIT_CHARS)}` },
+  ];
+  for (const img of images ?? []) {
+    blocks.push({
+      type: "image",
+      source: { type: "base64", media_type: img.mediaType === "image/png" ? "image/png" : "image/jpeg", data: img.data },
+    });
+  }
+  if (images && images.length > 0) {
+    blocks.push({ type: "text", text: `The ${images.length} image(s) above are part of this material — read them as carefully as the text.` });
+  }
+  const last = blocks[blocks.length - 1] as { cache_control?: { type: "ephemeral" } };
+  last.cache_control = { type: "ephemeral" };
+  return blocks;
+}
+const materialLabel = (know: boolean) => (know ? "SYLLABUS / OUTLINE (scope only — teach from your knowledge)" : "COURSE MATERIAL");
+
 /** Step 1: the concept map — section header + topic list, no lessons. Fast. */
 export async function generateUnitSkeleton(
   courseTitle: string,
@@ -439,16 +468,17 @@ export async function generateUnitSkeleton(
     max_tokens: 8000,
     thinking: { type: "adaptive" },
     output_config: { effort: "medium", format: zodOutputFormat(skeletonSchema) },
-    system: know ? CONCEPT_RULES_KNOWLEDGE : CONCEPT_RULES,
+    system: UNIT_SYSTEM,
     messages: [
       {
         role: "user",
-        content: materialBlocks(
-          `Course: ${courseTitle}\nUnit number: ${unitNumber}\nPrefix all topic ids with "u${unitNumber}-".\n\n${existing}\n\nProduce ONLY the concept map for this unit: the section title, a one-line tagline, and the ordered list of topics (id, title, weight, deps, whyItMatters, recap). Do NOT write any lessons — those come next.`,
-          rawText,
-          images,
-          know ? "SYLLABUS / OUTLINE (scope only — teach from your knowledge)" : "UNIT MATERIAL"
-        ),
+        content: [
+          ...cachedMaterial(rawText, images, materialLabel(know)),
+          {
+            type: "text",
+            text: `${know ? CONCEPT_RULES_KNOWLEDGE : CONCEPT_RULES}\n\nCourse: ${courseTitle}\nUnit number: ${unitNumber}\nPrefix all topic ids with "u${unitNumber}-".\n\n${existing}\n\nProduce ONLY the concept map for this unit: the section title, a one-line tagline, and the ordered list of topics (id, title, weight, deps, whyItMatters, recap). Do NOT write any lessons — those come next.`,
+          },
+        ],
       },
     ],
   });
@@ -473,22 +503,23 @@ export async function generateTopicLessons(
     max_tokens: 16000,
     thinking: { type: "adaptive" },
     output_config: { effort: "high", format: zodOutputFormat(topicLessonsSchema) },
-    system: know ? DRILL_RULES_KNOWLEDGE : DRILL_RULES,
+    system: UNIT_SYSTEM,
     messages: [
       {
         role: "user",
-        content: materialBlocks(
-          `Course: ${courseTitle} · Unit ${unitNumber}\n\nThis unit's topics (for context — teach forward toward later ones where natural):\n${allTopicTitles
-            .map((t, i) => `${i + 1}. ${t}`)
-            .join(
-              "\n"
-            )}\n\nBUILD THE FOUR-QUARTER CIRCLE FOR EXACTLY ONE TOPIC:\n- id: ${topic.id}\n- title: ${topic.title}\n- weight: ${topic.weight}\n- why it matters: ${topic.whyItMatters}\n- its recap facts: ${topic.recap.join(
-            " | "
-          )}\n\n${know ? "Teach ONLY this concept from your own solid knowledge (the text above is just the syllabus for scope)." : "Drill ONLY this concept, grounded in the material above."} Return just its lessons array. Use lesson ids like 'q1','q2','q3','q4'.`,
-          rawText,
-          images,
-          know ? "SYLLABUS / OUTLINE (scope only — teach from your knowledge)" : "UNIT MATERIAL"
-        ),
+        content: [
+          ...cachedMaterial(rawText, images, materialLabel(know)),
+          {
+            type: "text",
+            text: `${know ? DRILL_RULES_KNOWLEDGE : DRILL_RULES}\n\nCourse: ${courseTitle} · Unit ${unitNumber}\n\nThis unit's topics (for context — teach forward toward later ones where natural):\n${allTopicTitles
+              .map((t, i) => `${i + 1}. ${t}`)
+              .join(
+                "\n"
+              )}\n\nBUILD THE FOUR-QUARTER CIRCLE FOR EXACTLY ONE TOPIC:\n- id: ${topic.id}\n- title: ${topic.title}\n- weight: ${topic.weight}\n- why it matters: ${topic.whyItMatters}\n- its recap facts: ${topic.recap.join(
+              " | "
+            )}\n\n${know ? "Teach ONLY this concept from your own solid knowledge (the text above is just the syllabus for scope)." : "Drill ONLY this concept, grounded in the material above."} Return just its lessons array. Use lesson ids like 'q1','q2','q3','q4'.`,
+          },
+        ],
       },
     ],
   });
@@ -512,20 +543,21 @@ export async function generateExamBank(
     max_tokens: 16000,
     thinking: { type: "adaptive" },
     output_config: { effort: "high", format: zodOutputFormat(examBankSchema) },
-    system: know ? EXAM_RULES_KNOWLEDGE : EXAM_RULES,
+    system: UNIT_SYSTEM,
     messages: [
       {
         role: "user",
-        content: materialBlocks(
-          `Course: ${courseTitle} · Unit ${unitNumber}\n\nTopics in this unit (tag every question with one of these ids):\n${topics
-            .map((t) => `- ${t.id}: ${t.title} — ${t.whyItMatters}`)
-            .join(
-              "\n"
-            )}\n\nWrite 8-12 exam-bank questions spread across these topics${know ? " from your own knowledge (the text is the syllabus for scope)" : ", grounded in the material above"}.`,
-          rawText,
-          images,
-          know ? "SYLLABUS / OUTLINE (scope only — teach from your knowledge)" : "UNIT MATERIAL"
-        ),
+        content: [
+          ...cachedMaterial(rawText, images, materialLabel(know)),
+          {
+            type: "text",
+            text: `${know ? EXAM_RULES_KNOWLEDGE : EXAM_RULES}\n\nCourse: ${courseTitle} · Unit ${unitNumber}\n\nTopics in this unit (tag every question with one of these ids):\n${topics
+              .map((t) => `- ${t.id}: ${t.title} — ${t.whyItMatters}`)
+              .join(
+                "\n"
+              )}\n\nWrite 8-12 exam-bank questions spread across these topics${know ? " from your own knowledge (the text is the syllabus for scope)" : ", grounded in the material above"}.`,
+          },
+        ],
       },
     ],
   });
