@@ -397,7 +397,7 @@ export default function CourseLadderPage() {
                                 // Tree behind glass: shown, warmly not-yet-yours.
                                 <div style={{ marginTop: 12 }}>
                                   <div style={{ fontSize: 12, lineHeight: 1.4, color: T.inkSoft }}>Ready when you are — unlock your climb with Summit.</div>
-                                  <Link href="/learn" style={{ display: "block", width: "100%", marginTop: 10, borderRadius: 12, padding: 11, fontFamily: T.mono, fontWeight: 600, fontSize: 11.5, letterSpacing: ".08em", textTransform: "uppercase", textAlign: "center", background: T.amber, color: "#fff", boxShadow: "0 3px 0 rgba(150,92,16,.4)" }}>Unlock with Summit</Link>
+                                  <Link href="/learn/upgrade" style={{ display: "block", width: "100%", marginTop: 10, borderRadius: 12, padding: 11, fontFamily: T.mono, fontWeight: 600, fontSize: 11.5, letterSpacing: ".08em", textTransform: "uppercase", textAlign: "center", background: T.amber, color: "#fff", boxShadow: "0 3px 0 rgba(150,92,16,.4)" }}>Unlock with Summit</Link>
                                 </div>
                               ) : (
                                 <Link href={`/learn/${params.courseId}/lesson/${tp.id}`} style={{ display: "block", width: "100%", marginTop: 12, borderRadius: 12, padding: 11, fontFamily: T.mono, fontWeight: 600, fontSize: 11.5, letterSpacing: ".08em", textTransform: "uppercase", textAlign: "center", background: st === "completed" ? secSoft : secMain, color: st === "completed" ? secMain : "#fff", boxShadow: "0 3px 0 rgba(20,32,43,.16)" }}>{actionLabel}</Link>
@@ -437,7 +437,7 @@ export default function CourseLadderPage() {
             <div style={{ marginTop: 8, background: T.kubeSoft, border: `1px solid ${T.kubeLine}`, borderRadius: 18, padding: "18px 20px", textAlign: "center" }}>
               <div style={{ fontFamily: T.display, fontWeight: 600, fontSize: 16, color: T.ink }}>Add material with Kube</div>
               <p style={{ fontSize: 13, lineHeight: 1.5, color: T.inkSoft, margin: "6px 0 0" }}>Redeem a code (or start a plan) to feed Kube your units and build the tree.</p>
-              <Link href="/learn" style={{ display: "inline-block", marginTop: 12, background: T.kube, color: "#fff", borderRadius: 12, padding: "10px 18px", fontFamily: T.mono, fontWeight: 600, fontSize: 12, letterSpacing: ".08em", textTransform: "uppercase" }}>Unlock Kube</Link>
+              <Link href="/learn/upgrade" style={{ display: "inline-block", marginTop: 12, background: T.kube, color: "#fff", borderRadius: 12, padding: "10px 18px", fontFamily: T.mono, fontWeight: 600, fontSize: 12, letterSpacing: ".08em", textTransform: "uppercase" }}>Unlock Kube</Link>
             </div>
           )}
         </div>
@@ -462,7 +462,7 @@ export default function CourseLadderPage() {
             <span style={{ display: "inline-block", background: T.kube, color: "#fff", fontFamily: T.mono, fontWeight: 600, fontSize: 11, letterSpacing: ".14em", textTransform: "uppercase", padding: "4px 10px", borderRadius: 7 }}>Kube Summit</span>
             <div style={{ fontFamily: T.display, fontWeight: 600, fontSize: 19, color: T.ink, marginTop: 13 }}>Ready when you are.</div>
             <p style={{ fontSize: 13.5, lineHeight: 1.5, color: T.inkSoft, margin: "7px 0 0" }}>Your tree is built and waiting. Summit turns every circle tappable — the full teaching, your daily plan, and the tutor on tap.</p>
-            <Link href="/learn" style={{ display: "block", textAlign: "center", width: "100%", marginTop: 16, background: T.kube, color: "#fff", border: "none", borderRadius: 13, padding: 13, fontFamily: T.mono, fontWeight: 600, fontSize: 12.5, letterSpacing: ".1em", textTransform: "uppercase", cursor: "pointer", boxShadow: "0 4px 0 rgba(20,32,43,.18)" }}>Unlock with Summit</Link>
+            <Link href="/learn/upgrade" style={{ display: "block", textAlign: "center", width: "100%", marginTop: 16, background: T.kube, color: "#fff", border: "none", borderRadius: 13, padding: 13, fontFamily: T.mono, fontWeight: 600, fontSize: 12.5, letterSpacing: ".1em", textTransform: "uppercase", cursor: "pointer", boxShadow: "0 4px 0 rgba(20,32,43,.18)" }}>Unlock with Summit</Link>
           </div>
         )}
 
@@ -479,7 +479,7 @@ export default function CourseLadderPage() {
             </div>
           </div>
           {curTopic && (
-            <Link href={summit ? `/learn/${params.courseId}/lesson/${curTopic.id}` : "/learn"} style={{ display: "block", width: "100%", marginTop: 16, background: summit ? T.kube : T.amber, color: "#fff", borderRadius: 13, padding: "13px 14px", fontFamily: T.mono, fontWeight: 600, fontSize: 11.5, letterSpacing: ".06em", textTransform: "uppercase", textAlign: "center", boxShadow: summit ? "0 4px 0 rgba(20,32,43,.18)" : "0 4px 0 rgba(150,92,16,.4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{summit ? `Continue: ${curTopic.title}` : "Unlock with Summit"}</Link>
+            <Link href={summit ? `/learn/${params.courseId}/lesson/${curTopic.id}` : "/learn/upgrade"} style={{ display: "block", width: "100%", marginTop: 16, background: summit ? T.kube : T.amber, color: "#fff", borderRadius: 13, padding: "13px 14px", fontFamily: T.mono, fontWeight: 600, fontSize: 11.5, letterSpacing: ".06em", textTransform: "uppercase", textAlign: "center", boxShadow: summit ? "0 4px 0 rgba(20,32,43,.18)" : "0 4px 0 rgba(150,92,16,.4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{summit ? `Continue: ${curTopic.title}` : "Unlock with Summit"}</Link>
           )}
         </div>
 

@@ -25,7 +25,7 @@ export function CramLocked({ feature = "This" }: { feature?: string }) {
       <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>
         The practice gym, mock exams and notes come with a Kube plan. Redeem a code (or start a plan) and it&apos;s all yours.
       </p>
-      <Link href="/learn" className="mt-6 inline-block rounded-2xl px-6 py-3 text-sm font-semibold text-white" style={{ background: "var(--kube)", boxShadow: "0 4px 0 rgba(20,32,43,.18)" }}>
+      <Link href="/learn/upgrade" className="mt-6 inline-block rounded-2xl px-6 py-3 text-sm font-semibold text-white" style={{ background: "var(--kube)", boxShadow: "0 4px 0 rgba(20,32,43,.18)" }}>
         Unlock Kube
       </Link>
     </main>

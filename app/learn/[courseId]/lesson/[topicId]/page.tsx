@@ -443,7 +443,7 @@ export default function TopicPage() {
         <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>
           Ready when you are. Summit turns this circle — and every circle — into the full slow walk-through, with your daily plan and the tutor on tap.
         </p>
-        <Link href="/learn" className="mt-6 inline-block rounded-2xl px-6 py-3 text-sm font-semibold text-white" style={{ background: "var(--kube)", boxShadow: "0 4px 0 rgba(20,32,43,.18)" }}>
+        <Link href="/learn/upgrade" className="mt-6 inline-block rounded-2xl px-6 py-3 text-sm font-semibold text-white" style={{ background: "var(--kube)", boxShadow: "0 4px 0 rgba(20,32,43,.18)" }}>
           Unlock with Summit
         </Link>
         <div className="mt-4">

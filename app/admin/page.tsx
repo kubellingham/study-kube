@@ -41,6 +41,8 @@ export default function AdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [passkey, setPasskey] = useState<boolean | null>(null); // null = loading
   const [pkBusy, setPkBusy] = useState(false);
+  const [stripeBusy, setStripeBusy] = useState(false);
+  const [stripeMsg, setStripeMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const owner = isOwner(user?.email);
 
@@ -93,6 +95,21 @@ export default function AdminPage() {
     const v = await verRes.json();
     if (!verRes.ok || !v.token) throw new Error(v.error || "Passkey not confirmed.");
     return v.token as string;
+  }
+
+  async function setupStripe() {
+    setStripeBusy(true); setStripeMsg(null);
+    try {
+      const res = await authedFetch("/api/admin/stripe/setup", { method: "POST" });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Stripe setup failed.");
+      const n = d.prices ? Object.keys(d.prices).length : 0;
+      setStripeMsg({ ok: true, text: `Products & ${n} prices ready in Stripe.` });
+    } catch (err) {
+      setStripeMsg({ ok: false, text: err instanceof Error ? err.message : "Stripe setup failed." });
+    } finally {
+      setStripeBusy(false);
+    }
   }
 
   async function mint(e: React.FormEvent) {
@@ -216,6 +233,18 @@ export default function AdminPage() {
             </div>
           )}
         </form>
+
+        {/* Payments */}
+        <div style={{ marginTop: 20, background: K.card, border: `1px solid ${K.line}`, borderRadius: 18, padding: 22 }}>
+          <h2 style={{ fontFamily: K.display, fontWeight: 600, fontSize: 18, margin: "0 0 6px" }}>Payments (Stripe)</h2>
+          <p style={{ fontSize: 13, lineHeight: 1.5, color: K.inkSoft, margin: "0 0 14px" }}>
+            One-time setup: creates the Climb &amp; Summit products, their monthly + yearly prices, and the first-month intro coupons in your Stripe account. Safe to re-run.
+          </p>
+          <button type="button" onClick={setupStripe} disabled={stripeBusy} style={{ background: K.kube, color: "#fff", border: "none", borderRadius: 12, padding: "10px 18px", fontWeight: 700, fontSize: 13.5, cursor: stripeBusy ? "default" : "pointer", opacity: stripeBusy ? 0.7 : 1, boxShadow: "0 4px 0 rgba(20,32,43,.18)" }}>
+            {stripeBusy ? "Setting up…" : "Set up Stripe products"}
+          </button>
+          {stripeMsg && <p style={{ fontSize: 13, marginTop: 12, color: stripeMsg.ok ? K.kube : K.red }}>{stripeMsg.text}</p>}
+        </div>
 
         {/* List */}
         <h2 style={{ fontFamily: K.display, fontWeight: 600, fontSize: 18, margin: "28px 0 12px" }}>Minted codes</h2>
