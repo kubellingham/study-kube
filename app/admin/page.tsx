@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { startRegistration, startAuthentication } from "@simplewebauthn/browser";
 import { useUser } from "@/lib/use-user";
 import { isOwner } from "@/lib/owner";
 import { authedFetch } from "@/lib/authed-fetch";
@@ -38,6 +39,8 @@ export default function AdminPage() {
   const [minted, setMinted] = useState<CodeRow | null>(null);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [passkey, setPasskey] = useState<boolean | null>(null); // null = loading
+  const [pkBusy, setPkBusy] = useState(false);
 
   const owner = isOwner(user?.email);
 
@@ -46,6 +49,10 @@ export default function AdminPage() {
       .then((r) => r.json())
       .then((d) => setCodes(d.codes ?? []))
       .catch(() => setCodes([]));
+    authedFetch("/api/admin/passkey/status")
+      .then((r) => r.json())
+      .then((d) => setPasskey(!!d.registered))
+      .catch(() => setPasskey(false));
   }, []);
 
   useEffect(() => {
@@ -54,10 +61,46 @@ export default function AdminPage() {
     if (owner) load();
   }, [user, loading, owner, router, load]);
 
+  async function registerPasskey() {
+    setPkBusy(true); setError(null);
+    try {
+      const optRes = await authedFetch("/api/admin/passkey/register-options", { method: "POST" });
+      const options = await optRes.json();
+      if (!optRes.ok) throw new Error(options.error || "Could not start passkey setup.");
+      const attResp = await startRegistration({ optionsJSON: options });
+      const verRes = await authedFetch("/api/admin/passkey/register-verify", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(attResp),
+      });
+      const v = await verRes.json();
+      if (!verRes.ok || !v.ok) throw new Error(v.error || "Passkey setup failed.");
+      setPasskey(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Passkey setup was cancelled.");
+    } finally {
+      setPkBusy(false);
+    }
+  }
+
+  // Fresh passkey assertion → a single-use mint token the mint route requires.
+  async function stepUp(): Promise<string> {
+    const optRes = await authedFetch("/api/admin/passkey/auth-options", { method: "POST" });
+    const options = await optRes.json();
+    if (!optRes.ok) throw new Error(options.error || "Passkey check failed.");
+    const asseResp = await startAuthentication({ optionsJSON: options });
+    const verRes = await authedFetch("/api/admin/passkey/auth-verify", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(asseResp),
+    });
+    const v = await verRes.json();
+    if (!verRes.ok || !v.token) throw new Error(v.error || "Passkey not confirmed.");
+    return v.token as string;
+  }
+
   async function mint(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true); setError(null); setMinted(null); setCopied(false);
     try {
+      // Passkey step-up when one is registered — confirm identity at mint time.
+      const mintToken = passkey ? await stepUp() : undefined;
       const res = await authedFetch("/api/admin/promo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -65,6 +108,7 @@ export default function AdminPage() {
           tier, durationDays, maxUses,
           recipientEmail: recipientEmail.trim() || null,
           note: note.trim(),
+          mintToken,
         }),
       });
       const d = await res.json();
@@ -107,7 +151,19 @@ export default function AdminPage() {
 
         {/* Mint */}
         <form onSubmit={mint} style={{ background: K.card, border: `1px solid ${K.line}`, borderRadius: 18, padding: 22 }}>
-          <h2 style={{ fontFamily: K.display, fontWeight: 600, fontSize: 18, margin: "0 0 16px" }}>Mint a code</h2>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 16 }}>
+            <h2 style={{ fontFamily: K.display, fontWeight: 600, fontSize: 18, margin: 0 }}>Mint a code</h2>
+            {passkey === true ? (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, color: K.kube, background: K.kubeSoft, border: `1px solid ${K.kubeLine}`, borderRadius: 999, padding: "5px 11px" }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><rect x="4" y="10" width="16" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0" strokeLinecap="round" /></svg>
+                Passkey on
+              </span>
+            ) : passkey === false ? (
+              <button type="button" onClick={registerPasskey} disabled={pkBusy} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, color: K.amber, background: "#fff", border: `1px solid ${K.amber}`, borderRadius: 999, padding: "5px 11px", cursor: pkBusy ? "default" : "pointer" }}>
+                {pkBusy ? "Setting up…" : "🔑 Set up a passkey"}
+              </button>
+            ) : null}
+          </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
             <div>
               {label("Tier")}
@@ -138,7 +194,7 @@ export default function AdminPage() {
           </div>
           {error && <p style={{ color: K.red, fontSize: 13, margin: "12px 0 0" }}>{error}</p>}
           <button type="submit" disabled={busy} style={{ marginTop: 16, background: K.kube, color: "#fff", border: "none", borderRadius: 12, padding: "11px 20px", fontWeight: 700, fontSize: 14, cursor: busy ? "default" : "pointer", opacity: busy ? 0.7 : 1, boxShadow: "0 4px 0 rgba(20,32,43,.18)" }}>
-            {busy ? "Minting…" : "Mint code"}
+            {busy ? "Minting…" : passkey ? "Confirm with passkey & mint" : "Mint code"}
           </button>
 
           {minted && (
