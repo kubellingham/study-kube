@@ -21,8 +21,10 @@ function firebaseProjectId(): string | undefined {
   );
 }
 
-/** Verify the Firebase ID token from the Authorization header. */
-export async function getUid(req: NextRequest): Promise<string | null> {
+/** Verify the Firebase ID token and return its uid + email (null if invalid). */
+export async function getAuth(
+  req: NextRequest
+): Promise<{ uid: string; email: string | null } | null> {
   const header = req.headers.get("authorization") || "";
   const match = header.match(/^Bearer (.+)$/i);
   if (!match) return null;
@@ -37,10 +39,17 @@ export async function getUid(req: NextRequest): Promise<string | null> {
       issuer: `https://securetoken.google.com/${projectId}`,
       audience: projectId,
     });
-    return typeof payload.sub === "string" && payload.sub ? payload.sub : null;
+    if (typeof payload.sub !== "string" || !payload.sub) return null;
+    const email = typeof payload.email === "string" ? payload.email : null;
+    return { uid: payload.sub, email };
   } catch {
     return null;
   }
+}
+
+/** Verify the Firebase ID token from the Authorization header. */
+export async function getUid(req: NextRequest): Promise<string | null> {
+  return (await getAuth(req))?.uid ?? null;
 }
 
 export async function requireMaterial(

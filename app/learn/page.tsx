@@ -9,8 +9,10 @@ import { collection, getDocs, query, where } from "firebase/firestore";
 import { signOut } from "firebase/auth";
 import { db, auth } from "@/lib/firebase/client";
 import { useUser } from "@/lib/use-user";
+import { isOwner } from "@/lib/owner";
 import { listBuiltinBundles } from "@/lib/course";
 import { loadProgress } from "@/lib/learn/progress";
+import RedeemCode from "@/app/learn/components/RedeemCode";
 
 interface SubjectCard {
   id: string;
@@ -108,6 +110,16 @@ export default function LearnHomePage() {
           <span style={{ color: "var(--kube)" }}>Kube</span>
         </span>
         <div className="flex items-center gap-3">
+          <RedeemCode />
+          {isOwner(user.email) && (
+            <Link
+              href="/admin"
+              className="rounded-full border px-3.5 py-1.5 text-xs font-semibold"
+              style={{ borderColor: "var(--line)", color: "var(--ink-soft)", background: "var(--card)" }}
+            >
+              Admin
+            </Link>
+          )}
           {user.email && (
             <span
               className="hidden text-xs sm:inline"
