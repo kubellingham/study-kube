@@ -9,6 +9,7 @@ import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { type CourseBundle } from "@/lib/course";
 import { useCourse } from "@/lib/learn/use-course";
+import { useCramLocked, CramLocked } from "@/app/learn/components/PlanGate";
 import type { ExamQuestion } from "@/lib/course/types";
 import { shuffledOptions } from "@/lib/course/lessons";
 import { saveExamAttempt } from "@/lib/learn/progress";
@@ -115,6 +116,7 @@ function ExamInner() {
   const searchParams = useSearchParams();
   const { user, userLoading: loading, status, bundle } = useCourse(params.courseId);
   const router = useRouter();
+  const cramLocked = useCramLocked();
 
   const [phase, setPhase] = useState<"config" | "exam" | "analysis">("config");
   const [scope, setScope] = useState<number | "all">("all");
@@ -186,6 +188,7 @@ function ExamInner() {
       </div>
     );
   }
+  if (cramLocked) return <CramLocked feature="Mock exams" />;
 
   const courseId = bundle.course.id;
 

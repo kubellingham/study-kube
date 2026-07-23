@@ -5,10 +5,12 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCourse } from "@/lib/learn/use-course";
+import { useCramLocked, CramLocked } from "@/app/learn/components/PlanGate";
 
 export default function GlossaryPage() {
   const params = useParams<{ courseId: string }>();
   const { status, bundle } = useCourse(params.courseId);
+  const cramLocked = useCramLocked();
 
   if (status === "notfound") {
     return (
@@ -28,6 +30,7 @@ export default function GlossaryPage() {
       </div>
     );
   }
+  if (cramLocked) return <CramLocked feature="Notes" />;
 
   const { course } = bundle;
 

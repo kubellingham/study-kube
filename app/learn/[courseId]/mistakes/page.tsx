@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCourse } from "@/lib/learn/use-course";
+import { useCramLocked, CramLocked } from "@/app/learn/components/PlanGate";
 import type { ExamQuestion } from "@/lib/course/types";
 import { loadFlags, saveFlag, type Flags } from "@/lib/learn/flags";
 import { loadMistakes, clearMistake, type Mistakes } from "@/lib/learn/mistakes";
@@ -28,6 +29,7 @@ export default function MistakesPage() {
   const params = useParams<{ courseId: string }>();
   const { user, userLoading, status, bundle } = useCourse(params.courseId);
   const router = useRouter();
+  const cramLocked = useCramLocked();
   const [flags, setFlags] = useState<Flags>({});
   const [mistakes, setMistakes] = useState<Mistakes>({});
   const [ready, setReady] = useState(false);
@@ -114,6 +116,7 @@ export default function MistakesPage() {
       </div>
     );
   }
+  if (cramLocked) return <CramLocked feature="Mistakes & flags" />;
 
   const { course } = bundle;
 

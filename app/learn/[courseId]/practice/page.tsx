@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCourse } from "@/lib/learn/use-course";
+import { useCramLocked, CramLocked } from "@/app/learn/components/PlanGate";
 import { buildConceptPool, sprintItems } from "@/lib/course/concepts";
 import { loadPracticeState, type CardState } from "@/lib/learn/practice";
 import Matching from "./Matching";
@@ -29,6 +30,7 @@ export default function PracticePage() {
   const params = useParams<{ courseId: string }>();
   const { user, userLoading, status, bundle } = useCourse(params.courseId);
   const router = useRouter();
+  const cramLocked = useCramLocked();
   const [tool, setTool] = useState<Tool | null>(null);
   const [cards, setCards] = useState<Record<string, CardState>>({});
   const [best, setBest] = useState(0);
@@ -80,6 +82,7 @@ export default function PracticePage() {
       </div>
     );
   }
+  if (cramLocked) return <CramLocked feature="The practice gym" />;
 
   const { course } = bundle;
 
