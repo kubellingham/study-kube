@@ -104,7 +104,7 @@ export default function ManageCoursePage() {
 
       {/* Add material — the main event */}
       <div className="mt-2">
-        <AddMaterial courseId={bundle.course.id} uid={user.uid} files={files} onDone={reload} invitation={files.length === 0} />
+        <AddMaterial courseId={bundle.course.id} uid={user.uid} files={files} onDone={reload} invitation={files.length === 0} courseTitle={bundle.course.title} />
       </div>
 
       {/* What Kube has learned */}

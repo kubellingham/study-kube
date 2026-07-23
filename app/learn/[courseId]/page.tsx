@@ -436,7 +436,7 @@ export default function CourseLadderPage() {
 
           {!loading && owned && climb && (
             <div style={{ marginTop: 8 }}>
-              <AddMaterial courseId={course!.id} uid={user!.uid} files={files} onDone={reload} invitation={ladder.length === 0 && !syllabus} />
+              <AddMaterial courseId={course!.id} uid={user!.uid} files={files} onDone={reload} invitation={ladder.length === 0 && !syllabus} courseTitle={course!.title} />
             </div>
           )}
           {!loading && owned && !climb && entLoaded && (

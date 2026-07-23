@@ -85,6 +85,10 @@ export async function POST(req: NextRequest) {
   let fileName = "pasted text";
   let rawText = "";
   let images: IngestImage[] = [];
+  // "fromFile" = digest the upload as teaching content (default). "fromKnowledge"
+  // = treat the upload as a syllabus/outline and build the ladder from Kube's own
+  // knowledge (the intake-read path).
+  let mode: "fromFile" | "fromKnowledge" = "fromFile";
 
   try {
     const contentType = req.headers.get("content-type") || "";
@@ -94,6 +98,7 @@ export async function POST(req: NextRequest) {
       fileName = (body.name || "pasted text").toString().slice(0, 200);
       rawText = (body.text || "").toString();
       images = sanitizeImages(body.images);
+      if (body.mode === "fromKnowledge") mode = "fromKnowledge";
     } else {
       // Fallback for clients that couldn't extract locally (small files only).
       const form = await req.formData();
@@ -183,6 +188,63 @@ export async function POST(req: NextRequest) {
     }
 
     try {
+      // ── The intake-read path: build the ladder from a syllabus/outline using
+      // Kube's own knowledge, no unit files needed. Skips classification. ──
+      if (mode === "fromKnowledge") {
+        const preSections = (snap.get("sections") as Section[]) ?? [];
+        const fed = preSections.map((s) => s.unit);
+        const unitNumber = fed.length ? Math.max(...fed) + 1 : 1;
+        const existingTopics = preSections.flatMap((s) => s.topics).map((t) => ({ id: t.id, title: t.title }));
+        await setJob({ note: "Reading your outline and planning the ladder from Kube's own knowledge…", label: "built from your outline", kind: "unit" });
+
+        const generated = await withDeadline(
+          (async () => {
+            const skeleton = await generateUnitSkeleton(courseTitle, unitNumber, rawText, existingTopics, images, "knowledge");
+            await setJob({ note: `Mapped ${skeleton.topics.length} concept${skeleton.topics.length === 1 ? "" : "s"} — teaching each from scratch…` });
+            const titles = skeleton.topics.map((t) => t.title);
+            let done = 0;
+            const [lessonsByTopic, examQuestions] = await Promise.all([
+              mapWithConcurrency(skeleton.topics, 5, async (topic) => {
+                const lessons = await generateTopicLessons(courseTitle, unitNumber, rawText, topic, titles, images, "knowledge").catch(() => null);
+                done += 1;
+                await setJob({ note: `Building lessons — ${done}/${skeleton.topics.length} done…` });
+                return lessons;
+              }),
+              generateExamBank(courseTitle, unitNumber, rawText, skeleton.topics, images, "knowledge").catch(() => []),
+            ]);
+            return composeGeneratedUnit(skeleton, lessonsByTopic, examQuestions);
+          })(),
+          DIGEST_DEADLINE_MS,
+          "Kube ran out of time building this from the outline. Try a tighter scope, or add the material directly."
+        );
+
+        let added = 0;
+        let addedQ = 0;
+        await db.runTransaction(async (tx) => {
+          const fresh = await tx.get(courseRef);
+          const sections = ((fresh.get("sections") as Section[]) ?? []).slice();
+          const examBank = ((fresh.get("examBank") as ExamQuestion[]) ?? []).slice();
+          const files = ((fresh.get("files") as IngestedFile[]) ?? []).filter((f) => f.id !== fileId);
+          const allIds = sections.flatMap((s) => s.topics).map((t) => t.id);
+          const { section, questions } = assembleUnit(generated, unitNumber, allIds);
+          if (section.topics.length === 0 && questions.length === 0) {
+            throw new Error("Kube couldn't build a ladder from that outline — try adding the material directly.");
+          }
+          sections.push(section);
+          added = section.topics.length;
+          addedQ = questions.length;
+          const kRecord: IngestedFile = { id: fileId, name: fileName, kind: "unit", unit: unitNumber, label: "Built from your outline", topics: added, questions: addedQ, digestedAt: Date.now() };
+          tx.update(courseRef, {
+            sections: normalizeCourse(sections),
+            examBank: [...examBank, ...questions],
+            files: [...files, kRecord],
+            updatedAt: Date.now(),
+          });
+        });
+        await setJob({ status: "done", note: `Built ${added} concept${added === 1 ? "" : "s"} from your outline — your ladder's up. Add your notes anytime to ground it in your exact course.` });
+        return;
+      }
+
       const classification = parseClassification(
         // A few images are enough to classify; generation gets them all.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any

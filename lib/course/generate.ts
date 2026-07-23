@@ -244,6 +244,87 @@ const EXAM_RULES = `You are Kube. You write a unit's ASSESSMENT pool — the exa
 - HARD RULE — ungameable options: all four options PARALLEL in length, specificity and grammar. The correct answer is never the longest or the only fully-explained one; distractors are genuine plausible misconceptions, not throwaways. Vary which option is correct — never habitually place it in one slot.
 - Ground everything strictly in the provided material; use its own terminology and worked numbers.`;
 
+// ── Teach-from-knowledge variants ─────────────────────────────────────────
+// When a student has only a SYLLABUS/OUTLINE (no teaching content), Kube builds
+// the ladder from its own solid knowledge of the standard curriculum, using the
+// outline for scope. Always surfaced to the student as "standard curriculum —
+// add your notes to ground it."
+const CONCEPT_RULES_KNOWLEDGE = `You are Kube, a calm, warm tutor. The provided text is a SYLLABUS / OUTLINE (topics, outcomes, a course plan) — NOT teaching content. Build the concept map a student must master to meet these outcomes, drawing on your OWN solid knowledge of the standard university curriculum for this subject.
+- ONE CONCEPT PER TOPIC, never cram. 4-12 topics, in dependency order (weight inherits upward).
+- You MAY add foundational concepts the outline assumes but doesn't spell out (a student needs them). Do NOT wander beyond the course's scope or invent exotic topics it wouldn't cover.
+- Follow the outline's terminology, ordering and emphasis. If the outline signals the assessment style (e.g. a practical/lab exam), weight toward what that exam tests.
+- Recap lines are crisp, exam-night facts.`;
+
+const DRILL_RULES_KNOWLEDGE = `You are Kube, a calm, warm tutor. You drill ONE concept into a FOUR-QUARTER circle — genuinely teaching someone who starts knowing nothing. The provided text is only the SYLLABUS/OUTLINE (for scope); TEACH this concept fully and correctly from your OWN solid knowledge of the standard curriculum.
+- Q1 "Meet it, slowly" — 4-8 tiny teach beats walking the student in from a question/need; never the full definition in one breath.
+- Q2 "Question it" — gentle checks on exactly what was met.
+- Q3 "Again, differently" — a real worked example, a "you try one", and a "spot the mistake" on a realistic error. Use real numbers, real truth tables, real IC/pinout details where the subject calls for them.
+- Q4 "Stretch & compare" — neighbours, harder cases, transfer; compare related concepts.
+- Depth scales with weight (heavy ~14-18 interactions; medium ~10; light ~6-8). Never a single card.
+- Every repetition is a FRESH angle. Teach for UNDERSTANDING (the why), specific praise, plausible-misconception distractors.
+- HARD RULE — ungameable options: all options PARALLEL in length/specificity/grammar; correct answer never the longest/only-explained; vary which is correct.
+- Be accurate. This is established, standard material — teach it as a good lecturer would; do NOT hedge or say "I'm not sure".`;
+
+const EXAM_RULES_KNOWLEDGE = `You are Kube. You write a unit's ASSESSMENT pool from your OWN solid knowledge of the standard curriculum (the provided text is a syllabus/outline for scope only).
+- Test the outcomes honestly: mix definition, why, and worked styles across the topics. Where the course is practical/lab-based, test the circuit / IC / truth-table / procedure knowledge that exam rewards.
+- Hints nudge toward the idea WITHOUT revealing the answer; explanations teach why the right answer is right.
+- HARD RULE: no exam question may duplicate a check inside a lesson — write each from a fresh angle.
+- HARD RULE — ungameable options: four options PARALLEL in length/specificity/grammar; correct answer never the longest/only-explained; vary the correct slot.`;
+
+// ── The read (intake observation) ─────────────────────────────────────────
+const OBSERVE_RULES = `You are Kube, looking at a file a student just uploaded to study from. Read it and react like a sharp, warm, honest friend who knows the subject — NOT a classifier.
+- Say plainly WHAT it is and what's actually in it. Be honest if it only outlines/plans and doesn't teach ("this is the roadmap, not the lessons").
+- Notice things: duplicates, spill-over, the assessment style (e.g. a practical exam), what's missing to study well.
+- Decide if you can teach these topics from your OWN solid knowledge of the standard curriculum (most standard university topics: yes). If yes, offer to build the ladder now WITHOUT needing more files — but always note it'd be your general knowledge, and grounding it in their own notes/manual makes it match their course exactly.
+- Then hand the student the wheel with a recommended next step + a couple of alternatives.
+- Warm, brief, specific. 2-4 short observation lines. Never invent facts about THIS file.`;
+
+const observationSchema = z.object({
+  kind: z.enum(["syllabus", "unit", "pastpaper", "notes", "mixed", "other"]).describe("what this file is"),
+  whatItIs: z.string().describe("one warm line naming it, e.g. 'This is your lab course plan for ECE24D — Digital Electronics.'"),
+  teaches: z.boolean().describe("true if it actually teaches the concepts; false if it only outlines/plans/lists"),
+  observations: z.array(z.string()).describe("2-4 short, specific things you notice (content, duplicates, exam style, what's missing)"),
+  canTeachFromKnowledge: z.boolean().describe("can you teach these topics well from your own standard-curriculum knowledge without more files?"),
+  suggestedTitle: z.string().describe("a good course/unit title drawn from the file"),
+  primaryAction: z.enum(["build_from_knowledge", "digest_as_content", "add_material_first"]).describe("the single best next step for this file"),
+  primaryLabel: z.string().describe("the button text for the primary action, e.g. 'Build the ladder from this + your knowledge'"),
+  altActions: z.array(z.object({
+    id: z.enum(["build_from_knowledge", "digest_as_content", "add_material_first"]),
+    label: z.string(),
+  })).describe("0-2 alternative next steps (different id from primary)"),
+  note: z.string().describe("one honest caveat or reassurance, e.g. 'I'd teach this from standard curriculum — add your lab manual to match your uni exactly.'"),
+});
+export type Observation = z.infer<typeof observationSchema>;
+
+export async function generateObservation(
+  courseTitle: string,
+  fileName: string,
+  rawText: string,
+  images?: SourceImage[]
+): Promise<Observation> {
+  const client = getAnthropic();
+  const res = await client.messages.parse({
+    model: MODEL,
+    max_tokens: 4000,
+    thinking: { type: "adaptive" },
+    output_config: { effort: "low", format: zodOutputFormat(observationSchema) },
+    system: OBSERVE_RULES,
+    messages: [
+      {
+        role: "user",
+        content: materialBlocks(
+          `Course: ${courseTitle || "(untitled)"}\nUploaded file: ${fileName}\n\nRead this and give the student your honest read + a recommended next step.`,
+          rawText,
+          images,
+          "UPLOADED FILE"
+        ),
+      },
+    ],
+  });
+  if (!res.parsed_output) throw new Error("Kube couldn't read that file.");
+  return res.parsed_output;
+}
+
 const skeletonTopicSchema = z.object({
   id: z
     .string()
@@ -307,10 +388,11 @@ const examBankSchema = z.object({
 function materialBlocks(
   header: string,
   rawText: string,
-  images?: SourceImage[]
+  images?: SourceImage[],
+  label = "UNIT MATERIAL"
 ): ContentBlock[] {
   const blocks: ContentBlock[] = [
-    { type: "text", text: `${header}\n\n--- UNIT MATERIAL ---\n${rawText.slice(0, MAX_UNIT_CHARS)}` },
+    { type: "text", text: `${header}\n\n--- ${label} ---\n${rawText.slice(0, MAX_UNIT_CHARS)}` },
   ];
   for (const img of images ?? []) {
     blocks.push({
@@ -341,12 +423,14 @@ export async function generateUnitSkeleton(
   unitNumber: number,
   rawText: string,
   existingTopics: ExistingTopicRef[],
-  images?: SourceImage[]
+  images?: SourceImage[],
+  mode: "file" | "knowledge" = "file"
 ): Promise<UnitSkeleton> {
   const client = getAnthropic();
+  const know = mode === "knowledge";
   const existing =
     existingTopics.length > 0
-      ? `Topics already on this course's ladder (you may list their ids as dependencies — and do NOT recreate any of them; produce only topics genuinely new in this material):\n${existingTopics
+      ? `Topics already on this course's ladder (you may list their ids as dependencies — and do NOT recreate any of them; produce only topics genuinely new here):\n${existingTopics
           .map((t) => `- ${t.id}: ${t.title}`)
           .join("\n")}`
       : "This is the first material — the ladder is empty so far.";
@@ -355,14 +439,15 @@ export async function generateUnitSkeleton(
     max_tokens: 8000,
     thinking: { type: "adaptive" },
     output_config: { effort: "medium", format: zodOutputFormat(skeletonSchema) },
-    system: CONCEPT_RULES,
+    system: know ? CONCEPT_RULES_KNOWLEDGE : CONCEPT_RULES,
     messages: [
       {
         role: "user",
         content: materialBlocks(
           `Course: ${courseTitle}\nUnit number: ${unitNumber}\nPrefix all topic ids with "u${unitNumber}-".\n\n${existing}\n\nProduce ONLY the concept map for this unit: the section title, a one-line tagline, and the ordered list of topics (id, title, weight, deps, whyItMatters, recap). Do NOT write any lessons — those come next.`,
           rawText,
-          images
+          images,
+          know ? "SYLLABUS / OUTLINE (scope only — teach from your knowledge)" : "UNIT MATERIAL"
         ),
       },
     ],
@@ -378,15 +463,17 @@ export async function generateTopicLessons(
   rawText: string,
   topic: SkeletonTopic,
   allTopicTitles: string[],
-  images?: SourceImage[]
+  images?: SourceImage[],
+  mode: "file" | "knowledge" = "file"
 ): Promise<z.infer<typeof lessonSchema>[]> {
   const client = getAnthropic();
+  const know = mode === "knowledge";
   const res = await client.messages.parse({
     model: MODEL,
     max_tokens: 16000,
     thinking: { type: "adaptive" },
     output_config: { effort: "high", format: zodOutputFormat(topicLessonsSchema) },
-    system: DRILL_RULES,
+    system: know ? DRILL_RULES_KNOWLEDGE : DRILL_RULES,
     messages: [
       {
         role: "user",
@@ -397,9 +484,10 @@ export async function generateTopicLessons(
               "\n"
             )}\n\nBUILD THE FOUR-QUARTER CIRCLE FOR EXACTLY ONE TOPIC:\n- id: ${topic.id}\n- title: ${topic.title}\n- weight: ${topic.weight}\n- why it matters: ${topic.whyItMatters}\n- its recap facts: ${topic.recap.join(
             " | "
-          )}\n\nDrill ONLY this concept, grounded in the material above. Return just its lessons array. Use lesson ids like 'q1','q2','q3','q4'.`,
+          )}\n\n${know ? "Teach ONLY this concept from your own solid knowledge (the text above is just the syllabus for scope)." : "Drill ONLY this concept, grounded in the material above."} Return just its lessons array. Use lesson ids like 'q1','q2','q3','q4'.`,
           rawText,
-          images
+          images,
+          know ? "SYLLABUS / OUTLINE (scope only — teach from your knowledge)" : "UNIT MATERIAL"
         ),
       },
     ],
@@ -414,15 +502,17 @@ export async function generateExamBank(
   unitNumber: number,
   rawText: string,
   topics: SkeletonTopic[],
-  images?: SourceImage[]
+  images?: SourceImage[],
+  mode: "file" | "knowledge" = "file"
 ): Promise<z.infer<typeof examBankSchema>["examQuestions"]> {
   const client = getAnthropic();
+  const know = mode === "knowledge";
   const res = await client.messages.parse({
     model: MODEL,
     max_tokens: 16000,
     thinking: { type: "adaptive" },
     output_config: { effort: "high", format: zodOutputFormat(examBankSchema) },
-    system: EXAM_RULES,
+    system: know ? EXAM_RULES_KNOWLEDGE : EXAM_RULES,
     messages: [
       {
         role: "user",
@@ -431,9 +521,10 @@ export async function generateExamBank(
             .map((t) => `- ${t.id}: ${t.title} — ${t.whyItMatters}`)
             .join(
               "\n"
-            )}\n\nWrite 8-12 exam-bank questions spread across these topics, grounded in the material above.`,
+            )}\n\nWrite 8-12 exam-bank questions spread across these topics${know ? " from your own knowledge (the text is the syllabus for scope)" : ", grounded in the material above"}.`,
           rawText,
-          images
+          images,
+          know ? "SYLLABUS / OUTLINE (scope only — teach from your knowledge)" : "UNIT MATERIAL"
         ),
       },
     ],

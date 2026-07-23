@@ -17,13 +17,18 @@ import { db } from "@/lib/firebase/client";
 import { authedFetch } from "@/lib/authed-fetch";
 import { extractFileInBrowser, type ExtractedMaterial } from "@/lib/ingest/client-extract";
 import type { IngestedFile } from "@/lib/course/types";
+import type { Observation } from "@/lib/course/generate";
 import DigestingAnimation from "./DigestingAnimation";
+
+type IngestMode = "fromFile" | "fromKnowledge";
 
 interface JobLine {
   key: string;
   name: string;
-  state: "extracting" | "working" | "done" | "skipped" | "error";
+  state: "extracting" | "reading" | "choose" | "working" | "done" | "skipped" | "error";
   note: string;
+  read?: Observation;
+  extracted?: ExtractedMaterial;
 }
 
 const KIND_LABEL: Record<IngestedFile["kind"], string> = {
@@ -39,12 +44,14 @@ export default function AddMaterial({
   files,
   onDone,
   invitation,
+  courseTitle = "",
 }: {
   courseId: string;
   uid: string;
   files: IngestedFile[];
   onDone: () => void;
   invitation: boolean;
+  courseTitle?: string;
 }) {
   const [text, setText] = useState("");
   const [tab, setTab] = useState<"files" | "text">("files");
@@ -118,7 +125,7 @@ export default function AddMaterial({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [courseId, uid]);
 
-  async function submitOne(key: string, name: string, extracted: ExtractedMaterial) {
+  async function submitOne(key: string, name: string, extracted: ExtractedMaterial, mode: IngestMode) {
     try {
       const res = await authedFetch("/api/course/ingest", {
         method: "POST",
@@ -128,6 +135,7 @@ export default function AddMaterial({
           name,
           text: extracted.text,
           images: extracted.images,
+          mode,
         }),
       });
       const data = await res.json();
@@ -136,7 +144,7 @@ export default function AddMaterial({
         updateLine(key, { state: "skipped", note: data.note });
         return;
       }
-      updateLine(key, { state: "working", note: "Kube is reading it…" });
+      updateLine(key, { state: "working", note: mode === "fromKnowledge" ? "Building your ladder from the outline…" : "Kube is reading it…" });
       watchJob(data.jobId as string, key);
     } catch (err) {
       updateLine(key, {
@@ -146,9 +154,39 @@ export default function AddMaterial({
     }
   }
 
+  // Kube's "read": look at the file first and hand the student the wheel. If the
+  // read call fails, fall back to digesting it straight (never block the user).
+  async function observe(key: string, name: string, extracted: ExtractedMaterial) {
+    updateLine(key, { state: "reading", note: "Kube is taking a look…" });
+    try {
+      const res = await authedFetch("/api/course/observe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ courseTitle, name, text: extracted.text, images: extracted.images }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.read) throw new Error(data.error || "read failed");
+      updateLine(key, { state: "choose", note: "", read: data.read as Observation, extracted });
+    } catch {
+      // Couldn't read it — just digest as content.
+      await submitOne(key, name, extracted, "fromFile");
+    }
+  }
+
+  // Act on a read's chosen option.
+  async function proceed(line: JobLine, action: "build_from_knowledge" | "digest_as_content" | "add_material_first") {
+    if (!line.extracted) return;
+    if (action === "add_material_first") {
+      updateLine(line.key, { state: "skipped", note: "Set aside — add more material, then come back to it.", read: undefined });
+      return;
+    }
+    setDigestHidden(false);
+    updateLine(line.key, { state: "working", note: "Starting…", read: undefined });
+    await submitOne(line.key, line.name, line.extracted, action === "build_from_knowledge" ? "fromKnowledge" : "fromFile");
+  }
+
   async function ingestFiles(picked: File[]) {
     if (picked.length === 0) return;
-    setDigestHidden(false);
     const batch: JobLine[] = picked.map((f, i) => ({
       key: `${Date.now()}-${i}-${f.name}`,
       name: f.name,
@@ -160,12 +198,7 @@ export default function AddMaterial({
       const key = batch[i].key;
       try {
         const extracted = await extractFileInBrowser(picked[i]);
-        updateLine(key, {
-          note: extracted.images.length
-            ? `Sending text + ${extracted.images.length} image${extracted.images.length === 1 ? "" : "s"} to Kube…`
-            : "Sending the text to Kube…",
-        });
-        await submitOne(key, picked[i].name, extracted);
+        await observe(key, picked[i].name, extracted);
       } catch (err) {
         updateLine(key, {
           state: "error",
@@ -178,17 +211,18 @@ export default function AddMaterial({
   async function submitText(e: React.FormEvent) {
     e.preventDefault();
     if (text.trim().length < 100) return;
-    setDigestHidden(false);
     const key = `${Date.now()}-pasted`;
     setLines((prev) => [
       ...prev,
-      { key, name: "pasted text", state: "working", note: "Sending to Kube…" },
+      { key, name: "pasted text", state: "extracting", note: "Kube is taking a look…" },
     ]);
-    await submitOne(key, "pasted text", { text, images: [] });
+    await observe(key, "pasted text", { text, images: [] });
     setText("");
   }
 
-  const anyWorking = lines.some((l) => l.state === "working" || l.state === "extracting");
+  // The full-screen digesting animation is only for the real (server) build —
+  // not the on-device extract or the read/choose conversation.
+  const anyWorking = lines.some((l) => l.state === "working");
 
   return (
     <>
@@ -337,33 +371,22 @@ export default function AddMaterial({
       )}
 
       {lines.length > 0 && (
-        <ul className="mt-4 space-y-2">
-          {lines.map((l) => (
-            <li key={l.key} className="flex items-start gap-2 text-sm">
-              <span aria-hidden>
-                {l.state === "done"
-                  ? "✓"
-                  : l.state === "error"
-                    ? "✕"
-                    : l.state === "skipped"
-                      ? "▸"
-                      : "…"}
-              </span>
-              <span
-                style={{
-                  color:
-                    l.state === "error"
-                      ? "var(--red)"
-                      : l.state === "done"
-                        ? "var(--kube)"
-                        : "var(--ink-soft)",
-                }}
-              >
-                <span className="font-semibold">{l.name}:</span> {l.note}
-              </span>
-            </li>
-          ))}
-        </ul>
+        <div className="mt-4 space-y-3">
+          {lines.map((l) =>
+            l.state === "choose" && l.read ? (
+              <ReadCard key={l.key} line={l} read={l.read} onChoose={proceed} />
+            ) : (
+              <div key={l.key} className="flex items-start gap-2 text-sm">
+                <span aria-hidden>
+                  {l.state === "done" ? "✓" : l.state === "error" ? "✕" : l.state === "skipped" ? "▸" : "…"}
+                </span>
+                <span style={{ color: l.state === "error" ? "var(--red)" : l.state === "done" ? "var(--kube)" : "var(--ink-soft)" }}>
+                  <span className="font-semibold">{l.name}:</span> {l.note}
+                </span>
+              </div>
+            )
+          )}
+        </div>
       )}
       {anyWorking && (
         <p className="mt-3 text-xs" style={{ color: "var(--faint)" }}>
@@ -409,5 +432,67 @@ export default function AddMaterial({
       )}
     </div>
     </>
+  );
+}
+
+// Kube's read of one uploaded file, with the student's options. This is the
+// "someone to talk to when a file lands" surface.
+function ReadCard({
+  line,
+  read,
+  onChoose,
+}: {
+  line: JobLine;
+  read: Observation;
+  onChoose: (line: JobLine, action: "build_from_knowledge" | "digest_as_content" | "add_material_first") => void;
+}) {
+  const alts = (read.altActions || []).filter((a) => a.id !== read.primaryAction).slice(0, 2);
+  return (
+    <div className="rounded-2xl border p-4" style={{ borderColor: "var(--kube-line)", background: "var(--kube-soft)" }}>
+      <div className="flex items-start gap-2.5">
+        <span className="mt-0.5 grid h-6 w-6 flex-none place-items-center rounded-md" style={{ background: "var(--kube)", color: "#fff", fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 700 }}>K</span>
+        <div className="min-w-0">
+          <div className="text-sm font-semibold" style={{ color: "var(--ink)" }}>{read.whatItIs}</div>
+          <div className="mt-0.5 text-[11px]" style={{ color: "var(--faint)", fontFamily: "var(--font-mono)" }}>{line.name}</div>
+        </div>
+      </div>
+
+      {read.observations?.length > 0 && (
+        <ul className="mt-3 space-y-1.5">
+          {read.observations.map((o, i) => (
+            <li key={i} className="flex items-start gap-2 text-sm" style={{ color: "var(--ink-soft)", lineHeight: 1.45 }}>
+              <span aria-hidden style={{ color: "var(--kube)", marginTop: 2 }}>·</span>
+              {o}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {read.note && (
+        <p className="mt-2.5 text-xs italic" style={{ color: "var(--faint)", lineHeight: 1.5 }}>{read.note}</p>
+      )}
+
+      <div className="mt-3.5 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => onChoose(line, read.primaryAction)}
+          className="rounded-xl px-4 py-2.5 text-sm font-semibold text-white"
+          style={{ background: "var(--kube)", boxShadow: "0 3px 0 rgba(20,32,43,.16)" }}
+        >
+          {read.primaryLabel}
+        </button>
+        {alts.map((a) => (
+          <button
+            key={a.id}
+            type="button"
+            onClick={() => onChoose(line, a.id)}
+            className="rounded-xl border px-4 py-2.5 text-sm font-semibold"
+            style={{ borderColor: "var(--kube-line)", color: "var(--kube)", background: "var(--card)" }}
+          >
+            {a.label}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
