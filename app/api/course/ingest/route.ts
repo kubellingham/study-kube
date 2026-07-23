@@ -20,7 +20,7 @@ import {
   normalizeCourse,
 } from "@/lib/course/generate";
 import type { Section, ExamQuestion, IngestedFile } from "@/lib/course/types";
-import { UsageMeter, formatCost } from "@/lib/usage";
+import { UsageMeter } from "@/lib/usage";
 
 export const runtime = "nodejs";
 // 300s is the hard ceiling on Vercel's Hobby plan — it can't be raised. The
@@ -208,11 +208,6 @@ export async function POST(req: NextRequest) {
       return jsonText;
     }
 
-    // A compact line for the digest receipt, e.g. "· cost ~0.5¢ (real tokens)".
-    const costNote = () => {
-      const s = meter.summary();
-      return s.calls > 0 ? ` · cost ~${formatCost(s.costUsd)}` : "";
-    };
 
     try {
       // ── The intake-read path: build the ladder from a syllabus/outline using
@@ -268,7 +263,7 @@ export async function POST(req: NextRequest) {
             updatedAt: Date.now(),
           });
         });
-        await setJob({ status: "done", cost: meter.summary(), note: `Built ${added} concept${added === 1 ? "" : "s"} from your outline${costNote()}. Add your notes anytime to ground it in your exact course.` });
+        await setJob({ status: "done", cost: meter.summary(), note: `Built ${added} concept${added === 1 ? "" : "s"} from your outline. Add your notes anytime to ground it in your exact course.` });
         return;
       }
 
@@ -310,7 +305,7 @@ export async function POST(req: NextRequest) {
         await setJob({
           status: "done",
           cost: meter.summary(),
-          note: `Syllabus read — ${parsed.units.length} units${parsed.cos.length ? `, ${parsed.cos.length} Course Outcomes` : ""}${costNote()}. The course skeleton is up.`,
+          note: `Syllabus read — ${parsed.units.length} units${parsed.cos.length ? `, ${parsed.cos.length} Course Outcomes` : ""}. The course skeleton is up.`,
         });
         return;
       }
@@ -418,7 +413,7 @@ export async function POST(req: NextRequest) {
         await setJob({
           status: "done",
           cost: meter.summary(),
-          note: `Unit ${unitNumber} digested — ${added} new topic${added === 1 ? "" : "s"}, ${addedQ} exam question${addedQ === 1 ? "" : "s"}${costNote()}.`,
+          note: `Unit ${unitNumber} digested — ${added} new topic${added === 1 ? "" : "s"}, ${addedQ} exam question${addedQ === 1 ? "" : "s"}.`,
         });
         return;
       }
@@ -472,7 +467,7 @@ export async function POST(req: NextRequest) {
         await setJob({
           status: "done",
           cost: meter.summary(),
-          note: `Past paper read — ${questions.length} exam-realistic questions added${questions.some((q) => q.co) ? " with their CO tags" : ""}${costNote()}.`,
+          note: `Past paper read — ${questions.length} exam-realistic questions added${questions.some((q) => q.co) ? " with their CO tags" : ""}.`,
         });
         return;
       }

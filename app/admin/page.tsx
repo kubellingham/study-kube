@@ -13,6 +13,7 @@ import { useUser } from "@/lib/use-user";
 import { isOwner } from "@/lib/owner";
 import { authedFetch } from "@/lib/authed-fetch";
 import type { Tier } from "@/lib/entitlement";
+import { formatCost } from "@/lib/usage";
 import BrandLoader from "@/app/components/BrandLoader";
 
 const K = { ink: "#16202b", inkSoft: "#46566a", faint: "#8593a3", bg: "#eef1f4", card: "#fff", line: "#dce2e8", kube: "#1f6f6b", kubeSoft: "#e2f0ef", kubeLine: "#b4d8d5", amber: "#d98a1f", red: "#c9463a", display: "'Fraunces',Georgia,serif", mono: "'JetBrains Mono',ui-monospace,monospace" };
@@ -20,6 +21,12 @@ const K = { ink: "#16202b", inkSoft: "#46566a", faint: "#8593a3", bg: "#eef1f4",
 interface CodeRow {
   code: string; tier: Tier; durationDays: number; maxUses: number; uses: number;
   recipientEmail: string | null; note: string; active: boolean; createdAt: number;
+}
+
+interface Usage {
+  totals: { digests: number; calls: number; inputTokens: number; outputTokens: number; cacheWriteTokens: number; cacheReadTokens: number; costUsd: number };
+  avgCost: number;
+  recent: { fileName: string; courseId: string; userId: string; at: number; costUsd: number; calls: number; cacheReadTokens: number; outputTokens: number }[];
 }
 
 function fmtCode(c: string) {
@@ -30,6 +37,7 @@ export default function AdminPage() {
   const { user, loading } = useUser();
   const router = useRouter();
   const [codes, setCodes] = useState<CodeRow[] | null>(null);
+  const [usage, setUsage] = useState<Usage | null>(null);
   const [tier, setTier] = useState<Tier>("summit");
   const [durationDays, setDurationDays] = useState(30);
   const [maxUses, setMaxUses] = useState(1);
@@ -55,6 +63,10 @@ export default function AdminPage() {
       .then((r) => r.json())
       .then((d) => setPasskey(!!d.registered))
       .catch(() => setPasskey(false));
+    authedFetch("/api/admin/usage")
+      .then((r) => r.json())
+      .then((d) => setUsage(d.totals ? d : null))
+      .catch(() => setUsage(null));
   }, []);
 
   useEffect(() => {
@@ -244,6 +256,60 @@ export default function AdminPage() {
             {stripeBusy ? "Setting up…" : "Set up Stripe products"}
           </button>
           {stripeMsg && <p style={{ fontSize: 13, marginTop: 12, color: stripeMsg.ok ? K.kube : K.red }}>{stripeMsg.text}</p>}
+        </div>
+
+        {/* Spend — digestion cost ledger */}
+        <div style={{ marginTop: 20, background: K.card, border: `1px solid ${K.line}`, borderRadius: 18, padding: 22 }}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
+            <h2 style={{ fontFamily: K.display, fontWeight: 600, fontSize: 18, margin: 0 }}>Digestion spend</h2>
+            <a href="https://console.anthropic.com/settings/usage" target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, fontWeight: 600, color: K.kube, textDecoration: "none" }}>
+              Anthropic Console ↗
+            </a>
+          </div>
+          {usage === null ? (
+            <p style={{ fontSize: 13, color: K.faint, margin: "10px 0 0" }}>No tracked digests yet — cost lands here after the next upload.</p>
+          ) : (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginTop: 16 }}>
+                {[
+                  { k: "Total spent", v: formatCost(usage.totals.costUsd) },
+                  { k: "Digests", v: String(usage.totals.digests) },
+                  { k: "Avg / digest", v: formatCost(usage.avgCost) },
+                ].map((s) => (
+                  <div key={s.k} style={{ background: K.bg, border: `1px solid ${K.line}`, borderRadius: 12, padding: "12px 14px" }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: K.faint }}>{s.k}</div>
+                    <div style={{ fontFamily: K.display, fontSize: 24, fontWeight: 600, marginTop: 3, color: K.ink }}>{s.v}</div>
+                  </div>
+                ))}
+              </div>
+              <p style={{ fontSize: 11.5, lineHeight: 1.5, color: K.faint, margin: "12px 0 0" }}>
+                {usage.totals.calls.toLocaleString()} Claude calls · {usage.totals.cacheReadTokens.toLocaleString()} cached-read tokens (billed at 0.1×) · {usage.totals.outputTokens.toLocaleString()} output.
+                Estimated from real token counts at the Sonnet rate — the Console is the actual bill.
+              </p>
+              {usage.recent.length > 0 && (
+                <div style={{ marginTop: 16, overflow: "hidden", border: `1px solid ${K.line}`, borderRadius: 12 }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+                    <thead>
+                      <tr style={{ textAlign: "left", color: K.faint, fontSize: 10.5, textTransform: "uppercase", letterSpacing: ".08em" }}>
+                        <th style={{ padding: "9px 12px" }}>File</th>
+                        <th style={{ padding: "9px 12px" }}>When</th>
+                        <th style={{ padding: "9px 12px", textAlign: "right" }}>Cost</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {usage.recent.map((r, i) => (
+                        <tr key={i} style={{ borderTop: `1px solid ${K.line}` }}>
+                          <td style={{ padding: "9px 12px", color: K.ink, maxWidth: 340, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.fileName}>{r.fileName || "—"}</td>
+                          <td style={{ padding: "9px 12px", color: K.inkSoft }}>{r.at ? new Date(r.at).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "—"}</td>
+                          <td style={{ padding: "9px 12px", textAlign: "right", fontFamily: K.mono, color: K.ink }}>{formatCost(r.costUsd)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
         </div>
 
         {/* List */}
