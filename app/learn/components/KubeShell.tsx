@@ -1,19 +1,16 @@
 "use client";
 
-// The .kube wrapper with the redesign's switchable moods and ladder
-// orientation. Choices persist per device (localStorage) and apply across
-// every learn page via the [data-mood] token overrides in learn.css.
-import { createContext, useContext, useEffect, useState } from "react";
+// The .kube wrapper. The app has committed to the fixed "Studious" (teal)
+// palette used by the dashboard, so the old per-device mood + ladder-
+// orientation switch is retired: every /learn page now renders the base
+// tokens (learn.css .kube), and nothing clashes page-to-page anymore.
+//
+// The theme context is kept as a no-op so any lingering import still resolves;
+// mood is always "studious" and no [data-mood] is applied.
+import { createContext, useContext } from "react";
 
-export type KubeMood = "studious" | "bookshelf" | "midnight" | "meadow";
+export type KubeMood = "studious";
 export type LadderLayout = "vertical" | "horizontal";
-
-export const MOODS: { id: KubeMood; label: string; dot: string; ring: string }[] = [
-  { id: "studious", label: "Studious", dot: "#eef1f4", ring: "#1f6f6b" },
-  { id: "bookshelf", label: "Bookshelf", dot: "#f4efe6", ring: "#c07a1c" },
-  { id: "midnight", label: "Midnight", dot: "#1a1612", ring: "#5cbdb6" },
-  { id: "meadow", label: "Meadow", dot: "#e8efe4", ring: "#3d7a4a" },
-];
 
 interface KubeTheme {
   mood: KubeMood;
@@ -34,48 +31,5 @@ export function useKubeTheme(): KubeTheme {
 }
 
 export default function KubeShell({ children }: { children: React.ReactNode }) {
-  const [mood, setMoodState] = useState<KubeMood>("studious");
-  const [layout, setLayoutState] = useState<LadderLayout>("vertical");
-
-  useEffect(() => {
-    try {
-      const m = localStorage.getItem("kube-mood") as KubeMood | null;
-      if (m && MOODS.some((x) => x.id === m)) setMoodState(m);
-      const l = localStorage.getItem("kube-layout") as LadderLayout | null;
-      if (l === "horizontal" || l === "vertical") {
-        setLayoutState(l); // an explicit choice always wins
-      } else if (window.matchMedia("(min-width: 1024px)").matches) {
-        // No stored preference: desktops read the ladder sideways by
-        // default, phones keep the vertical climb.
-        setLayoutState("horizontal");
-      }
-    } catch {
-      // Private browsing — defaults are fine.
-    }
-  }, []);
-
-  const setMood = (m: KubeMood) => {
-    setMoodState(m);
-    try {
-      localStorage.setItem("kube-mood", m);
-    } catch {}
-  };
-  const setLayout = (l: LadderLayout) => {
-    setLayoutState(l);
-    try {
-      localStorage.setItem("kube-layout", l);
-    } catch {}
-  };
-
-  return (
-    <ThemeContext.Provider value={{ mood, setMood, layout, setLayout }}>
-      <div
-        className="kube flex-1"
-        data-mood={mood === "studious" ? undefined : mood}
-        style={{ transition: "background 0.4s ease" }}
-      >
-        {children}
-      </div>
-    </ThemeContext.Provider>
-  );
+  return <div className="kube flex-1">{children}</div>;
 }

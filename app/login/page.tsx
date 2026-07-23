@@ -98,6 +98,7 @@ export default function LoginPage() {
   const [errEmail, setErrEmail] = useState<string | null>(null);
   const [errPassword, setErrPassword] = useState<string | null>(null);
   const [pi, setPi] = useState(0); // rotating headline
+  const piRef = useRef(0);
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [focused, setFocused] = useState(false);
 
@@ -113,11 +114,10 @@ export default function LoginPage() {
         setTheme("light");
         return;
       }
-      setPi((p) => {
-        const next = (p + 1) % PHRASES.length;
-        setTheme(PHRASES[next].theme);
-        return next;
-      });
+      const next = (piRef.current + 1) % PHRASES.length;
+      piRef.current = next;
+      setPi(next);
+      setTheme(PHRASES[next].theme);
     }, 3800);
     return () => clearInterval(t);
   }, []);

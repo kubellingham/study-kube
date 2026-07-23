@@ -50,7 +50,11 @@ export async function getEntitlement(uid: string): Promise<Entitlement> {
   if (d.promoTier)
     grants.push({ tier: d.promoTier as Tier, source: "promo", expiresAt: d.promoExpiresAt ?? null });
   if (d.stripeTier && d.stripeStatus === "active")
-    grants.push({ tier: d.stripeTier as Tier, source: "stripe", expiresAt: d.stripeExpiresAt ?? null });
+    // While the subscription's status is "active", access never lapses on the
+    // period end — Stripe flips the status (via webhook) on cancel/past_due, so
+    // a slow renewal webhook can't lock out a paying subscriber. (expiresAt is
+    // null; the period end is only for display, read separately if needed.)
+    grants.push({ tier: d.stripeTier as Tier, source: "stripe", expiresAt: null });
   if (d.crewTier)
     grants.push({ tier: d.crewTier as Tier, source: "crew", expiresAt: d.crewExpiresAt ?? null });
   return resolveEntitlement(grants, now);

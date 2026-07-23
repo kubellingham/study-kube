@@ -445,8 +445,10 @@ export default function CourseLadderPage() {
 
       {/* ── Right rail ── */}
       <aside style={{ width: 352, flex: "none", background: T.bgDeep, borderLeft: `1px solid ${T.line}`, overflowY: "auto", padding: "24px 22px", display: "flex", flexDirection: "column", gap: 18 }}>
-        {entLoaded && summit ? (
-          // Active plan — calm, no hard sell.
+        {(!entLoaded || summit) ? (
+          // Active plan — calm, no hard sell. Optimistic while entitlement
+          // loads (like the rest of the page) so a Summit user never flashes
+          // the upsell card.
           <div style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 18, padding: 20 }}>
             <span style={{ display: "inline-block", background: T.kube, color: "#fff", fontFamily: T.mono, fontWeight: 600, fontSize: 11, letterSpacing: ".14em", textTransform: "uppercase", padding: "4px 10px", borderRadius: 7 }}>{entitlement?.tier ? TIER_LABEL[entitlement.tier] : "Kube Summit"}</span>
             <div style={{ fontFamily: T.display, fontWeight: 600, fontSize: 18, color: T.ink, marginTop: 12 }}>Your climb is unlocked.</div>

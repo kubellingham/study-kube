@@ -89,9 +89,14 @@ export async function POST(req: NextRequest) {
       default:
         break;
     }
-  } catch {
-    // Never 500 back to Stripe on a processing hiccup we can't fix by retrying —
-    // ack the receipt; a later event reconciles state.
+  } catch (err) {
+    // A transient failure (Stripe fetch, Firestore) must NOT be acked — else the
+    // entitlement never gets written and the paid user is silently locked out
+    // with no retry. Return 500 so Stripe retries this event.
+    return Response.json(
+      { error: `Processing failed: ${err instanceof Error ? err.message : "unknown"}` },
+      { status: 500 }
+    );
   }
   return Response.json({ received: true });
 }
