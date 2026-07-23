@@ -94,6 +94,11 @@ export default function ManageCoursePage() {
 
   const field: React.CSSProperties = { width: "100%", borderRadius: 12, border: "1px solid var(--line)", background: "var(--card)", padding: "12px 13px", fontSize: 14, color: "var(--ink)", outline: "none" };
 
+  // Confirm match, tolerant of lookalike characters (O↔0, I↔1) so a course
+  // code like "MECO3D" can't be blocked by an impossible-to-see zero.
+  const norm = (s: string) => s.trim().toUpperCase().replace(/0/g, "O").replace(/1/g, "I");
+  const confirmOk = norm(confirm) === norm(bundle.course.code);
+
   return (
     <main className="mx-auto w-full max-w-xl flex-1 px-4 pb-24 pt-8">
       <div className="mb-6 flex items-center justify-between">
@@ -147,7 +152,7 @@ export default function ManageCoursePage() {
         <button
           type="button"
           onClick={del}
-          disabled={confirm !== bundle.course.code || deleting}
+          disabled={!confirmOk || deleting}
           className="mt-3 rounded-xl px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-40"
           style={{ background: "var(--red)" }}
         >

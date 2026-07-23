@@ -108,16 +108,30 @@ export default function AddMaterial({
           )
         );
         if (snap.empty) return;
+        // A digest that fits the 300s function limit finishes (or errors) within
+        // ~5 min. Anything still "working" long after that was hard-killed
+        // mid-flight and will never resolve — show it as stalled, not eternal.
+        const STALE_MS = 15 * 60 * 1000;
+        const now = Date.now();
         setLines((prev) => [
           ...prev,
-          ...snap.docs.map((d) => ({
-            key: d.id,
-            name: (d.get("fileName") as string) ?? "file",
-            state: "working" as const,
-            note: (d.get("note") as string) ?? "Kube is working…",
-          })),
+          ...snap.docs.map((d) => {
+            const updatedAt = (d.get("updatedAt") as number) ?? (d.get("createdAt") as number) ?? now;
+            const stale = now - updatedAt > STALE_MS;
+            return {
+              key: d.id,
+              name: (d.get("fileName") as string) ?? "file",
+              state: (stale ? "error" : "working") as JobLine["state"],
+              note: stale
+                ? "This one got stuck and stopped — delete the subject (or make a fresh one) and try a smaller file."
+                : (d.get("note") as string) ?? "Kube is working…",
+            };
+          }),
         ]);
-        snap.docs.forEach((d) => watchJob(d.id, d.id));
+        snap.docs.forEach((d) => {
+          const updatedAt = (d.get("updatedAt") as number) ?? (d.get("createdAt") as number) ?? now;
+          if (now - updatedAt <= STALE_MS) watchJob(d.id, d.id);
+        });
       } catch {
         // No running jobs visible — fine.
       }
