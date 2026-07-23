@@ -17,6 +17,7 @@ import { db } from "@/lib/firebase/client";
 import { authedFetch } from "@/lib/authed-fetch";
 import { extractFileInBrowser, type ExtractedMaterial } from "@/lib/ingest/client-extract";
 import type { IngestedFile } from "@/lib/course/types";
+import { formatCost } from "@/lib/usage";
 import type { Observation } from "@/lib/course/generate";
 import DigestingAnimation from "./DigestingAnimation";
 
@@ -438,6 +439,9 @@ export default function AddMaterial({
                     {f.name}
                     {f.topics > 0 && ` · ${f.topics} topics`}
                     {f.questions > 0 && ` · ${f.questions} questions`}
+                    {f.cost && f.cost.costUsd > 0 && (
+                      <span style={{ color: "var(--faint)" }}>{" · "}~{formatCost(f.cost.costUsd)}</span>
+                    )}
                   </li>
                 ))}
             </ul>

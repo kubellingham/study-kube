@@ -20,6 +20,7 @@ import {
   normalizeCourse,
 } from "@/lib/course/generate";
 import type { Section, ExamQuestion, IngestedFile } from "@/lib/course/types";
+import { UsageMeter, formatCost } from "@/lib/usage";
 
 export const runtime = "nodejs";
 // 300s is the hard ceiling on Vercel's Hobby plan — it can't be raised. The
@@ -172,20 +173,46 @@ export async function POST(req: NextRequest) {
   });
 
   after(async () => {
+    // One meter for the whole digest — every Claude call (streamed or parsed)
+    // adds its real token usage here, so the finished job can show its cost.
+    const meter = new UsageMeter();
+
     const setJob = (fields: Record<string, unknown>) =>
       jobRef.update({ ...fields, updatedAt: Date.now() }).catch(() => {});
 
+    // Streamed calls report usage across two events: `message_start` carries
+    // the input (and any cache) tokens, `message_delta` the running output
+    // count. We fold both into the meter as one call.
     async function runToText(
-      claude: AsyncIterable<{ type: string; delta?: { type: string; text?: string } }>
+      claude: AsyncIterable<{
+        type: string;
+        delta?: { type: string; text?: string };
+        message?: { usage?: import("@/lib/usage").RawUsage };
+        usage?: import("@/lib/usage").RawUsage;
+      }>
     ): Promise<string> {
       let jsonText = "";
+      const u: import("@/lib/usage").RawUsage = {};
       for await (const event of claude) {
         if (event.type === "content_block_delta" && event.delta?.type === "text_delta") {
           jsonText += event.delta.text ?? "";
+        } else if (event.type === "message_start" && event.message?.usage) {
+          u.input_tokens = event.message.usage.input_tokens ?? 0;
+          u.cache_creation_input_tokens = event.message.usage.cache_creation_input_tokens ?? 0;
+          u.cache_read_input_tokens = event.message.usage.cache_read_input_tokens ?? 0;
+        } else if (event.type === "message_delta" && event.usage) {
+          u.output_tokens = event.usage.output_tokens ?? u.output_tokens ?? 0;
         }
       }
+      meter.add(u);
       return jsonText;
     }
+
+    // A compact line for the digest receipt, e.g. "· cost ~0.5¢ (real tokens)".
+    const costNote = () => {
+      const s = meter.summary();
+      return s.calls > 0 ? ` · cost ~${formatCost(s.costUsd)}` : "";
+    };
 
     try {
       // ── The intake-read path: build the ladder from a syllabus/outline using
@@ -199,18 +226,18 @@ export async function POST(req: NextRequest) {
 
         const generated = await withDeadline(
           (async () => {
-            const skeleton = await generateUnitSkeleton(courseTitle, unitNumber, rawText, existingTopics, images, "knowledge");
+            const skeleton = await generateUnitSkeleton(courseTitle, unitNumber, rawText, existingTopics, images, "knowledge", meter);
             await setJob({ note: `Mapped ${skeleton.topics.length} concept${skeleton.topics.length === 1 ? "" : "s"} — teaching each from scratch…` });
             const titles = skeleton.topics.map((t) => t.title);
             let done = 0;
             const [lessonsByTopic, examQuestions] = await Promise.all([
               mapWithConcurrency(skeleton.topics, 5, async (topic) => {
-                const lessons = await generateTopicLessons(courseTitle, unitNumber, rawText, topic, titles, images, "knowledge").catch(() => null);
+                const lessons = await generateTopicLessons(courseTitle, unitNumber, rawText, topic, titles, images, "knowledge", meter).catch(() => null);
                 done += 1;
                 await setJob({ note: `Building lessons — ${done}/${skeleton.topics.length} done…` });
                 return lessons;
               }),
-              generateExamBank(courseTitle, unitNumber, rawText, skeleton.topics, images, "knowledge").catch(() => []),
+              generateExamBank(courseTitle, unitNumber, rawText, skeleton.topics, images, "knowledge", meter).catch(() => []),
             ]);
             return composeGeneratedUnit(skeleton, lessonsByTopic, examQuestions);
           })(),
@@ -233,7 +260,7 @@ export async function POST(req: NextRequest) {
           sections.push(section);
           added = section.topics.length;
           addedQ = questions.length;
-          const kRecord: IngestedFile = { id: fileId, name: fileName, kind: "unit", unit: unitNumber, label: "Built from your outline", topics: added, questions: addedQ, digestedAt: Date.now() };
+          const kRecord: IngestedFile = { id: fileId, name: fileName, kind: "unit", unit: unitNumber, label: "Built from your outline", topics: added, questions: addedQ, digestedAt: Date.now(), cost: meter.summary() };
           tx.update(courseRef, {
             sections: normalizeCourse(sections),
             examBank: [...examBank, ...questions],
@@ -241,7 +268,7 @@ export async function POST(req: NextRequest) {
             updatedAt: Date.now(),
           });
         });
-        await setJob({ status: "done", note: `Built ${added} concept${added === 1 ? "" : "s"} from your outline — your ladder's up. Add your notes anytime to ground it in your exact course.` });
+        await setJob({ status: "done", cost: meter.summary(), note: `Built ${added} concept${added === 1 ? "" : "s"} from your outline${costNote()}. Add your notes anytime to ground it in your exact course.` });
         return;
       }
 
@@ -268,6 +295,7 @@ export async function POST(req: NextRequest) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           await runToText(syllabusStream(courseTitle, rawText, images) as AsyncIterable<any>)
         );
+        record.cost = meter.summary();
         await db.runTransaction(async (tx) => {
           const fresh = await tx.get(courseRef);
           const files = ((fresh.get("files") as IngestedFile[]) ?? []).filter(
@@ -281,7 +309,8 @@ export async function POST(req: NextRequest) {
         });
         await setJob({
           status: "done",
-          note: `Syllabus read — ${parsed.units.length} units${parsed.cos.length ? `, ${parsed.cos.length} Course Outcomes` : ""}. The course skeleton is up.`,
+          cost: meter.summary(),
+          note: `Syllabus read — ${parsed.units.length} units${parsed.cos.length ? `, ${parsed.cos.length} Course Outcomes` : ""}${costNote()}. The course skeleton is up.`,
         });
         return;
       }
@@ -307,7 +336,9 @@ export async function POST(req: NextRequest) {
               unitNumber,
               rawText,
               existingTopics,
-              images
+              images,
+              "file",
+              meter
             );
             await setJob({
               note: `Mapped ${skeleton.topics.length} concept${skeleton.topics.length === 1 ? "" : "s"} — drilling each into a full circle…`,
@@ -323,7 +354,9 @@ export async function POST(req: NextRequest) {
                   rawText,
                   topic,
                   titles,
-                  images
+                  images,
+                  "file",
+                  meter
                 ).catch(() => null);
                 done += 1;
                 await setJob({
@@ -331,7 +364,7 @@ export async function POST(req: NextRequest) {
                 });
                 return lessons;
               }),
-              generateExamBank(courseTitle, unitNumber, rawText, skeleton.topics, images).catch(
+              generateExamBank(courseTitle, unitNumber, rawText, skeleton.topics, images, "file", meter).catch(
                 () => []
               ),
             ]);
@@ -342,6 +375,7 @@ export async function POST(req: NextRequest) {
           "This file was heavy and Kube ran out of time digesting it in one go. Split it into smaller chunks (e.g. per lecture) and add each — every piece will digest and stack onto the same unit."
         );
 
+        record.cost = meter.summary();
         let added = 0;
         let addedQ = 0;
         await db.runTransaction(async (tx) => {
@@ -383,7 +417,8 @@ export async function POST(req: NextRequest) {
         });
         await setJob({
           status: "done",
-          note: `Unit ${unitNumber} digested — ${added} new topic${added === 1 ? "" : "s"}, ${addedQ} exam question${addedQ === 1 ? "" : "s"}.`,
+          cost: meter.summary(),
+          note: `Unit ${unitNumber} digested — ${added} new topic${added === 1 ? "" : "s"}, ${addedQ} exam question${addedQ === 1 ? "" : "s"}${costNote()}.`,
         });
         return;
       }
@@ -421,6 +456,7 @@ export async function POST(req: NextRequest) {
           );
         }
         record.questions = questions.length;
+        record.cost = meter.summary();
         await db.runTransaction(async (tx) => {
           const fresh = await tx.get(courseRef);
           const examBank = ((fresh.get("examBank") as ExamQuestion[]) ?? []).slice();
@@ -435,7 +471,8 @@ export async function POST(req: NextRequest) {
         });
         await setJob({
           status: "done",
-          note: `Past paper read — ${questions.length} exam-realistic questions added${questions.some((q) => q.co) ? " with their CO tags" : ""}.`,
+          cost: meter.summary(),
+          note: `Past paper read — ${questions.length} exam-realistic questions added${questions.some((q) => q.co) ? " with their CO tags" : ""}${costNote()}.`,
         });
         return;
       }

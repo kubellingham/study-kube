@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCourse } from "@/lib/learn/use-course";
 import { authedFetch } from "@/lib/authed-fetch";
+import { formatCost } from "@/lib/usage";
 import AddMaterial from "@/app/learn/components/AddMaterial";
 
 const KIND_LABEL: Record<string, string> = { syllabus: "syllabus", unit: "unit", pastpaper: "past paper", notes: "notes" };
@@ -113,20 +114,40 @@ export default function ManageCoursePage() {
       </div>
 
       {/* What Kube has learned */}
-      {files.length > 0 && (
+      {files.length > 0 && (() => {
+        const totalCost = files.reduce((sum, f) => sum + (f.cost?.costUsd ?? 0), 0);
+        return (
         <div className="k-card mt-6 px-6 py-5">
-          <span className="k-eyebrow" style={{ color: "var(--kube)" }}>digested files · {files.length}</span>
+          <div className="flex items-baseline justify-between">
+            <span className="k-eyebrow" style={{ color: "var(--kube)" }}>digested files · {files.length}</span>
+            {totalCost > 0 && (
+              <span className="text-xs font-semibold" style={{ color: "var(--faint)" }}>
+                ~{formatCost(totalCost)} total
+              </span>
+            )}
+          </div>
           <ul className="mt-3 space-y-2">
             {[...files].sort((a, b) => a.digestedAt - b.digestedAt).map((f) => (
               <li key={f.id} className="text-xs" style={{ color: "var(--ink-soft)" }}>
                 <span className="mr-2 rounded-full px-2 py-0.5 font-semibold" style={{ background: "var(--kube-soft)", color: "var(--kube)" }}>{KIND_LABEL[f.kind] ?? f.kind}</span>
                 <span className="font-semibold">{f.label}</span>{" · "}{f.name}
                 {f.topics > 0 && ` · ${f.topics} topics`}
+                {f.cost && f.cost.costUsd > 0 && (
+                  <span title={`${f.cost.calls} Claude calls · ${f.cost.inputTokens.toLocaleString()} in · ${f.cost.cacheReadTokens.toLocaleString()} cached-read · ${f.cost.outputTokens.toLocaleString()} out`}
+                    style={{ color: "var(--faint)" }}>
+                    {" · "}~{formatCost(f.cost.costUsd)}
+                  </span>
+                )}
               </li>
             ))}
           </ul>
+          <p className="mt-3 text-[11px] leading-relaxed" style={{ color: "var(--faint)" }}>
+            Estimated from the real tokens each digest used (Sonnet rate). The authoritative bill is your{" "}
+            <a href="https://console.anthropic.com/settings/usage" target="_blank" rel="noopener noreferrer" className="font-semibold underline" style={{ color: "var(--kube)" }}>Anthropic Console → Usage</a>.
+          </p>
         </div>
-      )}
+        );
+      })()}
 
       {/* Rename */}
       <form onSubmit={save} className="k-card mt-6 px-6 py-6">

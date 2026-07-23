@@ -5,6 +5,7 @@
 import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { getAnthropic, MODEL } from "@/lib/anthropic";
+import type { UsageMeter } from "@/lib/usage";
 import type { Section, Topic, Step, ExamQuestion, SyllabusInfo } from "./types";
 
 // Steps are flattened (teach fields + check fields all optional) because a
@@ -300,7 +301,8 @@ export async function generateObservation(
   courseTitle: string,
   fileName: string,
   rawText: string,
-  images?: SourceImage[]
+  images?: SourceImage[],
+  meter?: UsageMeter
 ): Promise<Observation> {
   const client = getAnthropic();
   const res = await client.messages.parse({
@@ -321,6 +323,7 @@ export async function generateObservation(
       },
     ],
   });
+  meter?.add(res.usage);
   if (!res.parsed_output) throw new Error("Kube couldn't read that file.");
   return res.parsed_output;
 }
@@ -453,7 +456,8 @@ export async function generateUnitSkeleton(
   rawText: string,
   existingTopics: ExistingTopicRef[],
   images?: SourceImage[],
-  mode: "file" | "knowledge" = "file"
+  mode: "file" | "knowledge" = "file",
+  meter?: UsageMeter
 ): Promise<UnitSkeleton> {
   const client = getAnthropic();
   const know = mode === "knowledge";
@@ -482,6 +486,7 @@ export async function generateUnitSkeleton(
       },
     ],
   });
+  meter?.add(res.usage);
   if (!res.parsed_output) throw new Error("Kube couldn't map this unit's concepts.");
   return res.parsed_output;
 }
@@ -494,7 +499,8 @@ export async function generateTopicLessons(
   topic: SkeletonTopic,
   allTopicTitles: string[],
   images?: SourceImage[],
-  mode: "file" | "knowledge" = "file"
+  mode: "file" | "knowledge" = "file",
+  meter?: UsageMeter
 ): Promise<z.infer<typeof lessonSchema>[]> {
   const client = getAnthropic();
   const know = mode === "knowledge";
@@ -523,6 +529,7 @@ export async function generateTopicLessons(
       },
     ],
   });
+  meter?.add(res.usage);
   if (!res.parsed_output) throw new Error(`Kube couldn't drill "${topic.title}".`);
   return res.parsed_output.lessons;
 }
@@ -534,7 +541,8 @@ export async function generateExamBank(
   rawText: string,
   topics: SkeletonTopic[],
   images?: SourceImage[],
-  mode: "file" | "knowledge" = "file"
+  mode: "file" | "knowledge" = "file",
+  meter?: UsageMeter
 ): Promise<z.infer<typeof examBankSchema>["examQuestions"]> {
   const client = getAnthropic();
   const know = mode === "knowledge";
@@ -561,6 +569,7 @@ export async function generateExamBank(
       },
     ],
   });
+  meter?.add(res.usage);
   if (!res.parsed_output) throw new Error("Kube couldn't write this unit's exam questions.");
   return res.parsed_output.examQuestions;
 }

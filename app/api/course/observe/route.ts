@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { requireEntitlement } from "@/lib/entitlement-server";
 import { generateObservation } from "@/lib/course/generate";
+import { UsageMeter } from "@/lib/usage";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -41,8 +42,9 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const read = await generateObservation(courseTitle, name, text, images);
-    return Response.json({ read });
+    const meter = new UsageMeter();
+    const read = await generateObservation(courseTitle, name, text, images, meter);
+    return Response.json({ read, cost: meter.summary() });
   } catch (err) {
     return Response.json({ error: err instanceof Error ? err.message : "Kube couldn't read that file." }, { status: 502 });
   }

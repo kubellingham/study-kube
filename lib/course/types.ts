@@ -118,4 +118,15 @@ export interface IngestedFile {
   topics: number;
   questions: number;
   digestedAt: number;
+  /** What this file cost to digest — real token counts from the Claude API,
+   *  plus a dollar estimate applying Sonnet's rate. Absent on files digested
+   *  before cost tracking, and on non-generating kinds (notes). */
+  cost?: {
+    calls: number;
+    inputTokens: number;
+    outputTokens: number;
+    cacheWriteTokens: number;
+    cacheReadTokens: number;
+    costUsd: number;
+  };
 }
