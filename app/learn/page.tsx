@@ -13,6 +13,7 @@ import { isOwner } from "@/lib/owner";
 import { listBuiltinBundles } from "@/lib/course";
 import { loadProgress } from "@/lib/learn/progress";
 import RedeemCode from "@/app/learn/components/RedeemCode";
+import ManageBilling from "@/app/learn/components/ManageBilling";
 
 interface SubjectCard {
   id: string;
@@ -110,6 +111,7 @@ export default function LearnHomePage() {
           <span style={{ color: "var(--kube)" }}>Kube</span>
         </span>
         <div className="flex items-center gap-3">
+          <ManageBilling />
           <RedeemCode />
           {isOwner(user.email) && (
             <Link
