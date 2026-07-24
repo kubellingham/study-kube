@@ -605,12 +605,12 @@ export async function generateExamBank(
 
 const SKELETON_JSON_SHAPE = `Return ONLY a JSON object (no prose, no markdown fences) of exactly this shape:
 {"sectionTitle": string, "tagline": string, "topics": [{"id": string, "title": string, "weight": "heavy"|"medium"|"light", "deps": string[], "whyItMatters": string, "recap": string[]}]}
-- 4-10 topics, ONE concept each, in dependency order. Prefix every id with the unit prefix given.
+- 16-22 bite-sized concepts, ONE idea each, in dependency order. Prefix every id with the unit prefix given.
 - recap = 3-5 crisp, exam-night fact lines per topic.`;
 
 const EXAM_JSON_SHAPE = `Return ONLY a JSON object (no prose, no markdown fences) of exactly this shape:
 {"examQuestions": [{"topicId": string, "prompt": string, "options": [string, string, string, string], "answer": 0, "hint": string, "explanation": string}]}
-- 8-12 questions spread across the topics; answer is the 0-based index of the correct option; exactly 4 options each.`;
+- 12-18 questions spread across the topics; answer is the 0-based index of the correct option; exactly 4 options each.`;
 
 /** Climb concept map on the budget model. Same UnitSkeleton shape as the
  *  Sonnet path (Zod-validated), so the ladder/practice/notes consume it
@@ -630,6 +630,8 @@ export async function generateUnitSkeletonCheap(
       : "This is the first material — the ladder is empty.";
   const prompt = `${CONCEPT_RULES}
 
+CLIMB CRAM MODE: this is the cram gym, so break the unit into MANY small, drillable concepts — aim for 16-22, more granular than a deep course. Every distinct term, formula, circuit, or rule is its own concept. A crammer wants lots of quick cards. Ground every concept strictly in the material below.
+
 Course: ${courseTitle}
 Unit ${unitNumber}. Prefix every topic id with "u${unitNumber}-".
 ${existing}
@@ -645,7 +647,7 @@ ${SKELETON_JSON_SHAPE}`;
     model: useVision ? CLIMB_VISION_MODEL : CLIMB_MODEL,
     system: UNIT_SYSTEM,
     content,
-    maxTokens: 5000,
+    maxTokens: 8000,
   });
   meter?.add(usage);
   return skeletonSchema.parse(data);
@@ -668,7 +670,7 @@ Course: ${courseTitle} · Unit ${unitNumber}
 Topics (tag every question with one of these ids):
 ${list}
 
-Write 8-12 exam-bank questions spread across these topics, grounded in the material below.
+Write 12-18 exam-bank questions spread across these topics, grounded in the material below.
 
 --- COURSE MATERIAL ---
 ${rawText.slice(0, MAX_UNIT_CHARS)}
@@ -679,7 +681,7 @@ ${EXAM_JSON_SHAPE}`;
     model: useVision ? CLIMB_VISION_MODEL : CLIMB_MODEL,
     system: UNIT_SYSTEM,
     content,
-    maxTokens: 5000,
+    maxTokens: 7000,
   });
   meter?.add(usage);
   return examBankSchema.parse(data).examQuestions;

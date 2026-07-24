@@ -13,19 +13,24 @@ import {
   query,
   where,
 } from "firebase/firestore";
+import Link from "next/link";
 import { db } from "@/lib/firebase/client";
 import { authedFetch } from "@/lib/authed-fetch";
 import { extractFileInBrowser, type ExtractedMaterial } from "@/lib/ingest/client-extract";
 import type { IngestedFile } from "@/lib/course/types";
 import type { Observation } from "@/lib/course/generate";
+import { useEntitlement } from "@/lib/use-entitlement";
 import DigestingAnimation from "./DigestingAnimation";
 
 type IngestMode = "fromFile" | "fromKnowledge";
 
+// Climb covers this many files per subject (must match the server guard).
+const MAX_CLIMB_FILES = 5;
+
 interface JobLine {
   key: string;
   name: string;
-  state: "extracting" | "reading" | "choose" | "working" | "done" | "skipped" | "error";
+  state: "extracting" | "reading" | "choose" | "confirm" | "working" | "done" | "skipped" | "error";
   note: string;
   read?: Observation;
   extracted?: ExtractedMaterial;
@@ -53,6 +58,10 @@ export default function AddMaterial({
   invitation: boolean;
   courseTitle?: string;
 }) {
+  const { entitlement } = useEntitlement();
+  const isClimbOnly = entitlement?.tier === "climb";
+  const climbFull = isClimbOnly && files.length >= MAX_CLIMB_FILES;
+
   const [text, setText] = useState("");
   const [tab, setTab] = useState<"files" | "text">("files");
   const [lines, setLines] = useState<JobLine[]>([]);
@@ -187,6 +196,21 @@ export default function AddMaterial({
     }
   }
 
+  // After a file is read on-device, hand off by tier. Climb gets a simple
+  // confirm-first, cram-vs-deep card (no AI read call — cheaper, and Climb only
+  // ever distills). Summit gets Kube's full read with its options.
+  async function intake(key: string, name: string, extracted: ExtractedMaterial) {
+    if (isClimbOnly) {
+      updateLine(key, { state: "confirm", note: "", extracted });
+    } else {
+      await observe(key, name, extracted);
+    }
+  }
+
+  function dropLine(key: string) {
+    setLines((ls) => ls.filter((l) => l.key !== key));
+  }
+
   // Act on a read's chosen option.
   async function proceed(line: JobLine, action: "build_from_knowledge" | "digest_as_content" | "add_material_first") {
     if (!line.extracted) return;
@@ -201,6 +225,12 @@ export default function AddMaterial({
 
   async function ingestFiles(picked: File[]) {
     if (picked.length === 0) return;
+    // Climb file cap: only take what fits (server enforces the hard limit too).
+    if (isClimbOnly) {
+      const room = MAX_CLIMB_FILES - files.length;
+      if (room <= 0) return;
+      if (picked.length > room) picked = picked.slice(0, room);
+    }
     const batch: JobLine[] = picked.map((f, i) => ({
       key: `${Date.now()}-${i}-${f.name}`,
       name: f.name,
@@ -212,7 +242,7 @@ export default function AddMaterial({
       const key = batch[i].key;
       try {
         const extracted = await extractFileInBrowser(picked[i]);
-        await observe(key, picked[i].name, extracted);
+        await intake(key, picked[i].name, extracted);
       } catch (err) {
         updateLine(key, {
           state: "error",
@@ -230,7 +260,7 @@ export default function AddMaterial({
       ...prev,
       { key, name: "pasted text", state: "extracting", note: "Kube is taking a look…" },
     ]);
-    await observe(key, "pasted text", { text, images: [] });
+    await intake(key, "pasted text", { text, images: [] });
     setText("");
   }
 
@@ -301,6 +331,25 @@ export default function AddMaterial({
         </p>
       )}
 
+      {isClimbOnly && (
+        <p className="mt-3 text-xs" style={{ color: "var(--faint)" }}>
+          On Climb, Kube breaks your files down into notes, flashcards and mock exams —
+          up to {MAX_CLIMB_FILES} files here ({Math.max(0, MAX_CLIMB_FILES - files.length)} left).
+        </p>
+      )}
+
+      {climbFull ? (
+        <div className="mt-4 rounded-2xl border px-5 py-5 text-center" style={{ borderColor: "var(--kube-line)", background: "var(--kube-soft)" }}>
+          <p className="text-sm font-semibold" style={{ color: "var(--ink)" }}>This subject is full on Climb.</p>
+          <p className="mx-auto mt-1 max-w-sm text-xs leading-relaxed" style={{ color: "var(--ink-soft)" }}>
+            You&apos;ve added {MAX_CLIMB_FILES} files. Start a new subject, or unlock unlimited material and the deep step-by-step lessons with Summit.
+          </p>
+          <Link href="/learn/upgrade" className="mt-3 inline-block rounded-xl px-4 py-2.5 text-sm font-semibold text-white" style={{ background: "var(--kube)" }}>
+            Upgrade to Summit
+          </Link>
+        </div>
+      ) : (
+      <>
       <div className="mt-4 flex gap-2">
         {(["files", "text"] as const).map((t) => (
           <button
@@ -383,11 +432,15 @@ export default function AddMaterial({
           </button>
         </form>
       )}
+      </>
+      )}
 
       {lines.length > 0 && (
         <div className="mt-4 space-y-3">
           {lines.map((l) =>
-            l.state === "choose" && l.read ? (
+            l.state === "confirm" ? (
+              <ConfirmCard key={l.key} line={l} onBreakdown={(ln) => proceed(ln, "digest_as_content")} onCancel={dropLine} />
+            ) : l.state === "choose" && l.read ? (
               <ReadCard key={l.key} line={l} read={l.read} onChoose={proceed} />
             ) : (
               <div key={l.key} className="flex items-start gap-2 text-sm">
@@ -446,6 +499,58 @@ export default function AddMaterial({
       )}
     </div>
     </>
+  );
+}
+
+// Climb's confirm-first, cram-vs-deep card. The friction ("confirm this file")
+// and the tier question ("break it down, or upgrade for deep teaching") in one.
+function ConfirmCard({
+  line,
+  onBreakdown,
+  onCancel,
+}: {
+  line: JobLine;
+  onBreakdown: (line: JobLine) => void;
+  onCancel: (key: string) => void;
+}) {
+  return (
+    <div className="rounded-2xl border p-4" style={{ borderColor: "var(--kube-line)", background: "var(--kube-soft)" }}>
+      <div className="flex items-start gap-2.5">
+        <span className="mt-0.5 grid h-6 w-6 flex-none place-items-center rounded-md" style={{ background: "var(--kube)", color: "#fff", fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 700 }}>K</span>
+        <div className="min-w-0">
+          <div className="text-sm font-semibold" style={{ color: "var(--ink)" }}>How should Kube handle this?</div>
+          <div className="mt-0.5 text-[11px]" style={{ color: "var(--faint)", fontFamily: "var(--font-mono)" }}>{line.name}</div>
+        </div>
+      </div>
+
+      <div className="mt-3.5 space-y-2.5">
+        <button
+          type="button"
+          onClick={() => onBreakdown(line)}
+          className="block w-full rounded-xl px-4 py-3 text-left"
+          style={{ background: "var(--kube)", boxShadow: "0 3px 0 rgba(20,32,43,.16)" }}
+        >
+          <span className="block text-sm font-semibold text-white">Break it down for cramming</span>
+          <span className="mt-0.5 block text-xs" style={{ color: "rgba(255,255,255,0.85)" }}>Notes, flashcards, matching &amp; mock exams from this file.</span>
+        </button>
+        <Link
+          href="/learn/upgrade"
+          className="block w-full rounded-xl border px-4 py-3 text-left"
+          style={{ borderColor: "var(--kube-line)", background: "var(--card)" }}
+        >
+          <span className="block text-sm font-semibold" style={{ color: "var(--kube)" }}>Deep digest — teach me it →</span>
+          <span className="mt-0.5 block text-xs" style={{ color: "var(--faint)" }}>Full step-by-step lessons that teach every concept. Summit.</span>
+        </Link>
+      </div>
+      <button
+        type="button"
+        onClick={() => onCancel(line.key)}
+        className="mt-2.5 text-xs font-semibold"
+        style={{ color: "var(--faint)" }}
+      >
+        Not this one — remove
+      </button>
+    </div>
   );
 }
 
