@@ -271,7 +271,7 @@ const DRILL_RULES_KNOWLEDGE = `You are Kube, a calm, warm tutor. You drill ONE c
 - Q2 "Question it" — gentle checks on exactly what was met.
 - Q3 "Again, differently" — a real worked example, a "you try one", and a "spot the mistake" on a realistic error. Use real numbers, real truth tables, real IC/pinout details where the subject calls for them. Work every example end to end and VERIFY the arithmetic/truth table/bit pattern before writing it — a wrong worked number teaches the wrong thing.
 - Q4 "Stretch & compare" — neighbours, harder cases, transfer; compare related concepts.
-- Depth scales with weight (heavy ~14-18 interactions; medium ~10; light ~6-8). Never a single card.
+- KEEP IT COMPACT — this is a first-pass overview taught from standard curriculum, and the WHOLE ladder must build in one pass: aim for 2-3 quarters and ~7-10 interactions total per topic, with tight beats. Depth comes later when the student adds their own material. Be concise enough that the full lesson finishes well within the token budget — never get cut off mid-lesson.
 - Every repetition is a FRESH angle. Teach for UNDERSTANDING (the why), specific praise, plausible-misconception distractors.
 - DIAGRAMS: when a beat is SPATIAL/VISUAL (a pinout, a gate/circuit wiring, a waveform, a labelled block diagram), add a small correct labelled SVG to that beat's \`svg\` field (follow the field's rules). A right picture beats a paragraph; never ship a wrong one, and never attach one to a non-visual beat.
 - GLOSSARY: gloss the FIRST use of any term a beginner wouldn't know as [[term|plain one-line definition]] — acronyms/jargon (VCC, GND, MSB, flip-flop), never everyday words; ~3 max per beat.
@@ -516,11 +516,15 @@ export async function generateTopicLessons(
 ): Promise<z.infer<typeof lessonSchema>[]> {
   const client = getAnthropic();
   const know = mode === "knowledge";
+  // A knowledge build teaches EVERY topic from scratch in one function budget,
+  // so each drill must be lean enough that the whole ladder finishes (a full
+  // ladder of good lessons beats one perfect lesson and nine that timed out).
+  // Grounded file drills, which are fewer and richer, keep the deep settings.
   const res = await client.messages.parse({
     model: MODEL,
-    max_tokens: 16000,
+    max_tokens: know ? 7000 : 16000,
     thinking: { type: "adaptive" },
-    output_config: { effort: "high", format: zodOutputFormat(topicLessonsSchema) },
+    output_config: { effort: know ? "medium" : "high", format: zodOutputFormat(topicLessonsSchema) },
     system: UNIT_SYSTEM,
     messages: [
       {
@@ -558,11 +562,13 @@ export async function generateExamBank(
 ): Promise<z.infer<typeof examBankSchema>["examQuestions"]> {
   const client = getAnthropic();
   const know = mode === "knowledge";
+  // Lean on the knowledge path so the exam bank doesn't starve the topic drills
+  // of the per-minute output-token budget they share.
   const res = await client.messages.parse({
     model: MODEL,
-    max_tokens: 16000,
+    max_tokens: know ? 6000 : 16000,
     thinking: { type: "adaptive" },
-    output_config: { effort: "high", format: zodOutputFormat(examBankSchema) },
+    output_config: { effort: know ? "medium" : "high", format: zodOutputFormat(examBankSchema) },
     system: UNIT_SYSTEM,
     messages: [
       {
