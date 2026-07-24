@@ -5,6 +5,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCourse } from "@/lib/learn/use-course";
+import { collectVocab } from "@/lib/learn/glossary";
 import { useCramLocked, CramLocked } from "@/app/learn/components/PlanGate";
 
 export default function GlossaryPage() {
@@ -33,6 +34,7 @@ export default function GlossaryPage() {
   if (cramLocked) return <CramLocked feature="Notes" />;
 
   const { course } = bundle;
+  const vocab = collectVocab(course);
 
   return (
     <main className="mx-auto w-full max-w-2xl flex-1 px-4 pb-24 pt-10">
@@ -47,6 +49,35 @@ export default function GlossaryPage() {
         The key lines from every topic on the ladder — for a final calm read-through
         before you walk in.
       </p>
+
+      {/* Vocabulary — every term Kube glossed inside the lessons, in one place. */}
+      {vocab.length > 0 && (
+        <section className="mt-10">
+          <span className="k-eyebrow" style={{ color: "var(--kube)" }}>vocabulary · {vocab.length}</span>
+          <h2 className="mt-1 text-2xl">The words, defined</h2>
+          <p className="mt-1 text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>
+            Every term Kube stopped to explain, gathered from the lessons.
+          </p>
+          <dl className="mt-4 grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
+            {vocab.map((v) => (
+              <div key={v.term} className="k-card px-4 py-3">
+                <dt className="flex items-baseline justify-between gap-2">
+                  <span className="text-sm font-semibold" style={{ color: "var(--ink)" }}>{v.term}</span>
+                  <Link
+                    href={`/learn/${course.id}/lesson/${v.topicId}`}
+                    className="whitespace-nowrap text-[11px] font-semibold"
+                    style={{ color: "var(--kube)" }}
+                    title={`Taught in “${v.topicTitle}”`}
+                  >
+                    lesson →
+                  </Link>
+                </dt>
+                <dd className="mt-1 text-[0.8125rem] leading-relaxed" style={{ color: "var(--ink-soft)" }}>{v.def}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      )}
 
       {course.sections.map((section) => (
         <section key={section.id} className="mt-10">

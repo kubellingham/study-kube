@@ -6,6 +6,7 @@
 // no new authoring.
 import type { CourseBundle } from "./bundle";
 import type { ExamQuestion } from "./types";
+import { collectVocab } from "@/lib/learn/glossary";
 
 export interface Concept {
   /** The topic id it came from. */
@@ -113,6 +114,27 @@ export function buildConceptPool(bundle: CourseBundle): Concept[] {
       brief: toBrief(lines),
       lines,
       tell: bestTell(lines, topic.title),
+    });
+  }
+
+  // Fold in the vocabulary Kube glossed inline in the lessons — each term is a
+  // clean flashcard/matching pair (term ⇄ its plain definition). Skip any whose
+  // term is already a topic in the pool so we don't duplicate.
+  const have = new Set(out.map((c) => c.term.toLowerCase()));
+  for (const v of collectVocab(bundle.course)) {
+    const key = v.term.toLowerCase();
+    if (have.has(key)) continue;
+    have.add(key);
+    const topic = bundle.getTopic(v.topicId);
+    out.push({
+      id: `vocab-${key.replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`,
+      term: v.term,
+      unit: topic?.unit ?? 0,
+      section: bundle.sectionOfTopic(v.topicId)?.letter ?? "",
+      definition: v.def,
+      brief: toBrief([v.def]),
+      lines: [v.def],
+      tell: toTell(v.def, v.term),
     });
   }
   return out;
