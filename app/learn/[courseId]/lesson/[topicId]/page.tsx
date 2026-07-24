@@ -35,6 +35,7 @@ import {
 import { loadFlags, saveFlag, flagKey, type Flags } from "@/lib/learn/flags";
 import FlagButton from "@/app/learn/components/FlagButton";
 import Rich from "@/app/learn/components/Rich";
+import Diagram from "@/app/learn/components/Diagram";
 import KubeChat, {
   type KubeChatContext,
   type ChatTurn,
@@ -171,6 +172,7 @@ function TeachCard({
         <ThumbButtons vote={vote} onVote={onVote} />
       </div>
       <Rich body={step.body} />
+      {step.svg && <Diagram svg={step.svg} />}
       {step.code && <pre className="k-code mt-4">{step.code}</pre>}
       <div className="mt-6 flex gap-3">
         {canBack && (

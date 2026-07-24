@@ -6,6 +6,7 @@ import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { getAnthropic, MODEL } from "@/lib/anthropic";
 import type { UsageMeter } from "@/lib/usage";
+import { sanitizeSvg } from "./svg";
 import type { Section, Topic, Step, ExamQuestion, SyllabusInfo } from "./types";
 
 // Steps are flattened (teach fields + check fields all optional) because a
@@ -18,9 +19,15 @@ const stepSchema = z.object({
     .string()
     .optional()
     .describe(
-      "teach only: 1-3 short paragraphs (blank line between). Use **bold** for key terms and `backticks` for code words."
+      "teach only: 1-3 short paragraphs (blank line between). Use **bold** for key terms and `backticks` for code words. Gloss a term a beginner might not know on its FIRST use as [[term|one-line plain definition]] — e.g. [[VCC|the +5 V power-supply pin]], [[GND|the 0 V reference — ground]]. Gloss jargon and acronyms, never everyday words; at most ~3 per beat."
     ),
   code: z.string().optional().describe("optional code block, real C, short"),
+  svg: z
+    .string()
+    .optional()
+    .describe(
+      "teach only, OPTIONAL: a small hand-drawn-style SVG diagram when the concept is SPATIAL/VISUAL and a picture genuinely helps — a chip pinout, a logic-gate or circuit wiring, a waveform/timing diagram, a truth-table-driven schematic, a labelled block diagram. Rules: root <svg> with a viewBox (e.g. '0 0 320 200') and NO width/height; stroke=\"currentColor\" and fill=\"none\" for lines so it themes (use fill=\"currentColor\" only for text/dots); label parts with <text> (font-size 11-13); keep it clean and correct (right pin count, right connections) and under ~40 shapes. NO scripts, styles, images, or external refs. Omit entirely for non-visual concepts — most teach beats have no svg."
+    ),
   prompt: z.string().optional().describe("check only: the question"),
   options: z.array(z.string()).optional().describe("check only: 3-4 options"),
   answer: z.number().int().optional().describe("check only: index of correct option"),
@@ -235,6 +242,9 @@ const DRILL_RULES = `You are Kube, a calm, warm tutor. You drill ONE concept int
 - Lighter concepts may compress to 2-3 quarters, but NEVER to a single card. Depth scales with weight: heavy = full deep drill (~14-18 interactions); medium ~10; light ~6-8 but still a real circle.
 - HARD RULE: every repetition is a FRESH angle (meet / use / break / compare). Never repeat the same question shape within a circle.
 - Teach for UNDERSTANDING: beats explain the why; checks use plausible distractors from real misconceptions; praise is specific to the idea just tested ("Right — the +1 is what separates 2's from 1's complement"), never a generic "Correct!".
+- WORKED EXAMPLES (Q3 especially): work it end to end with REAL numbers/values — show EVERY step and state the final result. Verify any arithmetic, truth table, bit pattern or conversion before you write it; a wrong worked number teaches the wrong thing. If a computation is one you can't be sure of, teach it qualitatively rather than guess a number.
+- DIAGRAMS: when a beat's concept is SPATIAL or VISUAL — a chip pinout, a logic-gate/circuit wiring, a waveform or timing diagram, a labelled block diagram — add a small correct labelled SVG to that teach beat's \`svg\` field (follow the field's rules). A right picture beats a paragraph. Never attach an svg to a non-visual beat, and never let a wrong diagram (miscounted pins, wrong wiring) ship.
+- GLOSSARY: assume less than you think. Gloss the FIRST appearance of any term a true beginner wouldn't know as [[term|plain one-line definition]] — acronyms and jargon (VCC, GND, MSB, flip-flop, propagation delay), never everyday words. At most ~3 per beat.
 - HARD RULE — ungameable options (EVERY check): all options PARALLEL in length, specificity and grammar. The correct answer is never the longest or the only fully-explained one. Distractors are genuine, plausible misconceptions stated with the same confidence and length. Vary which option is correct.
 - Ground everything strictly in the provided material; use its own terminology and worked numbers.`;
 
@@ -259,10 +269,12 @@ const CONCEPT_RULES_KNOWLEDGE = `You are Kube, a calm, warm tutor. The provided 
 const DRILL_RULES_KNOWLEDGE = `You are Kube, a calm, warm tutor. You drill ONE concept into a FOUR-QUARTER circle — genuinely teaching someone who starts knowing nothing. The provided text is only the SYLLABUS/OUTLINE (for scope); TEACH this concept fully and correctly from your OWN solid knowledge of the standard curriculum.
 - Q1 "Meet it, slowly" — 4-8 tiny teach beats walking the student in from a question/need; never the full definition in one breath.
 - Q2 "Question it" — gentle checks on exactly what was met.
-- Q3 "Again, differently" — a real worked example, a "you try one", and a "spot the mistake" on a realistic error. Use real numbers, real truth tables, real IC/pinout details where the subject calls for them.
+- Q3 "Again, differently" — a real worked example, a "you try one", and a "spot the mistake" on a realistic error. Use real numbers, real truth tables, real IC/pinout details where the subject calls for them. Work every example end to end and VERIFY the arithmetic/truth table/bit pattern before writing it — a wrong worked number teaches the wrong thing.
 - Q4 "Stretch & compare" — neighbours, harder cases, transfer; compare related concepts.
 - Depth scales with weight (heavy ~14-18 interactions; medium ~10; light ~6-8). Never a single card.
 - Every repetition is a FRESH angle. Teach for UNDERSTANDING (the why), specific praise, plausible-misconception distractors.
+- DIAGRAMS: when a beat is SPATIAL/VISUAL (a pinout, a gate/circuit wiring, a waveform, a labelled block diagram), add a small correct labelled SVG to that beat's \`svg\` field (follow the field's rules). A right picture beats a paragraph; never ship a wrong one, and never attach one to a non-visual beat.
+- GLOSSARY: gloss the FIRST use of any term a beginner wouldn't know as [[term|plain one-line definition]] — acronyms/jargon (VCC, GND, MSB, flip-flop), never everyday words; ~3 max per beat.
 - HARD RULE — ungameable options: all options PARALLEL in length/specificity/grammar; correct answer never the longest/only-explained; vary which is correct.
 - Be accurate. This is established, standard material — teach it as a good lecturer would; do NOT hedge or say "I'm not sure".`;
 
@@ -640,11 +652,13 @@ export function assembleUnit(
       // Optional fields are added only when present — Firestore rejects
       // undefined values, so absent must mean absent.
       if (s.kind === "teach" && s.body) {
+        const safeSvg = s.svg ? sanitizeSvg(s.svg) : null;
         steps.push({
           kind: "teach",
           body: s.body,
           ...(s.title ? { title: s.title } : {}),
           ...(s.code ? { code: s.code } : {}),
+          ...(safeSvg ? { svg: safeSvg } : {}),
         });
       } else if (
         s.kind === "check" &&

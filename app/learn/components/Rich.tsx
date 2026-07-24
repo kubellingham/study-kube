@@ -1,12 +1,23 @@
 // Tiny renderer for teach-step markup: paragraphs (blank line), **bold**,
-// *italic*, `code` spans. Deliberately minimal — course content is trusted
-// static data.
+// *italic*, `code` spans, and [[term|definition]] glossary terms (dotted
+// underline that pops a definition on hover/tap). Deliberately minimal — course
+// content is trusted static data, except SVG diagrams which are sanitized.
 import { Fragment } from "react";
+import GlossTerm from "@/app/learn/components/GlossTerm";
 
 function renderInline(text: string): React.ReactNode[] {
-  // Bold matches before italic so ** is never read as two lone asterisks.
-  const parts = text.split(/(\*\*[^*]+\*\*|\*[^*\n]+\*|`[^`]+`)/g);
+  // Glossary terms first (they may contain spaces), then bold before italic so
+  // ** is never read as two lone asterisks.
+  const parts = text.split(/(\[\[[^\]]+\]\]|\*\*[^*]+\*\*|\*[^*\n]+\*|`[^`]+`)/g);
   return parts.map((part, i) => {
+    if (part.startsWith("[[") && part.endsWith("]]")) {
+      const inner = part.slice(2, -2);
+      const bar = inner.indexOf("|");
+      const term = (bar >= 0 ? inner.slice(0, bar) : inner).trim();
+      const def = (bar >= 0 ? inner.slice(bar + 1) : "").trim();
+      if (term && def) return <GlossTerm key={i} term={term} def={def} />;
+      return <Fragment key={i}>{term}</Fragment>;
+    }
     if (part.startsWith("**") && part.endsWith("**")) {
       return (
         <strong key={i} className="font-semibold" style={{ color: "var(--ink)" }}>

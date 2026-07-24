@@ -62,10 +62,14 @@ export interface TeachStep {
   kind: "teach";
   /** Short heading over the teach card. */
   title?: string;
-  /** Body text. Supports `code` spans and **bold**. Blank line = new paragraph. */
+  /** Body text. Supports `code` spans, **bold**, and [[term|definition]]
+   *  glossary terms. Blank line = new paragraph. */
   body: string;
   /** Optional code block rendered in mono below the body. */
   code?: string;
+  /** Optional sanitized inline SVG diagram (a pinout, a gate wiring, a
+   *  waveform) for spatial concepts. Themed via currentColor. */
+  svg?: string;
 }
 
 export interface CheckStep {
