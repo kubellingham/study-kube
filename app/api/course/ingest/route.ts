@@ -20,7 +20,7 @@ import {
   normalizeCourse,
 } from "@/lib/course/generate";
 import type { Section, ExamQuestion, IngestedFile } from "@/lib/course/types";
-import { UsageMeter } from "@/lib/usage";
+import { UsageMeter, formatCost } from "@/lib/usage";
 
 export const runtime = "nodejs";
 // 300s is the hard ceiling on Vercel's Hobby plan — it can't be raised. The
@@ -30,19 +30,38 @@ export const runtime = "nodejs";
 // 300s where the old one-shot call did not.
 export const maxDuration = 300;
 
-// Bail with a friendly status a little before the hard 300s limit, so an
-// unusually heavy file reports something actionable instead of being killed
-// mid-flight (which would leave the job stuck "working"/"Digesting…" forever).
-const DIGEST_DEADLINE_MS = 270_000;
+/** Resolves to "timeout" after ms — used as a soft budget, never throws. */
+function softDeadline(ms: number): Promise<"timeout"> {
+  return new Promise((res) => setTimeout(() => res("timeout"), ms));
+}
 
-/** Reject if the wrapped work outruns the deadline, so the catch can write a
- *  clean error status before Vercel hard-kills the function. */
-function withDeadline<T>(work: Promise<T>, ms: number, message: string): Promise<T> {
-  let timer: ReturnType<typeof setTimeout>;
-  const guard = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(message)), ms);
+// Skeleton runs first (fast); the drills get the rest of the 300s budget. If
+// the budget runs out we KEEP whatever finished rather than discarding it — a
+// half-built ladder is worth far more than a bill for nothing.
+const DRILL_BUDGET_MS = 215_000;
+// A syllabus-only "build from knowledge" invents its own scope, so bound it to
+// a focused first ladder that reliably finishes; more depth comes from adding
+// actual unit files (which are NOT capped).
+const KNOWLEDGE_TOPIC_CAP = 8;
+
+/** Drill topics concurrently, but stop waiting at the soft budget and return
+ *  whatever completed (nulls for the rest). Never throws on timeout, so the
+ *  caller can assemble and SAVE the partial ladder. */
+async function drillWithinBudget<T, R>(
+  topics: T[],
+  budgetMs: number,
+  fn: (item: T, index: number) => Promise<R | null>
+): Promise<{ results: (R | null)[]; complete: boolean }> {
+  const results: (R | null)[] = new Array(topics.length).fill(null);
+  const work = mapWithConcurrency(topics, 5, async (t, i) => {
+    results[i] = await fn(t, i).catch(() => null);
+    return null;
   });
-  return Promise.race([work, guard]).finally(() => clearTimeout(timer)) as Promise<T>;
+  const outcome = await Promise.race([
+    work.then(() => "complete" as const),
+    softDeadline(budgetMs),
+  ]);
+  return { results, complete: outcome === "complete" };
 }
 
 const MAX_FILE_BYTES = 4 * 1024 * 1024; // fallback multipart path only
@@ -219,26 +238,27 @@ export async function POST(req: NextRequest) {
         const existingTopics = preSections.flatMap((s) => s.topics).map((t) => ({ id: t.id, title: t.title }));
         await setJob({ note: "Reading your outline and planning the ladder from Kube's own knowledge…", label: "built from your outline", kind: "unit" });
 
-        const generated = await withDeadline(
-          (async () => {
-            const skeleton = await generateUnitSkeleton(courseTitle, unitNumber, rawText, existingTopics, images, "knowledge", meter);
-            await setJob({ note: `Mapped ${skeleton.topics.length} concept${skeleton.topics.length === 1 ? "" : "s"} — teaching each from scratch…` });
-            const titles = skeleton.topics.map((t) => t.title);
-            let done = 0;
-            const [lessonsByTopic, examQuestions] = await Promise.all([
-              mapWithConcurrency(skeleton.topics, 5, async (topic) => {
-                const lessons = await generateTopicLessons(courseTitle, unitNumber, rawText, topic, titles, images, "knowledge", meter).catch(() => null);
-                done += 1;
-                await setJob({ note: `Building lessons — ${done}/${skeleton.topics.length} done…` });
-                return lessons;
-              }),
-              generateExamBank(courseTitle, unitNumber, rawText, skeleton.topics, images, "knowledge", meter).catch(() => []),
-            ]);
-            return composeGeneratedUnit(skeleton, lessonsByTopic, examQuestions);
-          })(),
-          DIGEST_DEADLINE_MS,
-          "Kube ran out of time building this from the outline. Try a tighter scope, or add the material directly."
-        );
+        const fullSkeleton = await generateUnitSkeleton(courseTitle, unitNumber, rawText, existingTopics, images, "knowledge", meter);
+        // Bound a knowledge build so it reliably finishes inside the function
+        // limit; the rest of the outline is covered by adding unit files later.
+        const kTopics = fullSkeleton.topics.slice(0, KNOWLEDGE_TOPIC_CAP);
+        const skeleton = { ...fullSkeleton, topics: kTopics };
+        await setJob({ note: `Mapped ${kTopics.length} concept${kTopics.length === 1 ? "" : "s"} — teaching each from scratch…` });
+        const titles = kTopics.map((t) => t.title);
+        let done = 0;
+        // Exam bank runs alongside the drills; we take it if it lands in time.
+        let examQuestions: Awaited<ReturnType<typeof generateExamBank>> = [];
+        const examP = generateExamBank(courseTitle, unitNumber, rawText, kTopics, images, "knowledge", meter)
+          .then((q) => { examQuestions = q; })
+          .catch(() => {});
+        const { results: lessonsByTopic, complete } = await drillWithinBudget(kTopics, DRILL_BUDGET_MS, async (topic) => {
+          const lessons = await generateTopicLessons(courseTitle, unitNumber, rawText, topic, titles, images, "knowledge", meter);
+          done += 1;
+          await setJob({ note: `Building lessons — ${done}/${kTopics.length} done…` });
+          return lessons;
+        });
+        await Promise.race([examP, softDeadline(4000)]);
+        const generated = composeGeneratedUnit(skeleton, lessonsByTopic, examQuestions);
 
         let added = 0;
         let addedQ = 0;
@@ -250,7 +270,7 @@ export async function POST(req: NextRequest) {
           const allIds = sections.flatMap((s) => s.topics).map((t) => t.id);
           const { section, questions } = assembleUnit(generated, unitNumber, allIds);
           if (section.topics.length === 0 && questions.length === 0) {
-            throw new Error("Kube couldn't build a ladder from that outline — try adding the material directly.");
+            throw new Error("Kube couldn't finish any lessons in time — try adding a unit file directly rather than building from the outline.");
           }
           sections.push(section);
           added = section.topics.length;
@@ -263,7 +283,10 @@ export async function POST(req: NextRequest) {
             updatedAt: Date.now(),
           });
         });
-        await setJob({ status: "done", cost: meter.summary(), note: `Built ${added} concept${added === 1 ? "" : "s"} from your outline. Add your notes anytime to ground it in your exact course.` });
+        const kNote = complete
+          ? `Built ${added} concept${added === 1 ? "" : "s"} from your outline. Add your notes anytime to ground it in your exact course.`
+          : `Built ${added} concept${added === 1 ? "" : "s"} before time ran out — your ladder's up and saved. Add your unit files to go deeper.`;
+        await setJob({ status: "done", cost: meter.summary(), note: kNote });
         return;
       }
 
@@ -321,54 +344,36 @@ export async function POST(req: NextRequest) {
 
         // Chunked + parallel generation (see lib/course/generate.ts): a fast
         // skeleton call, then every topic's four-quarter drill and the exam
-        // bank generated concurrently. Each call is small, so wall-clock is
-        // the slowest single call — not a 48k-token serial stream that would
-        // outrun the function limit.
-        const generated = await withDeadline(
-          (async () => {
-            const skeleton = await generateUnitSkeleton(
-              courseTitle,
-              unitNumber,
-              rawText,
-              existingTopics,
-              images,
-              "file",
-              meter
-            );
-            await setJob({
-              note: `Mapped ${skeleton.topics.length} concept${skeleton.topics.length === 1 ? "" : "s"} — drilling each into a full circle…`,
-            });
-
-            const titles = skeleton.topics.map((t) => t.title);
-            let done = 0;
-            const [lessonsByTopic, examQuestions] = await Promise.all([
-              mapWithConcurrency(skeleton.topics, 5, async (topic) => {
-                const lessons = await generateTopicLessons(
-                  courseTitle,
-                  unitNumber,
-                  rawText,
-                  topic,
-                  titles,
-                  images,
-                  "file",
-                  meter
-                ).catch(() => null);
-                done += 1;
-                await setJob({
-                  note: `Drilling circles — ${done}/${skeleton.topics.length} done…`,
-                });
-                return lessons;
-              }),
-              generateExamBank(courseTitle, unitNumber, rawText, skeleton.topics, images, "file", meter).catch(
-                () => []
-              ),
-            ]);
-
-            return composeGeneratedUnit(skeleton, lessonsByTopic, examQuestions);
-          })(),
-          DIGEST_DEADLINE_MS,
-          "This file was heavy and Kube ran out of time digesting it in one go. Split it into smaller chunks (e.g. per lecture) and add each — every piece will digest and stack onto the same unit."
+        // bank generated concurrently. If the whole thing can't finish inside
+        // the function limit we KEEP the topics that did (drillWithinBudget)
+        // rather than throwing away a heavy file's worth of tokens.
+        const skeleton = await generateUnitSkeleton(
+          courseTitle,
+          unitNumber,
+          rawText,
+          existingTopics,
+          images,
+          "file",
+          meter
         );
+        await setJob({
+          note: `Mapped ${skeleton.topics.length} concept${skeleton.topics.length === 1 ? "" : "s"} — drilling each into a full circle…`,
+        });
+
+        const titles = skeleton.topics.map((t) => t.title);
+        let done = 0;
+        let examQuestions: Awaited<ReturnType<typeof generateExamBank>> = [];
+        const examP = generateExamBank(courseTitle, unitNumber, rawText, skeleton.topics, images, "file", meter)
+          .then((q) => { examQuestions = q; })
+          .catch(() => {});
+        const { results: lessonsByTopic, complete } = await drillWithinBudget(skeleton.topics, DRILL_BUDGET_MS, async (topic) => {
+          const lessons = await generateTopicLessons(courseTitle, unitNumber, rawText, topic, titles, images, "file", meter);
+          done += 1;
+          await setJob({ note: `Drilling circles — ${done}/${skeleton.topics.length} done…` });
+          return lessons;
+        });
+        await Promise.race([examP, softDeadline(4000)]);
+        const generated = composeGeneratedUnit(skeleton, lessonsByTopic, examQuestions);
 
         record.cost = meter.summary();
         let added = 0;
@@ -413,7 +418,9 @@ export async function POST(req: NextRequest) {
         await setJob({
           status: "done",
           cost: meter.summary(),
-          note: `Unit ${unitNumber} digested — ${added} new topic${added === 1 ? "" : "s"}, ${addedQ} exam question${addedQ === 1 ? "" : "s"}.`,
+          note: complete
+            ? `Unit ${unitNumber} digested — ${added} new topic${added === 1 ? "" : "s"}, ${addedQ} exam question${addedQ === 1 ? "" : "s"}.`
+            : `Unit ${unitNumber}: saved the ${added} topic${added === 1 ? "" : "s"} that finished before time ran out (add this file again to build the rest onto the same unit).`,
         });
         return;
       }
@@ -486,7 +493,15 @@ export async function POST(req: NextRequest) {
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Digestion failed.";
-      await setJob({ status: "error", note: message });
+      // Always record what was spent, even on failure — otherwise the back
+      // office shows 0 for a job that really did burn tokens (the bug that hid
+      // a whole failed digest's cost).
+      const spent = meter.summary();
+      await setJob({
+        status: "error",
+        cost: spent,
+        note: spent.costUsd > 0 ? `${message} (Kube still spent ~${formatCost(spent.costUsd)} getting there.)` : message,
+      });
     }
   });
 
