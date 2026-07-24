@@ -69,8 +69,6 @@ async function drillWithinBudget<T, R>(
 }
 
 const MAX_FILE_BYTES = 4 * 1024 * 1024; // fallback multipart path only
-// Climb caps files per subject (cost guard + Summit nudge). Summit is unbounded.
-const MAX_CLIMB_FILES = 5;
 const MAX_TEXT_CHARS = 400_000;
 const MAX_IMAGES = 30;
 const MAX_IMAGE_B64 = 400_000; // per image, base64 chars (~300 KB binary)
@@ -188,18 +186,6 @@ export async function POST(req: NextRequest) {
       skipped: true,
       note: `Kube already learned "${already.label}" — nothing re-processed.`,
     });
-  }
-
-  // Climb covers a bounded number of files per subject — keeps the cram gym
-  // generous but our spend in check, and doubles as a gentle nudge to Summit.
-  if (isClimbOnly && priorFiles.length >= MAX_CLIMB_FILES) {
-    return Response.json(
-      {
-        error: `Climb covers up to ${MAX_CLIMB_FILES} files per subject — you're full here. Start a new subject, or upgrade to Summit for unlimited material and the deep lessons.`,
-        needsTier: "summit",
-      },
-      { status: 402 }
-    );
   }
 
   // Create the job doc, respond immediately, digest in the background.

@@ -24,8 +24,9 @@ import DigestingAnimation from "./DigestingAnimation";
 
 type IngestMode = "fromFile" | "fromKnowledge";
 
-// Climb covers this many files per subject (must match the server guard).
-const MAX_CLIMB_FILES = 5;
+// Cap a single upload to a sane batch — a subject can hold many files, just
+// not all dropped at once (protects spend and keeps the queue readable).
+const MAX_FILES_PER_UPLOAD = 5;
 
 interface JobLine {
   key: string;
@@ -60,7 +61,6 @@ export default function AddMaterial({
 }) {
   const { entitlement } = useEntitlement();
   const isClimbOnly = entitlement?.tier === "climb";
-  const climbFull = isClimbOnly && files.length >= MAX_CLIMB_FILES;
 
   const [text, setText] = useState("");
   const [tab, setTab] = useState<"files" | "text">("files");
@@ -225,18 +225,23 @@ export default function AddMaterial({
 
   async function ingestFiles(picked: File[]) {
     if (picked.length === 0) return;
-    // Climb file cap: only take what fits (server enforces the hard limit too).
-    if (isClimbOnly) {
-      const room = MAX_CLIMB_FILES - files.length;
-      if (room <= 0) return;
-      if (picked.length > room) picked = picked.slice(0, room);
-    }
+    // One upload = up to MAX_FILES_PER_UPLOAD; the rest wait for another batch.
+    const overflow = picked.length > MAX_FILES_PER_UPLOAD;
+    if (overflow) picked = picked.slice(0, MAX_FILES_PER_UPLOAD);
     const batch: JobLine[] = picked.map((f, i) => ({
       key: `${Date.now()}-${i}-${f.name}`,
       name: f.name,
       state: "extracting",
       note: "Reading the file on your device…",
     }));
+    if (overflow) {
+      batch.unshift({
+        key: `${Date.now()}-overflow`,
+        name: "Heads up",
+        state: "skipped",
+        note: `Up to ${MAX_FILES_PER_UPLOAD} files per upload — took the first ${MAX_FILES_PER_UPLOAD}; add the rest in another batch.`,
+      });
+    }
     setLines((prev) => [...prev, ...batch]);
     for (let i = 0; i < picked.length; i++) {
       const key = batch[i].key;
@@ -331,25 +336,6 @@ export default function AddMaterial({
         </p>
       )}
 
-      {isClimbOnly && (
-        <p className="mt-3 text-xs" style={{ color: "var(--faint)" }}>
-          On Climb, Kube breaks your files down into notes, flashcards and mock exams —
-          up to {MAX_CLIMB_FILES} files here ({Math.max(0, MAX_CLIMB_FILES - files.length)} left).
-        </p>
-      )}
-
-      {climbFull ? (
-        <div className="mt-4 rounded-2xl border px-5 py-5 text-center" style={{ borderColor: "var(--kube-line)", background: "var(--kube-soft)" }}>
-          <p className="text-sm font-semibold" style={{ color: "var(--ink)" }}>This subject is full on Climb.</p>
-          <p className="mx-auto mt-1 max-w-sm text-xs leading-relaxed" style={{ color: "var(--ink-soft)" }}>
-            You&apos;ve added {MAX_CLIMB_FILES} files. Start a new subject, or unlock unlimited material and the deep step-by-step lessons with Summit.
-          </p>
-          <Link href="/learn/upgrade" className="mt-3 inline-block rounded-xl px-4 py-2.5 text-sm font-semibold text-white" style={{ background: "var(--kube)" }}>
-            Upgrade to Summit
-          </Link>
-        </div>
-      ) : (
-      <>
       <div className="mt-4 flex gap-2">
         {(["files", "text"] as const).map((t) => (
           <button
@@ -431,8 +417,6 @@ export default function AddMaterial({
             Feed Kube
           </button>
         </form>
-      )}
-      </>
       )}
 
       {lines.length > 0 && (
