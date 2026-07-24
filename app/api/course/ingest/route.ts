@@ -1,6 +1,6 @@
 import { createHash } from "crypto";
 import { NextRequest, after } from "next/server";
-import { requireEntitlement } from "@/lib/entitlement-server";
+import { requireEntitlement, getEntitlement } from "@/lib/entitlement-server";
 import { adminDb } from "@/lib/firebase/admin";
 import { extractDocumentText } from "@/lib/ingest/office";
 import {
@@ -11,6 +11,9 @@ import {
   generateUnitSkeleton,
   generateTopicLessons,
   generateExamBank,
+  generateUnitSkeletonCheap,
+  generateExamBankCheap,
+  assembleClimbUnit,
   mapWithConcurrency,
   composeGeneratedUnit,
   assembleUnit,
@@ -21,6 +24,7 @@ import {
 } from "@/lib/course/generate";
 import type { Section, ExamQuestion, IngestedFile } from "@/lib/course/types";
 import { UsageMeter, formatCost } from "@/lib/usage";
+import { CLIMB_PRICE_IN, CLIMB_PRICE_OUT } from "@/lib/openrouter";
 
 export const runtime = "nodejs";
 // 300s is the hard ceiling on Vercel's Hobby plan — it can't be raised. The
@@ -100,6 +104,11 @@ export async function POST(req: NextRequest) {
   const gate = await requireEntitlement(req, "climb");
   if (!gate.ok) return gate.response;
   const uid = gate.uid;
+
+  // Tier decides the engine: Climb DISTILLS (concept map + exams on the budget
+  // model, no drilling); Summit+ gets the deep four-quarter teaching on Sonnet.
+  const ent = await getEntitlement(uid);
+  const isClimbOnly = ent.tier === "climb";
 
   let courseId = "";
   let fileName = "pasted text";
@@ -192,9 +201,10 @@ export async function POST(req: NextRequest) {
   });
 
   after(async () => {
-    // One meter for the whole digest — every Claude call (streamed or parsed)
-    // adds its real token usage here, so the finished job can show its cost.
-    const meter = new UsageMeter();
+    // One meter for the whole digest — every model call adds its real token
+    // usage here, so the finished job can show its cost. Climb is priced at the
+    // budget model's rate; Summit+ at Sonnet's (the default).
+    const meter = isClimbOnly ? new UsageMeter(CLIMB_PRICE_IN, CLIMB_PRICE_OUT) : new UsageMeter();
 
     const setJob = (fields: Record<string, unknown>) =>
       jobRef.update({ ...fields, updatedAt: Date.now() }).catch(() => {});
@@ -229,6 +239,16 @@ export async function POST(req: NextRequest) {
 
 
     try {
+      // Building from just an outline (Kube's own knowledge) is a Summit power —
+      // Climb is grounded-only, it distills the material you actually give it.
+      if (mode === "fromKnowledge" && isClimbOnly) {
+        await setJob({
+          status: "error",
+          note: "Building a course from just an outline is a Summit feature. On Climb, upload your unit material (notes, slides, a chapter) and Kube distills it into practice, notes and mock exams.",
+        });
+        return;
+      }
+
       // ── The intake-read path: build the ladder from a syllabus/outline using
       // Kube's own knowledge, no unit files needed. Skips classification. ──
       if (mode === "fromKnowledge") {
@@ -341,6 +361,49 @@ export async function POST(req: NextRequest) {
         const existingTopics = preSections
           .flatMap((s) => s.topics)
           .map((t) => ({ id: t.id, title: t.title }));
+
+        // ── CLIMB: distill only. Concept map + exams on the budget model; NO
+        // drilling (the deep teaching is Summit). Feeds practice, notes, exams;
+        // the tree shows those topics locked-behind-glass. Cheap and fast. ──
+        if (isClimbOnly) {
+          const skeleton = await generateUnitSkeletonCheap(courseTitle, unitNumber, rawText, existingTopics, images, meter);
+          await setJob({ note: `Mapped ${skeleton.topics.length} concept${skeleton.topics.length === 1 ? "" : "s"} — writing your practice & exams…` });
+          const questionsRaw = await generateExamBankCheap(courseTitle, unitNumber, rawText, skeleton.topics, images, meter).catch(() => []);
+          record.cost = meter.summary();
+          let addedC = 0;
+          let addedCQ = 0;
+          await db.runTransaction(async (tx) => {
+            const fresh = await tx.get(courseRef);
+            const sections = ((fresh.get("sections") as Section[]) ?? []).slice();
+            const examBank = ((fresh.get("examBank") as ExamQuestion[]) ?? []).slice();
+            const files = ((fresh.get("files") as IngestedFile[]) ?? []).filter((f) => f.id !== fileId);
+            const allIds = sections.flatMap((s) => s.topics).map((t) => t.id);
+            const { section, questions } = assembleClimbUnit(skeleton, questionsRaw, unitNumber, allIds);
+            if (section.topics.length === 0) {
+              throw new Error("This material didn't add anything new — its topics are already on the ladder.");
+            }
+            const existing = sections.find((s) => s.unit === unitNumber);
+            if (existing) existing.topics = [...existing.topics, ...section.topics];
+            else sections.push(section);
+            addedC = section.topics.length;
+            addedCQ = questions.length;
+            record.unit = unitNumber;
+            record.topics = addedC;
+            record.questions = addedCQ;
+            tx.update(courseRef, {
+              sections: normalizeCourse(sections),
+              examBank: [...examBank, ...questions],
+              files: [...files, record],
+              updatedAt: Date.now(),
+            });
+          });
+          await setJob({
+            status: "done",
+            cost: meter.summary(),
+            note: `Unit ${unitNumber} distilled — ${addedC} concept${addedC === 1 ? "" : "s"} with recap, flashcards & ${addedCQ} exam question${addedCQ === 1 ? "" : "s"}. Practice and notes are ready.`,
+          });
+          return;
+        }
 
         // Chunked + parallel generation (see lib/course/generate.ts): a fast
         // skeleton call, then every topic's four-quarter drill and the exam

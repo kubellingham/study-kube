@@ -33,13 +33,21 @@ export interface UsageSummary {
 }
 
 /** Accumulates token usage across every call of one digest. Pass one instance
- *  into each generator; read `.summary()` when the build finishes. */
+ *  into each generator; read `.summary()` when the build finishes. Construct
+ *  with per-M prices to cost a non-Sonnet tier (e.g. Climb's budget model). */
 export class UsageMeter {
   calls = 0;
   input = 0;
   output = 0;
   cacheWrite = 0;
   cacheRead = 0;
+  private priceIn: number;
+  private priceOut: number;
+
+  constructor(priceIn: number = PER_M.input, priceOut: number = PER_M.output) {
+    this.priceIn = priceIn;
+    this.priceOut = priceOut;
+  }
 
   add(u?: RawUsage | null): void {
     if (!u) return;
@@ -52,10 +60,10 @@ export class UsageMeter {
 
   costUsd(): number {
     const dollars =
-      (this.input * PER_M.input +
-        this.cacheWrite * PER_M.input * CACHE_WRITE_MULT +
-        this.cacheRead * PER_M.input * CACHE_READ_MULT +
-        this.output * PER_M.output) /
+      (this.input * this.priceIn +
+        this.cacheWrite * this.priceIn * CACHE_WRITE_MULT +
+        this.cacheRead * this.priceIn * CACHE_READ_MULT +
+        this.output * this.priceOut) /
       1_000_000;
     return dollars;
   }

@@ -6,6 +6,7 @@ import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { getAnthropic, MODEL } from "@/lib/anthropic";
 import type { UsageMeter } from "@/lib/usage";
+import { chatJSON, orImageBlocks, CLIMB_MODEL, CLIMB_VISION_MODEL } from "@/lib/openrouter";
 import { sanitizeSvg } from "./svg";
 import type { Section, Topic, Step, ExamQuestion, SyllabusInfo } from "./types";
 
@@ -590,6 +591,155 @@ export async function generateExamBank(
   meter?.add(res.usage);
   if (!res.parsed_output) throw new Error("Kube couldn't write this unit's exam questions.");
   return res.parsed_output.examQuestions;
+}
+
+/* ------------------------------------------------------------------ *
+ * CLIMB (budget) GENERATION — via OpenRouter
+ *
+ * Climb's job is to DISTILL, not teach: a concept map (topics + recap) and an
+ * exam bank, which feed the practice hub, notes/glossary and mock exams. The
+ * deep four-quarter drilling (the actual "climb") is a Summit unlock, so Climb
+ * skips it entirely — and runs the cheap parts on a budget model. Same schemas
+ * as the Sonnet path, so everything downstream is identical.
+ * ------------------------------------------------------------------ */
+
+const SKELETON_JSON_SHAPE = `Return ONLY a JSON object (no prose, no markdown fences) of exactly this shape:
+{"sectionTitle": string, "tagline": string, "topics": [{"id": string, "title": string, "weight": "heavy"|"medium"|"light", "deps": string[], "whyItMatters": string, "recap": string[]}]}
+- 4-10 topics, ONE concept each, in dependency order. Prefix every id with the unit prefix given.
+- recap = 3-5 crisp, exam-night fact lines per topic.`;
+
+const EXAM_JSON_SHAPE = `Return ONLY a JSON object (no prose, no markdown fences) of exactly this shape:
+{"examQuestions": [{"topicId": string, "prompt": string, "options": [string, string, string, string], "answer": 0, "hint": string, "explanation": string}]}
+- 8-12 questions spread across the topics; answer is the 0-based index of the correct option; exactly 4 options each.`;
+
+/** Climb concept map on the budget model. Same UnitSkeleton shape as the
+ *  Sonnet path (Zod-validated), so the ladder/practice/notes consume it
+ *  unchanged. Image uploads route to the vision model. */
+export async function generateUnitSkeletonCheap(
+  courseTitle: string,
+  unitNumber: number,
+  rawText: string,
+  existingTopics: ExistingTopicRef[],
+  images?: SourceImage[],
+  meter?: UsageMeter
+): Promise<UnitSkeleton> {
+  const useVision = (images?.length ?? 0) > 0;
+  const existing =
+    existingTopics.length > 0
+      ? `Existing topics (do NOT recreate; you may list their ids as deps): ${existingTopics.map((t) => t.id).join(", ")}`
+      : "This is the first material — the ladder is empty.";
+  const prompt = `${CONCEPT_RULES}
+
+Course: ${courseTitle}
+Unit ${unitNumber}. Prefix every topic id with "u${unitNumber}-".
+${existing}
+
+Produce ONLY the concept map for this unit: sectionTitle, tagline, and the ordered topics (id, title, weight, deps, whyItMatters, recap). No lessons.
+
+--- COURSE MATERIAL ---
+${rawText.slice(0, MAX_UNIT_CHARS)}
+
+${SKELETON_JSON_SHAPE}`;
+  const content = useVision ? [{ type: "text" as const, text: prompt }, ...orImageBlocks(images)] : prompt;
+  const { data, usage } = await chatJSON({
+    model: useVision ? CLIMB_VISION_MODEL : CLIMB_MODEL,
+    system: UNIT_SYSTEM,
+    content,
+    maxTokens: 5000,
+  });
+  meter?.add(usage);
+  return skeletonSchema.parse(data);
+}
+
+/** Climb exam bank on the budget model. Same shape as the Sonnet path. */
+export async function generateExamBankCheap(
+  courseTitle: string,
+  unitNumber: number,
+  rawText: string,
+  topics: SkeletonTopic[],
+  images?: SourceImage[],
+  meter?: UsageMeter
+): Promise<z.infer<typeof examBankSchema>["examQuestions"]> {
+  const useVision = (images?.length ?? 0) > 0;
+  const list = topics.map((t) => `- ${t.id}: ${t.title} — ${t.whyItMatters}`).join("\n");
+  const prompt = `${EXAM_RULES}
+
+Course: ${courseTitle} · Unit ${unitNumber}
+Topics (tag every question with one of these ids):
+${list}
+
+Write 8-12 exam-bank questions spread across these topics, grounded in the material below.
+
+--- COURSE MATERIAL ---
+${rawText.slice(0, MAX_UNIT_CHARS)}
+
+${EXAM_JSON_SHAPE}`;
+  const content = useVision ? [{ type: "text" as const, text: prompt }, ...orImageBlocks(images)] : prompt;
+  const { data, usage } = await chatJSON({
+    model: useVision ? CLIMB_VISION_MODEL : CLIMB_MODEL,
+    system: UNIT_SYSTEM,
+    content,
+    maxTokens: 5000,
+  });
+  meter?.add(usage);
+  return examBankSchema.parse(data).examQuestions;
+}
+
+/** Assemble a Climb unit: topics carry their recap (feeding practice + notes)
+ *  but NO lessons — the deep drilling is Summit-only. Exam questions are
+ *  sanitized against the topic ids just like the Sonnet path. */
+export function assembleClimbUnit(
+  skeleton: UnitSkeleton,
+  examQuestions: z.infer<typeof examBankSchema>["examQuestions"],
+  unitNumber: number,
+  existingTopicIds: string[]
+): { section: Section; questions: ExamQuestion[] } {
+  const known = new Set(existingTopicIds);
+  const topics: Topic[] = [];
+  for (const t of skeleton.topics) {
+    let id = t.id;
+    if (known.has(id)) id = `u${unitNumber}-${id}`.slice(0, 80);
+    if (known.has(id)) continue;
+    topics.push({
+      id,
+      title: t.title,
+      unit: unitNumber,
+      weight: t.weight,
+      deps: t.deps.filter((d) => known.has(d)),
+      whyItMatters: t.whyItMatters,
+      recap: t.recap.slice(0, 6),
+      lessons: [],
+      steps: [],
+    });
+    known.add(id);
+  }
+  const topicIds = new Set(topics.map((t) => t.id));
+  const questions: ExamQuestion[] = examQuestions
+    .filter(
+      (q) => topicIds.has(q.topicId) && q.options.length >= 2 && q.answer >= 0 && q.answer < q.options.length
+    )
+    .map((q, i) => ({
+      id: `u${unitNumber}q${i + 1}`,
+      topicId: q.topicId,
+      unit: unitNumber,
+      prompt: q.prompt,
+      options: q.options,
+      answer: q.answer,
+      hint: q.hint,
+      explanation: q.explanation,
+      ...(q.code ? { code: q.code } : {}),
+    }));
+  return {
+    section: {
+      id: `sec-u${unitNumber}`,
+      letter: "?",
+      title: skeleton.sectionTitle,
+      tagline: skeleton.tagline,
+      unit: unitNumber,
+      topics,
+    },
+    questions,
+  };
 }
 
 /** Run tasks with a small concurrency cap so we parallelize without opening
