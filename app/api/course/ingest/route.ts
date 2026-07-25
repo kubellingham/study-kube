@@ -12,6 +12,7 @@ import {
   generateTopicLessons,
   generateExamBank,
   generateUnitSkeletonCheap,
+  generateTopicLessonsCheap,
   generateExamBankCheap,
   assembleClimbUnit,
   mapWithConcurrency,
@@ -24,7 +25,7 @@ import {
 } from "@/lib/course/generate";
 import type { Section, ExamQuestion, IngestedFile } from "@/lib/course/types";
 import { UsageMeter, formatCost } from "@/lib/usage";
-import { CLIMB_PRICE_IN, CLIMB_PRICE_OUT } from "@/lib/openrouter";
+import { CLIMB_PRICE_IN, CLIMB_PRICE_OUT, SUMMIT_PRICE_IN, SUMMIT_PRICE_OUT, SUMMIT_MODEL, SUMMIT_VISION_MODEL } from "@/lib/openrouter";
 
 export const runtime = "nodejs";
 // 300s is the hard ceiling on Vercel's Hobby plan — it can't be raised. The
@@ -109,6 +110,10 @@ export async function POST(req: NextRequest) {
   // model, no drilling); Summit+ gets the deep four-quarter teaching on Sonnet.
   const ent = await getEntitlement(uid);
   const isClimbOnly = ent.tier === "climb";
+  // Summit's deep tier is being tested on the budget engine first. Flip to the
+  // premium Anthropic path with SUMMIT_ENGINE="sonnet".
+  const summitBudget = !isClimbOnly && process.env.SUMMIT_ENGINE !== "sonnet";
+  const summitOpts = { model: SUMMIT_MODEL, vision: SUMMIT_VISION_MODEL } as const;
 
   let courseId = "";
   let fileName = "pasted text";
@@ -204,7 +209,11 @@ export async function POST(req: NextRequest) {
     // One meter for the whole digest — every model call adds its real token
     // usage here, so the finished job can show its cost. Climb is priced at the
     // budget model's rate; Summit+ at Sonnet's (the default).
-    const meter = isClimbOnly ? new UsageMeter(CLIMB_PRICE_IN, CLIMB_PRICE_OUT) : new UsageMeter();
+    const meter = isClimbOnly
+      ? new UsageMeter(CLIMB_PRICE_IN, CLIMB_PRICE_OUT)
+      : summitBudget
+        ? new UsageMeter(SUMMIT_PRICE_IN, SUMMIT_PRICE_OUT)
+        : new UsageMeter();
 
     const setJob = (fields: Record<string, unknown>) =>
       jobRef.update({ ...fields, updatedAt: Date.now() }).catch(() => {});
@@ -258,7 +267,9 @@ export async function POST(req: NextRequest) {
         const existingTopics = preSections.flatMap((s) => s.topics).map((t) => ({ id: t.id, title: t.title }));
         await setJob({ note: "Reading your outline and planning the ladder from Kube's own knowledge…", label: "built from your outline", kind: "unit" });
 
-        const fullSkeleton = await generateUnitSkeleton(courseTitle, unitNumber, rawText, existingTopics, images, "knowledge", meter);
+        const fullSkeleton = summitBudget
+          ? await generateUnitSkeletonCheap(courseTitle, unitNumber, rawText, existingTopics, images, meter, { ...summitOpts, cram: false, mode: "knowledge" })
+          : await generateUnitSkeleton(courseTitle, unitNumber, rawText, existingTopics, images, "knowledge", meter);
         // Bound a knowledge build so it reliably finishes inside the function
         // limit; the rest of the outline is covered by adding unit files later.
         const kTopics = fullSkeleton.topics.slice(0, KNOWLEDGE_TOPIC_CAP);
@@ -268,11 +279,15 @@ export async function POST(req: NextRequest) {
         let done = 0;
         // Exam bank runs alongside the drills; we take it if it lands in time.
         let examQuestions: Awaited<ReturnType<typeof generateExamBank>> = [];
-        const examP = generateExamBank(courseTitle, unitNumber, rawText, kTopics, images, "knowledge", meter)
+        const examP = (summitBudget
+          ? generateExamBankCheap(courseTitle, unitNumber, rawText, kTopics, images, meter, { ...summitOpts, mode: "knowledge" })
+          : generateExamBank(courseTitle, unitNumber, rawText, kTopics, images, "knowledge", meter))
           .then((q) => { examQuestions = q; })
           .catch(() => {});
         const { results: lessonsByTopic, complete } = await drillWithinBudget(kTopics, DRILL_BUDGET_MS, async (topic) => {
-          const lessons = await generateTopicLessons(courseTitle, unitNumber, rawText, topic, titles, images, "knowledge", meter);
+          const lessons = summitBudget
+            ? await generateTopicLessonsCheap(courseTitle, unitNumber, rawText, topic, titles, images, meter, { ...summitOpts, mode: "knowledge" })
+            : await generateTopicLessons(courseTitle, unitNumber, rawText, topic, titles, images, "knowledge", meter);
           done += 1;
           await setJob({ note: `Building lessons — ${done}/${kTopics.length} done…` });
           return lessons;
@@ -410,15 +425,9 @@ export async function POST(req: NextRequest) {
         // bank generated concurrently. If the whole thing can't finish inside
         // the function limit we KEEP the topics that did (drillWithinBudget)
         // rather than throwing away a heavy file's worth of tokens.
-        const skeleton = await generateUnitSkeleton(
-          courseTitle,
-          unitNumber,
-          rawText,
-          existingTopics,
-          images,
-          "file",
-          meter
-        );
+        const skeleton = summitBudget
+          ? await generateUnitSkeletonCheap(courseTitle, unitNumber, rawText, existingTopics, images, meter, { ...summitOpts, cram: false, mode: "file" })
+          : await generateUnitSkeleton(courseTitle, unitNumber, rawText, existingTopics, images, "file", meter);
         await setJob({
           note: `Mapped ${skeleton.topics.length} concept${skeleton.topics.length === 1 ? "" : "s"} — drilling each into a full circle…`,
         });
@@ -426,11 +435,15 @@ export async function POST(req: NextRequest) {
         const titles = skeleton.topics.map((t) => t.title);
         let done = 0;
         let examQuestions: Awaited<ReturnType<typeof generateExamBank>> = [];
-        const examP = generateExamBank(courseTitle, unitNumber, rawText, skeleton.topics, images, "file", meter)
+        const examP = (summitBudget
+          ? generateExamBankCheap(courseTitle, unitNumber, rawText, skeleton.topics, images, meter, { ...summitOpts, mode: "file" })
+          : generateExamBank(courseTitle, unitNumber, rawText, skeleton.topics, images, "file", meter))
           .then((q) => { examQuestions = q; })
           .catch(() => {});
         const { results: lessonsByTopic, complete } = await drillWithinBudget(skeleton.topics, DRILL_BUDGET_MS, async (topic) => {
-          const lessons = await generateTopicLessons(courseTitle, unitNumber, rawText, topic, titles, images, "file", meter);
+          const lessons = summitBudget
+            ? await generateTopicLessonsCheap(courseTitle, unitNumber, rawText, topic, titles, images, meter, { ...summitOpts, mode: "file" })
+            : await generateTopicLessons(courseTitle, unitNumber, rawText, topic, titles, images, "file", meter);
           done += 1;
           await setJob({ note: `Drilling circles — ${done}/${skeleton.topics.length} done…` });
           return lessons;

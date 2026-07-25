@@ -6,7 +6,7 @@ import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { getAnthropic, MODEL } from "@/lib/anthropic";
 import type { UsageMeter } from "@/lib/usage";
-import { chatJSON, orImageBlocks, CLIMB_MODEL, CLIMB_VISION_MODEL } from "@/lib/openrouter";
+import { chatJSON, orImageBlocks, CLIMB_MODEL, CLIMB_VISION_MODEL, SUMMIT_MODEL, SUMMIT_VISION_MODEL } from "@/lib/openrouter";
 import { sanitizeSvg } from "./svg";
 import type { Section, Topic, Step, ExamQuestion, SyllabusInfo } from "./types";
 
@@ -605,46 +605,67 @@ export async function generateExamBank(
 
 const SKELETON_JSON_SHAPE = `Return ONLY a JSON object (no prose, no markdown fences) of exactly this shape:
 {"sectionTitle": string, "tagline": string, "topics": [{"id": string, "title": string, "weight": "heavy"|"medium"|"light", "deps": string[], "whyItMatters": string, "recap": string[]}]}
-- 16-22 bite-sized concepts, ONE idea each, in dependency order. Prefix every id with the unit prefix given.
+- ONE idea per topic, in dependency order. Prefix every id with the unit prefix given.
 - recap = 3-5 crisp, exam-night fact lines per topic.`;
 
 const EXAM_JSON_SHAPE = `Return ONLY a JSON object (no prose, no markdown fences) of exactly this shape:
 {"examQuestions": [{"topicId": string, "prompt": string, "options": [string, string, string, string], "answer": 0, "hint": string, "explanation": string}]}
-- 12-18 questions spread across the topics; answer is the 0-based index of the correct option; exactly 4 options each.`;
+- Spread the questions across the topics; answer is the 0-based index of the correct option; exactly 4 options each.`;
 
-/** Climb concept map on the budget model. Same UnitSkeleton shape as the
- *  Sonnet path (Zod-validated), so the ladder/practice/notes consume it
- *  unchanged. Image uploads route to the vision model. */
+const LESSON_JSON_SHAPE = `Return ONLY a JSON object (no prose, no markdown fences) of exactly this shape:
+{"lessons":[{"id":"q1","title":"1 · Meet it, slowly","steps":[
+  {"kind":"teach","title":"short heading (optional)","body":"1-3 short paragraphs; use **bold** for key terms and [[term|one-line definition]] to gloss jargon","code":"optional short code block"},
+  {"kind":"check","prompt":"the question","options":["a","b","c","d"],"answer":0,"praise":"warm, specific praise tied to the idea"}
+]}]}
+- Build the four quarters as lessons q1..q4 (a light topic may use q1..q3). Each step is EITHER a teach beat OR a check. "answer" is the 0-based index; give 3-4 options per check.`;
+
+interface CheapOpts {
+  model?: string;
+  vision?: string;
+  cram?: boolean; // Climb = many small concepts; false = 4-10 deep concepts
+  mode?: "file" | "knowledge";
+}
+
+/** Concept map on a budget model. Same UnitSkeleton shape as the Sonnet path
+ *  (Zod-validated). `cram` (Climb) makes many small concepts; otherwise a
+ *  deep-teaching map of 4-10. Image uploads route to the vision model. */
 export async function generateUnitSkeletonCheap(
   courseTitle: string,
   unitNumber: number,
   rawText: string,
   existingTopics: ExistingTopicRef[],
   images?: SourceImage[],
-  meter?: UsageMeter
+  meter?: UsageMeter,
+  opts: CheapOpts = {}
 ): Promise<UnitSkeleton> {
   const useVision = (images?.length ?? 0) > 0;
+  const cram = opts.cram !== false;
+  const know = opts.mode === "knowledge";
   const existing =
     existingTopics.length > 0
       ? `Existing topics (do NOT recreate; you may list their ids as deps): ${existingTopics.map((t) => t.id).join(", ")}`
       : "This is the first material — the ladder is empty.";
-  const prompt = `${CONCEPT_RULES}
+  const count = cram
+    ? `CLIMB CRAM MODE: break the unit into MANY small, drillable concepts — aim for 16-22, more granular than a deep course. Every distinct term, formula, circuit or rule is its own concept.`
+    : `Map the 4-10 CORE concepts a student must master, in dependency order, each weighted by how examinable it is. These become deep four-quarter lessons, so pick real, teachable concepts — not slivers.`;
+  const label = know ? "SYLLABUS / OUTLINE (scope only — teach from your knowledge)" : "COURSE MATERIAL";
+  const prompt = `${know ? CONCEPT_RULES_KNOWLEDGE : CONCEPT_RULES}
 
-CLIMB CRAM MODE: this is the cram gym, so break the unit into MANY small, drillable concepts — aim for 16-22, more granular than a deep course. Every distinct term, formula, circuit, or rule is its own concept. A crammer wants lots of quick cards. Ground every concept strictly in the material below.
+${count}
 
 Course: ${courseTitle}
 Unit ${unitNumber}. Prefix every topic id with "u${unitNumber}-".
 ${existing}
 
-Produce ONLY the concept map for this unit: sectionTitle, tagline, and the ordered topics (id, title, weight, deps, whyItMatters, recap). No lessons.
+Produce ONLY the concept map: sectionTitle, tagline, and the ordered topics (id, title, weight, deps, whyItMatters, recap). No lessons.
 
---- COURSE MATERIAL ---
+--- ${label} ---
 ${rawText.slice(0, MAX_UNIT_CHARS)}
 
 ${SKELETON_JSON_SHAPE}`;
   const content = useVision ? [{ type: "text" as const, text: prompt }, ...orImageBlocks(images)] : prompt;
   const { data, usage } = await chatJSON({
-    model: useVision ? CLIMB_VISION_MODEL : CLIMB_MODEL,
+    model: useVision ? opts.vision ?? CLIMB_VISION_MODEL : opts.model ?? CLIMB_MODEL,
     system: UNIT_SYSTEM,
     content,
     maxTokens: 8000,
@@ -653,32 +674,79 @@ ${SKELETON_JSON_SHAPE}`;
   return skeletonSchema.parse(data);
 }
 
-/** Climb exam bank on the budget model. Same shape as the Sonnet path. */
+/** One topic's four-quarter drill on a budget model — the Summit "deep" step,
+ *  run cheaply. Same lessons shape as the Sonnet path (Zod-validated). */
+export async function generateTopicLessonsCheap(
+  courseTitle: string,
+  unitNumber: number,
+  rawText: string,
+  topic: SkeletonTopic,
+  allTopicTitles: string[],
+  images?: SourceImage[],
+  meter?: UsageMeter,
+  opts: CheapOpts = {}
+): Promise<z.infer<typeof lessonSchema>[]> {
+  const useVision = (images?.length ?? 0) > 0;
+  const know = opts.mode === "knowledge";
+  const label = know ? "SYLLABUS / OUTLINE (scope only — teach from your knowledge)" : "COURSE MATERIAL";
+  const prompt = `${know ? DRILL_RULES_KNOWLEDGE : DRILL_RULES}
+
+Course: ${courseTitle} · Unit ${unitNumber}
+This unit's topics (context — teach forward where natural): ${allTopicTitles.map((t, i) => `${i + 1}. ${t}`).join(" · ")}
+
+DRILL EXACTLY ONE TOPIC into its four-quarter circle:
+- id: ${topic.id}
+- title: ${topic.title}
+- weight: ${topic.weight}
+- why it matters: ${topic.whyItMatters}
+- recap facts: ${topic.recap.join(" | ")}
+
+${know ? "Teach ONLY this concept from your own solid knowledge (the text below is the syllabus for scope)." : "Drill ONLY this concept, grounded in the material below."} Use lesson ids q1..q4.
+
+--- ${label} ---
+${rawText.slice(0, MAX_UNIT_CHARS)}
+
+${LESSON_JSON_SHAPE}`;
+  const content = useVision ? [{ type: "text" as const, text: prompt }, ...orImageBlocks(images)] : prompt;
+  const { data, usage } = await chatJSON({
+    model: useVision ? opts.vision ?? SUMMIT_VISION_MODEL : opts.model ?? SUMMIT_MODEL,
+    system: UNIT_SYSTEM,
+    content,
+    maxTokens: 12000,
+  });
+  meter?.add(usage);
+  return topicLessonsSchema.parse(data).lessons;
+}
+
+/** Exam bank on a budget model. Same shape as the Sonnet path. */
 export async function generateExamBankCheap(
   courseTitle: string,
   unitNumber: number,
   rawText: string,
   topics: SkeletonTopic[],
   images?: SourceImage[],
-  meter?: UsageMeter
+  meter?: UsageMeter,
+  opts: CheapOpts = {}
 ): Promise<z.infer<typeof examBankSchema>["examQuestions"]> {
   const useVision = (images?.length ?? 0) > 0;
+  const know = opts.mode === "knowledge";
+  const label = know ? "SYLLABUS / OUTLINE (scope only)" : "COURSE MATERIAL";
   const list = topics.map((t) => `- ${t.id}: ${t.title} — ${t.whyItMatters}`).join("\n");
-  const prompt = `${EXAM_RULES}
+  const prompt = `${know ? EXAM_RULES_KNOWLEDGE : EXAM_RULES}
 
 Course: ${courseTitle} · Unit ${unitNumber}
 Topics (tag every question with one of these ids):
 ${list}
 
-Write 12-18 exam-bank questions spread across these topics, grounded in the material below.
+Write 10-16 exam-bank questions spread across these topics${know ? " from your own knowledge" : ", grounded in the material below"}.
 
---- COURSE MATERIAL ---
+--- ${label} ---
 ${rawText.slice(0, MAX_UNIT_CHARS)}
 
 ${EXAM_JSON_SHAPE}`;
   const content = useVision ? [{ type: "text" as const, text: prompt }, ...orImageBlocks(images)] : prompt;
   const { data, usage } = await chatJSON({
-    model: useVision ? CLIMB_VISION_MODEL : CLIMB_MODEL,
+    model: useVision ? opts.vision ?? CLIMB_VISION_MODEL : opts.model ?? CLIMB_MODEL,
     system: UNIT_SYSTEM,
     content,
     maxTokens: 7000,

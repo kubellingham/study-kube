@@ -19,6 +19,15 @@ export const CLIMB_VISION_MODEL = process.env.OPENROUTER_CLIMB_VISION_MODEL || "
 export const CLIMB_PRICE_IN = Number(process.env.OPENROUTER_CLIMB_PRICE_IN ?? 0.14);
 export const CLIMB_PRICE_OUT = Number(process.env.OPENROUTER_CLIMB_PRICE_OUT ?? 0.28);
 
+// Summit's engine. We're testing the deep tier on the lowest logical model
+// first (default = the same budget model as Climb) before deciding whether to
+// spend up. Set SUMMIT_ENGINE="sonnet" to run Summit on the premium Anthropic
+// path instead; otherwise these OpenRouter models are used.
+export const SUMMIT_MODEL = process.env.OPENROUTER_SUMMIT_MODEL || CLIMB_MODEL;
+export const SUMMIT_VISION_MODEL = process.env.OPENROUTER_SUMMIT_VISION_MODEL || CLIMB_VISION_MODEL;
+export const SUMMIT_PRICE_IN = Number(process.env.OPENROUTER_SUMMIT_PRICE_IN ?? CLIMB_PRICE_IN);
+export const SUMMIT_PRICE_OUT = Number(process.env.OPENROUTER_SUMMIT_PRICE_OUT ?? CLIMB_PRICE_OUT);
+
 export interface ORImage {
   mediaType: string;
   data: string; // bare base64
