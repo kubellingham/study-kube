@@ -35,7 +35,7 @@ export default function MistakesPage() {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    if (!userLoading && !user) router.replace("/login");
+    if (!userLoading && !user) router.replace("/");
     if (user && bundle) {
       Promise.all([
         loadFlags(user.uid, bundle.course.id),

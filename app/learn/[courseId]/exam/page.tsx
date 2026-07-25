@@ -132,7 +132,7 @@ function ExamInner() {
   const [reviewStarted, setReviewStarted] = useState(false);
 
   useEffect(() => {
-    if (!loading && !user) router.replace("/login");
+    if (!loading && !user) router.replace("/");
     if (user && bundle) loadFlags(user.uid, bundle.course.id).then(setFlags);
   }, [user, loading, router, bundle]);
 

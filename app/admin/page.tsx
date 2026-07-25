@@ -71,7 +71,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (loading) return;
-    if (!user) { router.replace("/login"); return; }
+    if (!user) { router.replace("/"); return; }
     if (owner) load();
   }, [user, loading, owner, router, load]);
 

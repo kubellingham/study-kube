@@ -127,7 +127,7 @@ export default function CourseLadderPage() {
   }, []);
 
   useEffect(() => {
-    if (!userLoading && !user) router.replace("/login");
+    if (!userLoading && !user) router.replace("/");
     if (user && bundle) loadProgress(user.uid, bundle.course.id).then(setProgress);
   }, [user, userLoading, router, bundle]);
 
@@ -249,7 +249,7 @@ export default function CourseLadderPage() {
           </Link>
           <button
             type="button"
-            onClick={async () => { await signOut(auth()); window.location.assign("/login"); }}
+            onClick={async () => { await signOut(auth()); window.location.assign("/"); }}
             title="Sign out"
             aria-label="Sign out"
             style={{ flex: "none", display: "grid", placeItems: "center", width: 38, height: 38, borderRadius: 12, border: `1px solid ${T.line}`, background: T.card, color: T.faint, cursor: "pointer" }}

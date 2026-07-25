@@ -18,7 +18,7 @@ export default function Header() {
 
   async function handleSignOut() {
     await signOut(auth());
-    window.location.assign("/login");
+    window.location.assign("/");
   }
 
   return (

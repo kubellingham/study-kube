@@ -12,7 +12,7 @@ export default function DashboardPage() {
   const router = useRouter();
 
   useEffect(() => {
-    if (!loading && !user) router.replace("/login");
+    if (!loading && !user) router.replace("/");
   }, [user, loading, router]);
 
   if (loading || !user) {

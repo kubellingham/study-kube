@@ -399,7 +399,7 @@ export default function TopicPage() {
   const notedChats = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    if (!userLoading && !user) router.replace("/login");
+    if (!userLoading && !user) router.replace("/");
     if (user && bundle && topic) {
       Promise.all([
         loadProgress(user.uid, bundle.course.id),

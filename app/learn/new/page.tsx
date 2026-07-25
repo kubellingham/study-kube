@@ -15,7 +15,7 @@ export default function NewCoursePage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!loading && !user) router.replace("/login");
+    if (!loading && !user) router.replace("/");
   }, [user, loading, router]);
 
   async function create(e: React.FormEvent) {

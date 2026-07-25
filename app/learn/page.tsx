@@ -33,7 +33,7 @@ export default function LearnHomePage() {
   const [subjects, setSubjects] = useState<SubjectCard[] | null>(null);
 
   useEffect(() => {
-    if (!loading && !user) router.replace("/login");
+    if (!loading && !user) router.replace("/");
     if (!user) return;
     (async () => {
       const builtin = listBuiltinBundles(user.email);
@@ -142,7 +142,7 @@ export default function LearnHomePage() {
             type="button"
             onClick={async () => {
               await signOut(auth());
-              window.location.assign("/login");
+              window.location.assign("/");
             }}
             className="flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-semibold"
             style={{ borderColor: "var(--line)", color: "var(--ink-soft)", background: "var(--card)" }}

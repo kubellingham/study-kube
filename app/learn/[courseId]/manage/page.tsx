@@ -26,7 +26,7 @@ export default function ManageCoursePage() {
   const [delErr, setDelErr] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!userLoading && !user) router.replace("/login");
+    if (!userLoading && !user) router.replace("/");
   }, [user, userLoading, router]);
 
   useEffect(() => {

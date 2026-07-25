@@ -35,7 +35,7 @@ export default function CrewPage() {
 
   useEffect(() => {
     if (loading) return;
-    if (!user) { router.replace("/login"); return; }
+    if (!user) { router.replace("/"); return; }
     load();
   }, [user, loading, router, load]);
 
