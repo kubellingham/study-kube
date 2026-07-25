@@ -138,6 +138,13 @@ export default function LearnHomePage() {
               {user.email}
             </span>
           )}
+          <Link
+            href="/learn/account"
+            className="rounded-full border px-3.5 py-1.5 text-xs font-semibold"
+            style={{ borderColor: "var(--line)", color: "var(--ink-soft)", background: "var(--card)" }}
+          >
+            Account
+          </Link>
           <button
             type="button"
             onClick={async () => {
@@ -156,11 +163,24 @@ export default function LearnHomePage() {
           </button>
         </div>
       </div>
-      <h1 className="text-3xl">Your subjects</h1>
-      <p className="mt-2 text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>
-        One calm ladder per course, private to your account — climb it, or
-        practise what&apos;s in it.
-      </p>
+      {subjects.length === 0 ? (
+        <>
+          <h1 className="text-3xl">Let&apos;s make your first subject.</h1>
+          <p className="mt-2 text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>
+            Name a course, feed it your material, and Kube turns it into one calm
+            ladder to climb. You&apos;ll land back here every time — tap a subject to
+            open it, or switch subjects from the top of any course.
+          </p>
+        </>
+      ) : (
+        <>
+          <h1 className="text-3xl">Your subjects</h1>
+          <p className="mt-2 text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>
+            One calm ladder per course, private to your account — climb it, or
+            practise what&apos;s in it.
+          </p>
+        </>
+      )}
 
       <div className="mt-8 flex flex-col gap-4">
         {subjects.map((c) => {

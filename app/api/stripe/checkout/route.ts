@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getAuth } from "@/lib/api-helpers";
 import { adminDb } from "@/lib/firebase/admin";
 import { stripe, stripeReady, lookupKey, introCouponId, crewLookup, type Interval, type CrewSize } from "@/lib/stripe";
+import { emailKey } from "@/lib/account";
 
 export const runtime = "nodejs";
 
@@ -39,8 +40,13 @@ export async function POST(req: NextRequest) {
   const proto = req.headers.get("x-forwarded-proto") || "https";
   const origin = `${proto}://${host}`;
 
-  // First-month intro discount on monthly Climb/Summit only (Crew has none).
-  const discounts = interval === "month" && tier !== "crew" ? [{ coupon: introCouponId(tier) }] : undefined;
+  // First-month intro discount on monthly Climb/Summit only (Crew has none) —
+  // and NOT for a returning email we've seen before (deleted accounts are
+  // recorded in formerAccounts), so the $1 first month can't be farmed by
+  // deleting and re-signing up. They can still enter a promo code.
+  const emailK = emailKey(auth.email);
+  const former = emailK ? (await adminDb().collection("formerAccounts").doc(emailK).get()).exists : false;
+  const discounts = interval === "month" && tier !== "crew" && !former ? [{ coupon: introCouponId(tier) }] : undefined;
   // Crew lands on the crew page (invite code); solo plans back on the ladder.
   const successUrl = tier === "crew" ? `${origin}/learn/crew?upgraded=1` : `${origin}/learn?upgraded=1`;
 
