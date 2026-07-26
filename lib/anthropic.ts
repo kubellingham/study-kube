@@ -28,6 +28,15 @@ export const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
  *  Override with ANTHROPIC_CHAT_MODEL (e.g. claude-sonnet-4-6) to compare. */
 export const CHAT_MODEL = process.env.ANTHROPIC_CHAT_MODEL || "claude-sonnet-5";
 
+/** The OWNER's digestion model — the top-of-range Claude, used only for the
+ *  owner account so we can compare premium quality against the budget engine
+ *  on the same file. Defaults to Opus 5; set OWNER_MODEL to override (e.g.
+ *  claude-opus-4-8 if the key doesn't have Opus 5 access yet). Priced at
+ *  Opus-class rates for the cost meter. */
+export const OWNER_MODEL = process.env.OWNER_MODEL || "claude-opus-5";
+export const OWNER_PRICE_IN = Number(process.env.OWNER_PRICE_IN ?? 5);
+export const OWNER_PRICE_OUT = Number(process.env.OWNER_PRICE_OUT ?? 25);
+
 let cached: Anthropic | null = null;
 
 /** Lazily construct the Anthropic client so a missing key fails at call time,

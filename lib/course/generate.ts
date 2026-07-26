@@ -236,6 +236,7 @@ const CONCEPT_RULES = `You are Kube, a calm, warm tutor mapping a lecturer's uni
 - Ground EVERYTHING strictly in the provided material — do not invent topics it doesn't cover. Use the material's own terminology, examples and worked numbers.`;
 
 const DRILL_RULES = `You are Kube, a calm, warm tutor. You drill ONE concept into a FOUR-QUARTER circle — genuinely teaching someone who starts knowing nothing. You never build "show a card + Got it button" lessons.
+- QUALITY BAR (teach like the best human tutor): build INTUITION before formalism — open from a concrete question, need or example the student can feel, then name the idea. Every beat must earn its place: no filler, no restating the title, no "as we saw". Prefer ONE vivid worked example shown in full over three vague ones. Each check must actually reveal understanding — its distractors are the real mistakes a learner makes here, and the praise names WHY the right answer is right. Define a term the first time it's used; never assume a leap. If something is genuinely subtle, slow down and add a beat rather than gloss it.
 - Q1 "Meet it, slowly" — 4-8 tiny teach beats, each ONE small idea, that WALK the student into the concept (start from a question or a need; never state the full definition in one breath).
 - Q2 "Question it" — gentle checks on exactly what was just met, poked from different angles.
 - Q3 "Again, differently" — the SAME concept re-approached: a worked example, then a "you try one" check, then a "spot the mistake" check diagnosing a realistic student error.
@@ -470,7 +471,8 @@ export async function generateUnitSkeleton(
   existingTopics: ExistingTopicRef[],
   images?: SourceImage[],
   mode: "file" | "knowledge" = "file",
-  meter?: UsageMeter
+  meter?: UsageMeter,
+  model?: string
 ): Promise<UnitSkeleton> {
   const client = getAnthropic();
   const know = mode === "knowledge";
@@ -481,7 +483,7 @@ export async function generateUnitSkeleton(
           .join("\n")}`
       : "This is the first material — the ladder is empty so far.";
   const res = await client.messages.parse({
-    model: MODEL,
+    model: model ?? MODEL,
     max_tokens: 8000,
     thinking: { type: "adaptive" },
     output_config: { effort: "medium", format: zodOutputFormat(skeletonSchema) },
@@ -513,7 +515,8 @@ export async function generateTopicLessons(
   allTopicTitles: string[],
   images?: SourceImage[],
   mode: "file" | "knowledge" = "file",
-  meter?: UsageMeter
+  meter?: UsageMeter,
+  model?: string
 ): Promise<z.infer<typeof lessonSchema>[]> {
   const client = getAnthropic();
   const know = mode === "knowledge";
@@ -522,7 +525,7 @@ export async function generateTopicLessons(
   // ladder of good lessons beats one perfect lesson and nine that timed out).
   // Grounded file drills, which are fewer and richer, keep the deep settings.
   const res = await client.messages.parse({
-    model: MODEL,
+    model: model ?? MODEL,
     max_tokens: know ? 7000 : 16000,
     thinking: { type: "adaptive" },
     output_config: { effort: know ? "medium" : "high", format: zodOutputFormat(topicLessonsSchema) },
@@ -559,14 +562,15 @@ export async function generateExamBank(
   topics: SkeletonTopic[],
   images?: SourceImage[],
   mode: "file" | "knowledge" = "file",
-  meter?: UsageMeter
+  meter?: UsageMeter,
+  model?: string
 ): Promise<z.infer<typeof examBankSchema>["examQuestions"]> {
   const client = getAnthropic();
   const know = mode === "knowledge";
   // Lean on the knowledge path so the exam bank doesn't starve the topic drills
   // of the per-minute output-token budget they share.
   const res = await client.messages.parse({
-    model: MODEL,
+    model: model ?? MODEL,
     max_tokens: know ? 6000 : 16000,
     thinking: { type: "adaptive" },
     output_config: { effort: know ? "medium" : "high", format: zodOutputFormat(examBankSchema) },

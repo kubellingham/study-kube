@@ -1,6 +1,8 @@
 import { createHash } from "crypto";
 import { NextRequest, after } from "next/server";
 import { requireEntitlement, getEntitlement } from "@/lib/entitlement-server";
+import { isOwner } from "@/lib/owner";
+import { OWNER_MODEL, OWNER_PRICE_IN, OWNER_PRICE_OUT } from "@/lib/anthropic";
 import { adminDb } from "@/lib/firebase/admin";
 import { extractDocumentText } from "@/lib/ingest/office";
 import {
@@ -109,11 +111,17 @@ export async function POST(req: NextRequest) {
   // Tier decides the engine: Climb DISTILLS (concept map + exams on the budget
   // model, no drilling); Summit+ gets the deep four-quarter teaching on Sonnet.
   const ent = await getEntitlement(uid);
-  const isClimbOnly = ent.tier === "climb";
-  // Summit's deep tier is being tested on the budget engine first. Flip to the
-  // premium Anthropic path with SUMMIT_ENGINE="sonnet".
-  const summitBudget = !isClimbOnly && process.env.SUMMIT_ENGINE !== "sonnet";
+  // The OWNER account always runs the PREMIUM deep path (top Claude model) so
+  // we can compare its quality against the budget engine on the same file —
+  // regardless of tier. Everyone else follows the tier rules below.
+  const owner = isOwner(gate.email);
+  const isClimbOnly = ent.tier === "climb" && !owner;
+  // Summit's deep tier is tested on the budget engine first (owner excluded —
+  // owner is premium). Flip to the premium Anthropic path with SUMMIT_ENGINE.
+  const summitBudget = !isClimbOnly && !owner && process.env.SUMMIT_ENGINE !== "sonnet";
   const summitOpts = { model: SUMMIT_MODEL, vision: SUMMIT_VISION_MODEL } as const;
+  // Model override for the Anthropic (premium) path: owner → top model.
+  const premiumModel = owner ? OWNER_MODEL : undefined;
 
   let courseId = "";
   let fileName = "pasted text";
@@ -209,11 +217,13 @@ export async function POST(req: NextRequest) {
     // One meter for the whole digest — every model call adds its real token
     // usage here, so the finished job can show its cost. Climb is priced at the
     // budget model's rate; Summit+ at Sonnet's (the default).
-    const meter = isClimbOnly
-      ? new UsageMeter(CLIMB_PRICE_IN, CLIMB_PRICE_OUT)
-      : summitBudget
-        ? new UsageMeter(SUMMIT_PRICE_IN, SUMMIT_PRICE_OUT)
-        : new UsageMeter();
+    const meter = owner
+      ? new UsageMeter(OWNER_PRICE_IN, OWNER_PRICE_OUT)
+      : isClimbOnly
+        ? new UsageMeter(CLIMB_PRICE_IN, CLIMB_PRICE_OUT)
+        : summitBudget
+          ? new UsageMeter(SUMMIT_PRICE_IN, SUMMIT_PRICE_OUT)
+          : new UsageMeter();
 
     const setJob = (fields: Record<string, unknown>) =>
       jobRef.update({ ...fields, updatedAt: Date.now() }).catch(() => {});
@@ -269,7 +279,7 @@ export async function POST(req: NextRequest) {
 
         const fullSkeleton = summitBudget
           ? await generateUnitSkeletonCheap(courseTitle, unitNumber, rawText, existingTopics, images, meter, { ...summitOpts, cram: false, mode: "knowledge" })
-          : await generateUnitSkeleton(courseTitle, unitNumber, rawText, existingTopics, images, "knowledge", meter);
+          : await generateUnitSkeleton(courseTitle, unitNumber, rawText, existingTopics, images, "knowledge", meter, premiumModel);
         // Bound a knowledge build so it reliably finishes inside the function
         // limit; the rest of the outline is covered by adding unit files later.
         const kTopics = fullSkeleton.topics.slice(0, KNOWLEDGE_TOPIC_CAP);
@@ -281,13 +291,13 @@ export async function POST(req: NextRequest) {
         let examQuestions: Awaited<ReturnType<typeof generateExamBank>> = [];
         const examP = (summitBudget
           ? generateExamBankCheap(courseTitle, unitNumber, rawText, kTopics, images, meter, { ...summitOpts, mode: "knowledge" })
-          : generateExamBank(courseTitle, unitNumber, rawText, kTopics, images, "knowledge", meter))
+          : generateExamBank(courseTitle, unitNumber, rawText, kTopics, images, "knowledge", meter, premiumModel))
           .then((q) => { examQuestions = q; })
           .catch(() => {});
         const { results: lessonsByTopic, complete } = await drillWithinBudget(kTopics, DRILL_BUDGET_MS, async (topic) => {
           const lessons = summitBudget
             ? await generateTopicLessonsCheap(courseTitle, unitNumber, rawText, topic, titles, images, meter, { ...summitOpts, mode: "knowledge" })
-            : await generateTopicLessons(courseTitle, unitNumber, rawText, topic, titles, images, "knowledge", meter);
+            : await generateTopicLessons(courseTitle, unitNumber, rawText, topic, titles, images, "knowledge", meter, premiumModel);
           done += 1;
           await setJob({ note: `Building lessons — ${done}/${kTopics.length} done…` });
           return lessons;
@@ -427,7 +437,7 @@ export async function POST(req: NextRequest) {
         // rather than throwing away a heavy file's worth of tokens.
         const skeleton = summitBudget
           ? await generateUnitSkeletonCheap(courseTitle, unitNumber, rawText, existingTopics, images, meter, { ...summitOpts, cram: false, mode: "file" })
-          : await generateUnitSkeleton(courseTitle, unitNumber, rawText, existingTopics, images, "file", meter);
+          : await generateUnitSkeleton(courseTitle, unitNumber, rawText, existingTopics, images, "file", meter, premiumModel);
         await setJob({
           note: `Mapped ${skeleton.topics.length} concept${skeleton.topics.length === 1 ? "" : "s"} — drilling each into a full circle…`,
         });
@@ -437,13 +447,13 @@ export async function POST(req: NextRequest) {
         let examQuestions: Awaited<ReturnType<typeof generateExamBank>> = [];
         const examP = (summitBudget
           ? generateExamBankCheap(courseTitle, unitNumber, rawText, skeleton.topics, images, meter, { ...summitOpts, mode: "file" })
-          : generateExamBank(courseTitle, unitNumber, rawText, skeleton.topics, images, "file", meter))
+          : generateExamBank(courseTitle, unitNumber, rawText, skeleton.topics, images, "file", meter, premiumModel))
           .then((q) => { examQuestions = q; })
           .catch(() => {});
         const { results: lessonsByTopic, complete } = await drillWithinBudget(skeleton.topics, DRILL_BUDGET_MS, async (topic) => {
           const lessons = summitBudget
             ? await generateTopicLessonsCheap(courseTitle, unitNumber, rawText, topic, titles, images, meter, { ...summitOpts, mode: "file" })
-            : await generateTopicLessons(courseTitle, unitNumber, rawText, topic, titles, images, "file", meter);
+            : await generateTopicLessons(courseTitle, unitNumber, rawText, topic, titles, images, "file", meter, premiumModel);
           done += 1;
           await setJob({ note: `Drilling circles — ${done}/${skeleton.topics.length} done…` });
           return lessons;
