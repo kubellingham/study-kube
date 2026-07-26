@@ -486,6 +486,7 @@ export default function TopicPage() {
         : progress!.completed,
       lessons: newLessons,
       reviewMisses: progress!.reviewMisses,
+      unitUnlocks: progress!.unitUnlocks,
     });
     setPhase(allDone ? "topicDone" : "overview");
     if (user && !alreadyDone) {

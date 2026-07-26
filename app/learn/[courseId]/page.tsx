@@ -52,7 +52,10 @@ function nodeStates(ladder: Topic[], progress: LearnProgress): Record<string, No
   let currentAssigned = false;
   for (const t of ladder) {
     if (progress.completed[t.id]) { states[t.id] = "completed"; continue; }
-    const unlocked = t.deps.every((d) => progress.completed[d]);
+    // Either you climbed the run-up, or you tested out of it: passing a unit's
+    // challenge exam opens every topic in that unit.
+    const unlocked =
+      t.deps.every((d) => progress.completed[d]) || !!progress.unitUnlocks?.[String(t.unit)];
     if (unlocked && !currentAssigned) { states[t.id] = "current"; currentAssigned = true; }
     else if (unlocked) states[t.id] = "available";
     else states[t.id] = "locked";
@@ -398,7 +401,15 @@ export default function CourseLadderPage() {
                               <div style={{ fontFamily: T.display, fontWeight: 600, fontSize: 15.5, lineHeight: 1.25, color: T.ink }}>{tp.title}</div>
                               {metaText && <div style={{ fontFamily: T.mono, fontSize: 10.5, fontWeight: 500, letterSpacing: ".04em", color: metaColor, marginTop: 5 }}>{metaText}</div>}
                               {st === "locked" ? (
-                                <div style={{ width: "100%", marginTop: 12, borderRadius: 12, padding: 11, fontFamily: T.mono, fontWeight: 600, fontSize: 11.5, letterSpacing: ".08em", textTransform: "uppercase", textAlign: "center", background: T.line, color: T.faint }}>Locked</div>
+                                <div style={{ marginTop: 12 }}>
+                                  <div style={{ width: "100%", borderRadius: 12, padding: 11, fontFamily: T.mono, fontWeight: 600, fontSize: 11.5, letterSpacing: ".08em", textTransform: "uppercase", textAlign: "center", background: T.line, color: T.faint }}>Locked</div>
+                                  {summit && tp.unit > 1 && (
+                                    <>
+                                      <div style={{ fontSize: 11.5, lineHeight: 1.4, color: T.inkSoft, marginTop: 10 }}>Already know the run-up? Pass a short exam on the earlier units and this opens now.</div>
+                                      <Link href={`/learn/${params.courseId}/challenge?unit=${tp.unit}`} style={{ display: "block", width: "100%", marginTop: 8, borderRadius: 12, padding: 11, fontFamily: T.mono, fontWeight: 600, fontSize: 11.5, letterSpacing: ".08em", textTransform: "uppercase", textAlign: "center", background: T.amber, color: "#fff", boxShadow: "0 3px 0 rgba(150,92,16,.4)" }}>Test out</Link>
+                                    </>
+                                  )}
+                                </div>
                               ) : !summit ? (
                                 // Tree behind glass: shown, warmly not-yet-yours.
                                 <div style={{ marginTop: 12 }}>

@@ -29,6 +29,10 @@ export interface LearnProgress {
   /** Review-assessment misses per topic — Kube's flags for where help is
    *  needed. Reviews assess; lesson checks never write here. */
   reviewMisses: Record<string, number>;
+  /** Units opened early by PASSING the challenge exam over earlier units,
+   *  keyed by unit number. Deliberately separate from `completed`: the student
+   *  proved they already know the run-up, they didn't climb it. */
+  unitUnlocks: Record<string, true>;
 }
 
 function progressDocId(uid: string, courseId: string): string {
@@ -43,18 +47,42 @@ export async function loadProgress(
     const snap = await getDoc(
       doc(db(), "learnProgress", progressDocId(uid, courseId))
     );
-    if (!snap.exists()) return { completed: {}, lessons: {}, reviewMisses: {} };
+    if (!snap.exists())
+      return { completed: {}, lessons: {}, reviewMisses: {}, unitUnlocks: {} };
     const data = snap.data();
     return {
       completed: (data.completed as Record<string, true>) ?? {},
       lessons: (data.lessons as Record<string, true>) ?? {},
       reviewMisses: (data.reviewMisses as Record<string, number>) ?? {},
+      unitUnlocks: (data.unitUnlocks as Record<string, true>) ?? {},
     };
   } catch {
     // Missing doc (permission-denied under our rules) or a transient network
     // failure: start from an empty map rather than blocking the page.
-    return { completed: {}, lessons: {}, reviewMisses: {} };
+    return { completed: {}, lessons: {}, reviewMisses: {}, unitUnlocks: {} };
   }
+}
+
+/** The pass mark for a unit's challenge exam — high enough that passing really
+ *  does mean "you already know the run-up". */
+export const CHALLENGE_PASS_PCT = 80;
+
+/** Open a unit early after passing its challenge. */
+export async function unlockUnitByChallenge(
+  uid: string,
+  courseId: string,
+  unit: number
+): Promise<void> {
+  await setDoc(
+    doc(db(), "learnProgress", progressDocId(uid, courseId)),
+    {
+      userId: uid,
+      courseId,
+      unitUnlocks: { [String(unit)]: true },
+      updatedAt: Date.now(),
+    },
+    { merge: true }
+  );
 }
 
 /** Flag a review-assessment miss on a topic — the signal Kube uses to offer
