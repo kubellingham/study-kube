@@ -1086,6 +1086,120 @@ const classifySchema = z.object({
 
 export type Classification = z.infer<typeof classifySchema>;
 
+/* ---- Budget versions of the cheap, mechanical intake steps ----------------
+ * The read / classify / syllabus-parse are small jobs, but they used to run on
+ * Anthropic no matter the tier — so a budget-tier digest still needed Anthropic
+ * credit and died at the very first step when that ran dry. These run the same
+ * jobs on the OpenRouter budget model, so one funded key runs the whole
+ * pipeline. `budgetEngineReady()` decides which path a caller should take.
+ * ------------------------------------------------------------------------ */
+
+export const budgetEngineReady = () => !!process.env.OPENROUTER_API_KEY;
+
+const OBSERVE_JSON_SHAPE = `Return ONLY a JSON object (no prose, no markdown fences) of exactly this shape:
+{"kind":"syllabus"|"unit"|"pastpaper"|"notes"|"mixed"|"other","whatItIs":string,"teaches":boolean,"observations":[string],"suggestedTitle":string,"recommend":"as_is"|"augmented","note":string}
+- observations: 2-4 short, specific lines about the WHOLE batch.`;
+
+/** Kube's read of an upload batch, on the budget model. */
+export async function generateObservationCheap(
+  courseTitle: string,
+  files: IntakeFile[],
+  meter?: UsageMeter,
+  opts: CheapOpts = {}
+): Promise<Observation> {
+  const useVision = files.some((f) => (f.images?.length ?? 0) > 0);
+  const per = Math.max(4000, Math.floor(MAX_UNIT_CHARS / Math.max(1, files.length)));
+  const body = files
+    .map((f, i) => `--- FILE ${i + 1} of ${files.length}: ${f.name} ---\n${f.text.slice(0, per)}`)
+    .join("\n\n");
+  const prompt = `${OBSERVE_RULES}
+
+Course: ${courseTitle || "(untitled)"}
+The student just uploaded ${files.length} file${files.length === 1 ? "" : "s"}: ${files.map((f) => f.name).join(", ")}
+
+--- UPLOADED MATERIAL ---
+${body}
+
+${OBSERVE_JSON_SHAPE}`;
+  const images = files.flatMap((f) => f.images ?? []).slice(0, 6);
+  const content = useVision
+    ? [{ type: "text" as const, text: prompt }, ...orImageBlocks(images)]
+    : prompt;
+  const { data, usage } = await chatJSON({
+    model: useVision ? opts.vision ?? CLIMB_VISION_MODEL : opts.model ?? CLIMB_MODEL,
+    system: UNIT_SYSTEM,
+    content,
+    maxTokens: 2000,
+  });
+  meter?.add(usage);
+  return observationSchema.parse(data);
+}
+
+/** File-role classification, on the budget model. */
+export async function classifyCheap(
+  courseTitle: string,
+  rawText: string,
+  images?: SourceImage[],
+  meter?: UsageMeter,
+  opts: CheapOpts = {}
+): Promise<Classification> {
+  const useVision = (images?.length ?? 0) > 0;
+  const prompt = `Classify what role a file plays in a university course. A syllabus/course outline is the driving file (defines units + Course Outcomes, usually with little teaching content). Past papers are exam/question papers. Lecture slide decks and teaching documents are "unit" — even when they cover only PART of a unit; infer the unit number from the title or content. Reserve "notes" for supplementary handouts that clearly aren't the main teaching material.
+
+Course: ${courseTitle}
+
+--- FILE CONTENT (start) ---
+${rawText.slice(0, 10_000)}
+
+Return ONLY a JSON object (no prose, no fences) of exactly this shape:
+{"kind":"syllabus"|"unit"|"pastpaper"|"notes","unit":number|null,"label":string}
+- unit: the unit number this material teaches if stated or inferable, else null.
+- label: a short human label, e.g. "Unit 3 — Stack Organization".`;
+  const content = useVision
+    ? [{ type: "text" as const, text: prompt }, ...orImageBlocks((images ?? []).slice(0, 4))]
+    : prompt;
+  const { data, usage } = await chatJSON({
+    model: useVision ? opts.vision ?? CLIMB_VISION_MODEL : opts.model ?? CLIMB_MODEL,
+    system: UNIT_SYSTEM,
+    content,
+    maxTokens: 800,
+  });
+  meter?.add(usage);
+  return classifySchema.parse(data);
+}
+
+/** Syllabus skeleton extraction, on the budget model. */
+export async function syllabusCheap(
+  courseTitle: string,
+  rawText: string,
+  images?: SourceImage[],
+  meter?: UsageMeter,
+  opts: CheapOpts = {}
+): Promise<SyllabusInfo> {
+  const useVision = (images?.length ?? 0) > 0;
+  const prompt = `Extract the skeleton of a course from its syllabus/outline: the numbered units with their titles, and the Course Outcomes (COs). Be faithful to the document — do not invent units it doesn't define.
+
+Course: ${courseTitle}
+
+--- SYLLABUS ---
+${rawText.slice(0, 40_000)}
+
+Return ONLY a JSON object (no prose, no fences) of exactly this shape:
+{"units":[{"unit":number,"title":string}],"cos":[{"id":string,"text":string}]}
+- cos may be an empty array if none are listed.`;
+  const content = useVision
+    ? [{ type: "text" as const, text: prompt }, ...orImageBlocks((images ?? []).slice(0, 8))]
+    : prompt;
+  const { data, usage } = await chatJSON({
+    model: useVision ? opts.vision ?? CLIMB_VISION_MODEL : opts.model ?? CLIMB_MODEL,
+    system: UNIT_SYSTEM,
+    content,
+    maxTokens: 3000,
+  });
+  meter?.add(usage);
+  return syllabusSchema.parse(data);
+}
+
 export function classifyStream(courseTitle: string, rawText: string, images?: SourceImage[]) {
   const client = getAnthropic();
   return client.messages.stream({

@@ -16,6 +16,9 @@ import {
   generateUnitSkeletonCheap,
   generateTopicLessonsCheap,
   generateExamBankCheap,
+  classifyCheap,
+  syllabusCheap,
+  budgetEngineReady,
   assembleClimbUnit,
   mapWithConcurrency,
   composeGeneratedUnit,
@@ -123,6 +126,10 @@ export async function POST(req: NextRequest) {
   const summitOpts = { model: SUMMIT_MODEL, vision: SUMMIT_VISION_MODEL } as const;
   // Model override for the Anthropic (premium) path: owner → top model.
   const premiumModel = owner ? OWNER_MODEL : undefined;
+  // The cheap mechanical steps (classify, syllabus parse) follow the budget
+  // engine whenever the owner isn't on the premium path — one funded key runs
+  // the whole pipeline instead of stalling on an empty Anthropic balance.
+  const useBudgetSteps = !owner && budgetEngineReady();
   // Set once the body is parsed: "file" = build strictly from the upload;
   // "augmented" = the upload leads, Kube's own knowledge fills its gaps.
   let genMode: GenMode = "file";
@@ -340,11 +347,15 @@ export async function POST(req: NextRequest) {
         return;
       }
 
-      const classification = parseClassification(
-        // A few images are enough to classify; generation gets them all.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await runToText(classifyStream(courseTitle, rawText, images.slice(0, 4)) as AsyncIterable<any>)
-      );
+      // Classification is a cheap mechanical step — run it on the budget engine
+      // when one is configured so a budget digest needs no Anthropic credit.
+      // (A few images are enough to classify; generation gets them all.)
+      const classification = useBudgetSteps
+        ? await classifyCheap(courseTitle, rawText, images.slice(0, 4), meter, summitOpts)
+        : parseClassification(
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            await runToText(classifyStream(courseTitle, rawText, images.slice(0, 4)) as AsyncIterable<any>)
+          );
       await setJob({ note: `Filed as: ${classification.label}. Digesting…`, label: classification.label, kind: classification.kind });
 
       const record: IngestedFile = {
@@ -359,10 +370,12 @@ export async function POST(req: NextRequest) {
       };
 
       if (classification.kind === "syllabus") {
-        const parsed = parseSyllabus(
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await runToText(syllabusStream(courseTitle, rawText, images) as AsyncIterable<any>)
-        );
+        const parsed = useBudgetSteps
+          ? await syllabusCheap(courseTitle, rawText, images, meter, summitOpts)
+          : parseSyllabus(
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              await runToText(syllabusStream(courseTitle, rawText, images) as AsyncIterable<any>)
+            );
         record.cost = meter.summary();
         await db.runTransaction(async (tx) => {
           const fresh = await tx.get(courseRef);

@@ -1,6 +1,11 @@
 import { NextRequest } from "next/server";
 import { requireEntitlement } from "@/lib/entitlement-server";
-import { generateObservation, type IntakeFile } from "@/lib/course/generate";
+import {
+  generateObservation,
+  generateObservationCheap,
+  budgetEngineReady,
+  type IntakeFile,
+} from "@/lib/course/generate";
 import { UsageMeter } from "@/lib/usage";
 
 export const runtime = "nodejs";
@@ -62,7 +67,11 @@ export async function POST(req: NextRequest) {
 
   try {
     const meter = new UsageMeter();
-    const read = await generateObservation(courseTitle, files, meter);
+    // The read is a small, mechanical job — run it on the budget engine when
+    // one is configured, so a budget-tier digest never needs Anthropic credit.
+    const read = budgetEngineReady()
+      ? await generateObservationCheap(courseTitle, files, meter)
+      : await generateObservation(courseTitle, files, meter);
     return Response.json({ read, cost: meter.summary() });
   } catch (err) {
     return Response.json(
