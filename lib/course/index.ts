@@ -7,6 +7,7 @@ import type { SyllabusInfo } from "./types";
 import { cse22d } from "./cse22d";
 import { cse46d, cse46dSyllabus } from "./cse46d";
 import { meco3d, meco3dSyllabus } from "./meco3d";
+import { int42d, int42dSyllabus } from "./int42d";
 
 export type { CourseBundle } from "./bundle";
 export { buildCourseBundle } from "./bundle";
@@ -30,6 +31,11 @@ const builtinCourses: BuiltinCourse[] = [
     bundle: meco3d,
     visibleToEmails: ["ikube77@gmail.com"],
     syllabus: meco3dSyllabus,
+  },
+  {
+    bundle: int42d,
+    visibleToEmails: ["ikube77@gmail.com"],
+    syllabus: int42dSyllabus,
   },
 ];
 
