@@ -111,10 +111,10 @@ export async function POST(req: NextRequest) {
   // Tier decides the engine: Climb DISTILLS (concept map + exams on the budget
   // model, no drilling); Summit+ gets the deep four-quarter teaching on Sonnet.
   const ent = await getEntitlement(uid);
-  // The OWNER account always runs the PREMIUM deep path (top Claude model) so
-  // we can compare its quality against the budget engine on the same file —
-  // regardless of tier. Everyone else follows the tier rules below.
-  const owner = isOwner(gate.email);
+  // Optional: the OWNER account can run the PREMIUM deep path (top Claude model)
+  // to A/B against the budget engine on the same file. OFF by default so an
+  // owner upload never silently costs Opus money — set OWNER_PREMIUM=1 to enable.
+  const owner = isOwner(gate.email) && process.env.OWNER_PREMIUM === "1";
   const isClimbOnly = ent.tier === "climb" && !owner;
   // Summit's deep tier is tested on the budget engine first (owner excluded —
   // owner is premium). Flip to the premium Anthropic path with SUMMIT_ENGINE.

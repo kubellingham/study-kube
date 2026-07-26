@@ -1,5 +1,51 @@
 // Unit 5 — Pointers, Structures & Unions (CSE22D). Section F.
+// Hand-authored (premium) build: the four-quarter pedagogy of the earlier
+// version, now enriched with hand-drawn memory diagrams (the slides' picture
+// slides, made correct and theme-aware) and [[term|definition]] glossary marks
+// on the jargon — the two things a budget digest can't reliably produce.
 import type { Section, ExamQuestion } from "./types";
+
+// ── Diagrams (SVG, stroked in currentColor so they theme with the lesson) ──
+
+// A pointer holding the address of a variable, with the arrow that "points".
+const SVG_POINTER = `<svg viewBox="0 0 340 176">
+  <text x="250" y="24" text-anchor="middle" font-size="12" font-family="monospace" fill="currentColor">int a</text>
+  <rect x="190" y="32" width="120" height="54" rx="7" fill="none" stroke="currentColor" stroke-width="2"/>
+  <text x="250" y="58" text-anchor="middle" font-size="20" font-family="monospace" fill="currentColor">10</text>
+  <text x="250" y="76" text-anchor="middle" font-size="9.5" font-family="monospace" fill="currentColor" opacity="0.75">@ 0x7ffe…a4</text>
+  <text x="80" y="106" text-anchor="middle" font-size="12" font-family="monospace" fill="currentColor">int *ptr</text>
+  <rect x="20" y="114" width="120" height="46" rx="7" fill="none" stroke="currentColor" stroke-width="2"/>
+  <text x="80" y="142" text-anchor="middle" font-size="13" font-family="monospace" fill="currentColor">0x7ffe…a4</text>
+  <path d="M140 128 C 210 122, 175 70, 236 62" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="1 0"/>
+  <polygon points="236,62 226,60 229,70" fill="currentColor"/>
+  <text x="182" y="150" text-anchor="middle" font-size="10.5" fill="currentColor" opacity="0.8">ptr holds a's address</text>
+</svg>`;
+
+// Structure: each member gets its OWN contiguous bytes (size = sum).
+const SVG_STRUCT = `<svg viewBox="0 0 340 132">
+  <rect x="20" y="40" width="52" height="46" rx="5" fill="none" stroke="currentColor" stroke-width="2"/>
+  <rect x="72" y="40" width="180" height="46" rx="5" fill="none" stroke="currentColor" stroke-width="2"/>
+  <rect x="252" y="40" width="52" height="46" rx="5" fill="none" stroke="currentColor" stroke-width="2"/>
+  <text x="46" y="30" text-anchor="middle" font-size="11" font-family="monospace" fill="currentColor">rollno</text>
+  <text x="162" y="30" text-anchor="middle" font-size="11" font-family="monospace" fill="currentColor">name[20]</text>
+  <text x="278" y="30" text-anchor="middle" font-size="11" font-family="monospace" fill="currentColor">marks</text>
+  <text x="46" y="102" text-anchor="middle" font-size="9.5" fill="currentColor" opacity="0.75">4 B</text>
+  <text x="162" y="102" text-anchor="middle" font-size="9.5" fill="currentColor" opacity="0.75">20 B</text>
+  <text x="278" y="102" text-anchor="middle" font-size="9.5" fill="currentColor" opacity="0.75">4 B</text>
+  <text x="162" y="122" text-anchor="middle" font-size="11" fill="currentColor">separate rooms · total 28 B</text>
+</svg>`;
+
+// Union: every member shares the SAME bytes (size = largest).
+const SVG_UNION = `<svg viewBox="0 0 340 150">
+  <rect x="20" y="46" width="284" height="46" rx="5" fill="none" stroke="currentColor" stroke-width="2"/>
+  <rect x="20" y="46" width="60" height="46" rx="5" fill="currentColor" opacity="0.12"/>
+  <line x1="80" y1="46" x2="80" y2="92" stroke="currentColor" stroke-width="1.5" opacity="0.6"/>
+  <text x="50" y="34" text-anchor="middle" font-size="10.5" font-family="monospace" fill="currentColor">i · f</text>
+  <text x="192" y="34" text-anchor="middle" font-size="10.5" font-family="monospace" fill="currentColor">str[20]</text>
+  <text x="50" y="74" text-anchor="middle" font-size="9.5" fill="currentColor" opacity="0.8">4 B</text>
+  <text x="192" y="112" text-anchor="middle" font-size="11" fill="currentColor">one shared room · size = largest (20 B)</text>
+  <text x="50" y="128" text-anchor="middle" font-size="9.5" fill="currentColor" opacity="0.85">i and f fight over the same 4 bytes</text>
+</svg>`;
 
 export const sectionF: Section = {
   id: "sec-f",
@@ -40,13 +86,14 @@ export const sectionF: Section = {
         {
           kind: "teach",
           title: "A box that holds a location",
-          body: "A normal variable stores a **value**. A **pointer** stores the **address** of another variable — *where* it lives in memory, not *what* it holds.\n\nYou already know both operators. `&` (**address-of**) you met in `scanf(\"%d\", &a)`. `*` (**dereference**) you met inside `swap(int *a, int *b)`. Unit 5 just names what you've been doing.",
+          body: "Every variable lives somewhere in memory, at a numbered [[address|the numbered location of a byte in memory]]. A normal variable stores a **value**. A [[pointer|a variable that stores the address of another variable, not a value]] stores an **address** — *where* another variable lives, not *what* it holds.\n\nYou already know both operators. `&` (**address-of**) you met in `scanf(\"%d\", &a)`. `*` (**dereference**) you met inside `swap(int *a, int *b)`. Unit 5 just names what you've been doing.",
           code: "int a = 10;\nint *ptr;    /* ptr is a pointer to an int */\nptr = &a;    /* ptr now holds a's address  */",
+          svg: SVG_POINTER,
         },
         {
           kind: "teach",
           title: "The safety rules",
-          body: "Three rules the exam checks:\n\n**Types must match** — an `int *` points to ints, a `float *` to floats. `char *cptr;` for chars.\n\n**Initialise before you dereference.** An uninitialised pointer holds a garbage address; using it causes a **segmentation fault** — a runtime error, not a compile error.\n\n**NULL is the safe 'points nowhere' value:** `int *p = NULL;` — a deliberate, checkable nothing.",
+          body: "Three rules the exam checks:\n\n**Types must match** — an `int *` points to ints, a `float *` to floats. `char *cptr;` for chars.\n\n**Initialise before you dereference.** An uninitialised pointer holds a garbage address; using it causes a [[segmentation fault|a runtime crash from touching memory your program doesn't own]] — a runtime error, not a compile error.\n\n[[NULL|the deliberate \"points nowhere\" address (value 0), which you can safely test for]] is the safe 'points nowhere' value: `int *p = NULL;` — a deliberate, checkable nothing.",
         },
         {
           kind: "check",
@@ -103,7 +150,7 @@ export const sectionF: Section = {
         {
           kind: "teach",
           title: "Following the arrow",
-          body: "`*ptr` means \"go to the address ptr holds and use **the value there**\" — that's **dereferencing**:",
+          body: "[[dereference|following a pointer to the value it points at, using the * operator]] `*ptr` means \"go to the address ptr holds and use **the value there**\":",
           code: "int a = 20;\nint *ptr = &a;\nprintf(\"Address of a = %p\\n\", ptr);   /* the address  */\nprintf(\"Value of a   = %d\\n\", *ptr);  /* 20           */",
         },
         {
@@ -163,8 +210,9 @@ export const sectionF: Section = {
         {
           kind: "teach",
           title: "One name for a whole record",
-          body: "An array holds many values of ONE type. But a student has a roll number (int), a name (char array) AND marks (float). A **structure** groups **different types under one name** — a user-defined record type:",
+          body: "An array holds many values of ONE type. But a student has a roll number (int), a name (char array) AND marks (float). A [[structure|a user-defined type that groups different data types under one name]] groups **different types under one name** — and each [[member|one named field inside a structure or union]] gets its **own** memory:",
           code: "struct Student {\n    int rollno;\n    char name[20];\n    float marks;\n};\n\nstruct Student s1, s2;   /* two structure variables */",
+          svg: SVG_STRUCT,
         },
         {
           kind: "teach",
@@ -227,8 +275,9 @@ export const sectionF: Section = {
         {
           kind: "teach",
           title: "Same syntax, shared memory",
-          body: "A **union** is declared like a structure — but with one deep difference: **every member occupies the SAME memory location**.\n\nConsequences:\n\n**Size** = the size of the **largest** member (a structure's size is the *sum* of members).\n**Only one member is valid at a time** — the most recently assigned. Assign a second member and the first's bytes are **overwritten**.",
+          body: "A [[union|like a structure, but every member shares the SAME memory location]] is declared like a structure — but with one deep difference: **every member occupies the SAME bytes**.\n\nCompare the pictures: a structure gives each member its own room, so its size is the **sum**. A union is one shared room, so its size is the size of the **largest** member — and only one member is valid at a time.",
           code: "union Data {\n    int i;\n    float f;\n    char str[20];\n};",
+          svg: SVG_UNION,
         },
         {
           kind: "teach",
