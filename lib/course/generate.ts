@@ -292,39 +292,99 @@ const EXAM_RULES_KNOWLEDGE = `You are Kube. You write a unit's ASSESSMENT pool f
 - HARD RULE: no exam question may duplicate a check inside a lesson — write each from a fresh angle.
 - HARD RULE — ungameable options: four options PARALLEL in length/specificity/grammar; correct answer never the longest/only-explained; vary the correct slot.`;
 
+// ── Augmented variants ────────────────────────────────────────────────────
+// "Documents + Kube's knowledge": the student's material leads, but Kube fills
+// the gaps it leaves from its own knowledge of the standard curriculum. This is
+// NOT the knowledge-only path (which uses the text merely for scope) — here the
+// uploaded material is still the spine, and every addition is marked as such.
+const AUGMENT_CLAUSE = `AUGMENTED MODE — the student asked for their material PLUS your own knowledge:
+- The uploaded material LEADS. Its terminology, notation, examples and emphasis win every time; never contradict it or replace its framing with a textbook's.
+- Where the material is thin — it names a concept without explaining it, shows a result with no derivation, or has an obvious prerequisite gap — fill that gap from your solid knowledge of the standard curriculum so the ladder actually teaches.
+- You MAY add a foundational concept the material assumes but never states, when a student would be stuck without it.
+- Do NOT wander outside the course's scope, and do NOT pad: every addition must earn its place by removing a real gap.`;
+
+/** How a build treats the uploaded text: as the content itself, as scope only
+ *  (teach from knowledge), or as the spine that Kube's knowledge supplements. */
+export type GenMode = "file" | "knowledge" | "augmented";
+
+/** Pick the right rule set for a mode. */
+const rulesFor = (mode: GenMode, base: string, knowledge: string, augmented: string) =>
+  mode === "knowledge" ? knowledge : mode === "augmented" ? augmented : base;
+
+const CONCEPT_RULES_AUGMENTED = `${CONCEPT_RULES}
+
+${AUGMENT_CLAUSE}`;
+
+const DRILL_RULES_AUGMENTED = `${DRILL_RULES}
+
+${AUGMENT_CLAUSE}
+- When a beat teaches something the material didn't cover, say so lightly and honestly ("your slides skip this step, so here it is") — the student should always know what came from their course and what came from me.`;
+
+const EXAM_RULES_AUGMENTED = `${EXAM_RULES}
+
+${AUGMENT_CLAUSE}`;
+
 // ── The read (intake observation) ─────────────────────────────────────────
-const OBSERVE_RULES = `You are Kube, looking at a file a student just uploaded to study from. Read it and react like a sharp, warm, honest friend who knows the subject — NOT a classifier.
-- Say plainly WHAT it is and what's actually in it. Be honest if it only outlines/plans and doesn't teach ("this is the roadmap, not the lessons").
-- Notice things: duplicates, spill-over, the assessment style (e.g. a practical exam), what's missing to study well.
-- Decide if you can teach these topics from your OWN solid knowledge of the standard curriculum (most standard university topics: yes). If yes, offer to build the ladder now WITHOUT needing more files — but always note it'd be your general knowledge, and grounding it in their own notes/manual makes it match their course exactly.
-- Then hand the student the wheel with a recommended next step + a couple of alternatives.
-- Warm, brief, specific. 2-4 short observation lines. Never invent facts about THIS file.`;
+// One read for the WHOLE batch a student just dropped in — they uploaded a set,
+// so Kube reacts to the set, then asks one question before touching anything.
+const OBSERVE_RULES = `You are Kube, looking at the material a student just uploaded to study from — possibly several files at once. Read it ALL and react like a sharp, warm, honest friend who knows the subject — NOT a classifier.
+- React to the BATCH as one body of material. If several files arrived, say how they fit together (units in sequence, a syllabus plus its units, one deck split in two). Do not review them one by one.
+- Say plainly WHAT you're looking at and what's actually in it. Be honest if it only outlines/plans and doesn't teach ("this is the roadmap, not the lessons").
+- Notice things worth knowing BEFORE building: repeated/duplicated sections, gaps, the assessment style, whether the material teaches or merely lists, anything missing to study well.
+- Then judge the ONE question that matters: is this material enough on its own, or would it be noticeably better if you also brought your own knowledge of the standard curriculum to fill its gaps? Set \`recommend\` accordingly and say why in \`note\`.
+- Warm, brief, specific. 2-4 short observation lines. Never invent facts about material you weren't given.`;
 
 const observationSchema = z.object({
-  kind: z.enum(["syllabus", "unit", "pastpaper", "notes", "mixed", "other"]).describe("what this file is"),
-  whatItIs: z.string().describe("one warm line naming it, e.g. 'This is your lab course plan for ECE24D — Digital Electronics.'"),
-  teaches: z.boolean().describe("true if it actually teaches the concepts; false if it only outlines/plans/lists"),
-  observations: z.array(z.string()).describe("2-4 short, specific things you notice (content, duplicates, exam style, what's missing)"),
-  canTeachFromKnowledge: z.boolean().describe("can you teach these topics well from your own standard-curriculum knowledge without more files?"),
-  suggestedTitle: z.string().describe("a good course/unit title drawn from the file"),
-  primaryAction: z.enum(["build_from_knowledge", "digest_as_content", "add_material_first"]).describe("the single best next step for this file"),
-  primaryLabel: z.string().describe("the button text for the primary action, e.g. 'Build the ladder from this + your knowledge'"),
-  altActions: z.array(z.object({
-    id: z.enum(["build_from_knowledge", "digest_as_content", "add_material_first"]),
-    label: z.string(),
-  })).describe("0-2 alternative next steps (different id from primary)"),
-  note: z.string().describe("one honest caveat or reassurance, e.g. 'I'd teach this from standard curriculum — add your lab manual to match your uni exactly.'"),
+  kind: z
+    .enum(["syllabus", "unit", "pastpaper", "notes", "mixed", "other"])
+    .describe("what this batch mostly is"),
+  whatItIs: z
+    .string()
+    .describe(
+      "one warm line naming the batch, e.g. 'These are Units 4 and 5 of your Internet and Web Technologies course — HTML tables/forms and CSS.'"
+    ),
+  teaches: z.boolean().describe("true if the material actually teaches the concepts; false if it only outlines/plans/lists"),
+  observations: z
+    .array(z.string())
+    .describe("2-4 short, specific things you notice across the whole batch (content, how the files relate, duplicates, gaps, exam style)"),
+  suggestedTitle: z.string().describe("a good course title drawn from the material"),
+  recommend: z
+    .enum(["as_is", "augmented"])
+    .describe(
+      "as_is = the material is rich enough to build straight from. augmented = it's thin/outline-ish, so also drawing on your standard-curriculum knowledge would make a noticeably better ladder."
+    ),
+  note: z
+    .string()
+    .describe(
+      "one honest line on WHY you'd pick that, e.g. 'This teaches properly, so I'd build straight from it.' or 'This lists topics without explaining them — I'd fill the gaps from the standard curriculum.'"
+    ),
 });
 export type Observation = z.infer<typeof observationSchema>;
 
+/** One file in an upload batch. */
+export interface IntakeFile {
+  name: string;
+  text: string;
+  images?: SourceImage[];
+}
+
+/** Kube's read of a whole upload batch — the confirm step before any building. */
 export async function generateObservation(
   courseTitle: string,
-  fileName: string,
-  rawText: string,
-  images?: SourceImage[],
+  files: IntakeFile[],
   meter?: UsageMeter
 ): Promise<Observation> {
   const client = getAnthropic();
+  // Share the character budget across the batch so one long file can't crowd
+  // the others out of the read.
+  const per = Math.max(4000, Math.floor(MAX_UNIT_CHARS / Math.max(1, files.length)));
+  const body = files
+    .map(
+      (f, i) =>
+        `--- FILE ${i + 1} of ${files.length}: ${f.name} ---\n${f.text.slice(0, per)}`
+    )
+    .join("\n\n");
+  const images = files.flatMap((f) => f.images ?? []).slice(0, 8);
   const res = await client.messages.parse({
     model: MODEL,
     max_tokens: 4000,
@@ -335,16 +395,18 @@ export async function generateObservation(
       {
         role: "user",
         content: materialBlocks(
-          `Course: ${courseTitle || "(untitled)"}\nUploaded file: ${fileName}\n\nRead this and give the student your honest read + a recommended next step.`,
-          rawText,
+          `Course: ${courseTitle || "(untitled)"}\nThe student just uploaded ${files.length} file${files.length === 1 ? "" : "s"}: ${files
+            .map((f) => f.name)
+            .join(", ")}\n\nRead it all and give your honest read of the batch, then say whether you'd build straight from this material or also draw on your own knowledge to fill its gaps.`,
+          body,
           images,
-          "UPLOADED FILE"
+          "UPLOADED MATERIAL"
         ),
       },
     ],
   });
   meter?.add(res.usage);
-  if (!res.parsed_output) throw new Error("Kube couldn't read that file.");
+  if (!res.parsed_output) throw new Error("Kube couldn't read that material.");
   return res.parsed_output;
 }
 
@@ -476,7 +538,7 @@ export async function generateUnitSkeleton(
   rawText: string,
   existingTopics: ExistingTopicRef[],
   images?: SourceImage[],
-  mode: "file" | "knowledge" = "file",
+  mode: GenMode = "file",
   meter?: UsageMeter,
   model?: string
 ): Promise<UnitSkeleton> {
@@ -501,7 +563,7 @@ export async function generateUnitSkeleton(
           ...cachedMaterial(rawText, images, materialLabel(know)),
           {
             type: "text",
-            text: `${know ? CONCEPT_RULES_KNOWLEDGE : CONCEPT_RULES}\n\nCourse: ${courseTitle}\nUnit number: ${unitNumber}\nPrefix all topic ids with "u${unitNumber}-".\n\n${existing}\n\nProduce ONLY the concept map for this unit: the section title, a one-line tagline, and the ordered list of topics (id, title, weight, deps, whyItMatters, recap). Do NOT write any lessons — those come next.`,
+            text: `${rulesFor(mode, CONCEPT_RULES, CONCEPT_RULES_KNOWLEDGE, CONCEPT_RULES_AUGMENTED)}\n\nCourse: ${courseTitle}\nUnit number: ${unitNumber}\nPrefix all topic ids with "u${unitNumber}-".\n\n${existing}\n\nProduce ONLY the concept map for this unit: the section title, a one-line tagline, and the ordered list of topics (id, title, weight, deps, whyItMatters, recap). Do NOT write any lessons — those come next.`,
           },
         ],
       },
@@ -520,7 +582,7 @@ export async function generateTopicLessons(
   topic: SkeletonTopic,
   allTopicTitles: string[],
   images?: SourceImage[],
-  mode: "file" | "knowledge" = "file",
+  mode: GenMode = "file",
   meter?: UsageMeter,
   model?: string
 ): Promise<z.infer<typeof lessonSchema>[]> {
@@ -543,7 +605,7 @@ export async function generateTopicLessons(
           ...cachedMaterial(rawText, images, materialLabel(know)),
           {
             type: "text",
-            text: `${know ? DRILL_RULES_KNOWLEDGE : DRILL_RULES}\n\nCourse: ${courseTitle} · Unit ${unitNumber}\n\nThis unit's topics (for context — teach forward toward later ones where natural):\n${allTopicTitles
+            text: `${rulesFor(mode, DRILL_RULES, DRILL_RULES_KNOWLEDGE, DRILL_RULES_AUGMENTED)}\n\nCourse: ${courseTitle} · Unit ${unitNumber}\n\nThis unit's topics (for context — teach forward toward later ones where natural):\n${allTopicTitles
               .map((t, i) => `${i + 1}. ${t}`)
               .join(
                 "\n"
@@ -567,7 +629,7 @@ export async function generateExamBank(
   rawText: string,
   topics: SkeletonTopic[],
   images?: SourceImage[],
-  mode: "file" | "knowledge" = "file",
+  mode: GenMode = "file",
   meter?: UsageMeter,
   model?: string
 ): Promise<z.infer<typeof examBankSchema>["examQuestions"]> {
@@ -588,7 +650,7 @@ export async function generateExamBank(
           ...cachedMaterial(rawText, images, materialLabel(know)),
           {
             type: "text",
-            text: `${know ? EXAM_RULES_KNOWLEDGE : EXAM_RULES}\n\nCourse: ${courseTitle} · Unit ${unitNumber}\n\nTopics in this unit (tag every question with one of these ids):\n${topics
+            text: `${rulesFor(mode, EXAM_RULES, EXAM_RULES_KNOWLEDGE, EXAM_RULES_AUGMENTED)}\n\nCourse: ${courseTitle} · Unit ${unitNumber}\n\nTopics in this unit (tag every question with one of these ids):\n${topics
               .map((t) => `- ${t.id}: ${t.title} — ${t.whyItMatters}`)
               .join(
                 "\n"
@@ -633,7 +695,7 @@ interface CheapOpts {
   model?: string;
   vision?: string;
   cram?: boolean; // Climb = many small concepts; false = 4-10 deep concepts
-  mode?: "file" | "knowledge";
+  mode?: GenMode;
 }
 
 /** Concept map on a budget model. Same UnitSkeleton shape as the Sonnet path
@@ -659,7 +721,7 @@ export async function generateUnitSkeletonCheap(
     ? `CLIMB CRAM MODE: break the unit into MANY small, drillable concepts — aim for 16-22, more granular than a deep course. Every distinct term, formula, circuit or rule is its own concept.`
     : `Map the 4-10 CORE concepts a student must master, in dependency order, each weighted by how examinable it is. These become deep four-quarter lessons, so pick real, teachable concepts — not slivers.`;
   const label = know ? "SYLLABUS / OUTLINE (scope only — teach from your knowledge)" : "COURSE MATERIAL";
-  const prompt = `${know ? CONCEPT_RULES_KNOWLEDGE : CONCEPT_RULES}
+  const prompt = `${rulesFor(opts.mode ?? "file", CONCEPT_RULES, CONCEPT_RULES_KNOWLEDGE, CONCEPT_RULES_AUGMENTED)}
 
 ${count}
 
@@ -699,7 +761,7 @@ export async function generateTopicLessonsCheap(
   const useVision = (images?.length ?? 0) > 0;
   const know = opts.mode === "knowledge";
   const label = know ? "SYLLABUS / OUTLINE (scope only — teach from your knowledge)" : "COURSE MATERIAL";
-  const prompt = `${know ? DRILL_RULES_KNOWLEDGE : DRILL_RULES}
+  const prompt = `${rulesFor(opts.mode ?? "file", DRILL_RULES, DRILL_RULES_KNOWLEDGE, DRILL_RULES_AUGMENTED)}
 
 Course: ${courseTitle} · Unit ${unitNumber}
 This unit's topics (context — teach forward where natural): ${allTopicTitles.map((t, i) => `${i + 1}. ${t}`).join(" · ")}
@@ -742,7 +804,7 @@ export async function generateExamBankCheap(
   const know = opts.mode === "knowledge";
   const label = know ? "SYLLABUS / OUTLINE (scope only)" : "COURSE MATERIAL";
   const list = topics.map((t) => `- ${t.id}: ${t.title} — ${t.whyItMatters}`).join("\n");
-  const prompt = `${know ? EXAM_RULES_KNOWLEDGE : EXAM_RULES}
+  const prompt = `${rulesFor(opts.mode ?? "file", EXAM_RULES, EXAM_RULES_KNOWLEDGE, EXAM_RULES_AUGMENTED)}
 
 Course: ${courseTitle} · Unit ${unitNumber}
 Topics (tag every question with one of these ids):

@@ -290,3 +290,10 @@
     transition: none;
   }
 }
+
+/* Intake: the small spinner shown while Kube reads an upload batch. */
+@keyframes k-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

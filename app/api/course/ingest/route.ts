@@ -24,6 +24,7 @@ import {
   parsePastPaper,
   assemblePastPaperQuestions,
   normalizeCourse,
+  type GenMode,
 } from "@/lib/course/generate";
 import type { Section, ExamQuestion, IngestedFile } from "@/lib/course/types";
 import { UsageMeter, formatCost } from "@/lib/usage";
@@ -122,6 +123,9 @@ export async function POST(req: NextRequest) {
   const summitOpts = { model: SUMMIT_MODEL, vision: SUMMIT_VISION_MODEL } as const;
   // Model override for the Anthropic (premium) path: owner → top model.
   const premiumModel = owner ? OWNER_MODEL : undefined;
+  // Set once the body is parsed: "file" = build strictly from the upload;
+  // "augmented" = the upload leads, Kube's own knowledge fills its gaps.
+  let genMode: GenMode = "file";
 
   let courseId = "";
   let fileName = "pasted text";
@@ -130,7 +134,7 @@ export async function POST(req: NextRequest) {
   // "fromFile" = digest the upload as teaching content (default). "fromKnowledge"
   // = treat the upload as a syllabus/outline and build the ladder from Kube's own
   // knowledge (the intake-read path).
-  let mode: "fromFile" | "fromKnowledge" = "fromFile";
+  let mode: "fromFile" | "fromKnowledge" | "augmented" = "fromFile";
 
   try {
     const contentType = req.headers.get("content-type") || "";
@@ -141,6 +145,7 @@ export async function POST(req: NextRequest) {
       rawText = (body.text || "").toString();
       images = sanitizeImages(body.images);
       if (body.mode === "fromKnowledge") mode = "fromKnowledge";
+      else if (body.mode === "augmented") { mode = "augmented"; genMode = "augmented"; }
     } else {
       // Fallback for clients that couldn't extract locally (small files only).
       const form = await req.formData();
@@ -436,8 +441,8 @@ export async function POST(req: NextRequest) {
         // the function limit we KEEP the topics that did (drillWithinBudget)
         // rather than throwing away a heavy file's worth of tokens.
         const skeleton = summitBudget
-          ? await generateUnitSkeletonCheap(courseTitle, unitNumber, rawText, existingTopics, images, meter, { ...summitOpts, cram: false, mode: "file" })
-          : await generateUnitSkeleton(courseTitle, unitNumber, rawText, existingTopics, images, "file", meter, premiumModel);
+          ? await generateUnitSkeletonCheap(courseTitle, unitNumber, rawText, existingTopics, images, meter, { ...summitOpts, cram: false, mode: genMode })
+          : await generateUnitSkeleton(courseTitle, unitNumber, rawText, existingTopics, images, genMode, meter, premiumModel);
         await setJob({
           note: `Mapped ${skeleton.topics.length} concept${skeleton.topics.length === 1 ? "" : "s"} — drilling each into a full circle…`,
         });
@@ -446,14 +451,14 @@ export async function POST(req: NextRequest) {
         let done = 0;
         let examQuestions: Awaited<ReturnType<typeof generateExamBank>> = [];
         const examP = (summitBudget
-          ? generateExamBankCheap(courseTitle, unitNumber, rawText, skeleton.topics, images, meter, { ...summitOpts, mode: "file" })
-          : generateExamBank(courseTitle, unitNumber, rawText, skeleton.topics, images, "file", meter, premiumModel))
+          ? generateExamBankCheap(courseTitle, unitNumber, rawText, skeleton.topics, images, meter, { ...summitOpts, mode: genMode })
+          : generateExamBank(courseTitle, unitNumber, rawText, skeleton.topics, images, genMode, meter, premiumModel))
           .then((q) => { examQuestions = q; })
           .catch(() => {});
         const { results: lessonsByTopic, complete } = await drillWithinBudget(skeleton.topics, DRILL_BUDGET_MS, async (topic) => {
           const lessons = summitBudget
-            ? await generateTopicLessonsCheap(courseTitle, unitNumber, rawText, topic, titles, images, meter, { ...summitOpts, mode: "file" })
-            : await generateTopicLessons(courseTitle, unitNumber, rawText, topic, titles, images, "file", meter, premiumModel);
+            ? await generateTopicLessonsCheap(courseTitle, unitNumber, rawText, topic, titles, images, meter, { ...summitOpts, mode: genMode })
+            : await generateTopicLessons(courseTitle, unitNumber, rawText, topic, titles, images, genMode, meter, premiumModel);
           done += 1;
           await setJob({ note: `Drilling circles — ${done}/${skeleton.topics.length} done…` });
           return lessons;

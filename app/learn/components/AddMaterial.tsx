@@ -19,10 +19,9 @@ import { authedFetch } from "@/lib/authed-fetch";
 import { extractFileInBrowser, type ExtractedMaterial } from "@/lib/ingest/client-extract";
 import type { IngestedFile } from "@/lib/course/types";
 import type { Observation } from "@/lib/course/generate";
-import { useEntitlement } from "@/lib/use-entitlement";
 import DigestingAnimation from "./DigestingAnimation";
 
-type IngestMode = "fromFile" | "fromKnowledge";
+type IngestMode = "fromFile" | "fromKnowledge" | "augmented";
 
 // Cap a single upload to a sane batch — a subject can hold many files, just
 // not all dropped at once (protects spend and keeps the queue readable).
@@ -31,10 +30,8 @@ const MAX_FILES_PER_UPLOAD = 5;
 interface JobLine {
   key: string;
   name: string;
-  state: "extracting" | "reading" | "choose" | "confirm" | "working" | "done" | "skipped" | "error";
+  state: "extracting" | "working" | "done" | "skipped" | "error";
   note: string;
-  read?: Observation;
-  extracted?: ExtractedMaterial;
 }
 
 const KIND_LABEL: Record<IngestedFile["kind"], string> = {
@@ -59,12 +56,16 @@ export default function AddMaterial({
   invitation: boolean;
   courseTitle?: string;
 }) {
-  const { entitlement } = useEntitlement();
-  const isClimbOnly = entitlement?.tier === "climb";
-
   const [text, setText] = useState("");
   const [tab, setTab] = useState<"files" | "text">("files");
   const [lines, setLines] = useState<JobLine[]>([]);
+  // The upload waiting on the student's confirmation: Kube's read of the whole
+  // batch (null read = the read call failed, so we still ask, just without it).
+  const [batch, setBatch] = useState<{
+    items: { name: string; extracted: ExtractedMaterial }[];
+    read: Observation | null;
+  } | null>(null);
+  const [reading, setReading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [digestHidden, setDigestHidden] = useState(false);
@@ -177,50 +178,59 @@ export default function AddMaterial({
     }
   }
 
-  // Kube's "read": look at the file first and hand the student the wheel. If the
-  // read call fails, fall back to digesting it straight (never block the user).
-  async function observe(key: string, name: string, extracted: ExtractedMaterial) {
-    updateLine(key, { state: "reading", note: "Kube is taking a look…" });
+  // Take in a whole batch: extract every file on-device, then have Kube read
+  // the SET once and confirm before anything is built. One upload, one
+  // conversation — not a card per document.
+  async function intake(items: { name: string; extracted: ExtractedMaterial }[]) {
+    if (items.length === 0) return;
+    setReading(true);
+    setBatch(null);
     try {
       const res = await authedFetch("/api/course/observe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ courseTitle, name, text: extracted.text, images: extracted.images }),
+        body: JSON.stringify({
+          courseTitle,
+          files: items.map((it) => ({
+            name: it.name,
+            text: it.extracted.text,
+            images: it.extracted.images,
+          })),
+        }),
       });
       const data = await res.json();
       if (!res.ok || !data.read) throw new Error(data.error || "read failed");
-      updateLine(key, { state: "choose", note: "", read: data.read as Observation, extracted });
+      setBatch({ items, read: data.read as Observation });
     } catch {
-      // Couldn't read it — just digest as content.
-      await submitOne(key, name, extracted, "fromFile");
+      // Couldn't read it — offer the choice anyway rather than deciding for them.
+      setBatch({ items, read: null });
+    } finally {
+      setReading(false);
     }
   }
 
-  // After a file is read on-device, hand off by tier. Climb gets a simple
-  // confirm-first, cram-vs-deep card (no AI read call — cheaper, and Climb only
-  // ever distills). Summit gets Kube's full read with its options.
-  async function intake(key: string, name: string, extracted: ExtractedMaterial) {
-    if (isClimbOnly) {
-      updateLine(key, { state: "confirm", note: "", extracted });
-    } else {
-      await observe(key, name, extracted);
-    }
-  }
-
-  function dropLine(key: string) {
-    setLines((ls) => ls.filter((l) => l.key !== key));
-  }
-
-  // Act on a read's chosen option.
-  async function proceed(line: JobLine, action: "build_from_knowledge" | "digest_as_content" | "add_material_first") {
-    if (!line.extracted) return;
-    if (action === "add_material_first") {
-      updateLine(line.key, { state: "skipped", note: "Set aside — add more material, then come back to it.", read: undefined });
-      return;
-    }
+  /** The student answered the one question: build from the documents as they
+   *  are, or let Kube's own knowledge fill their gaps. */
+  async function proceed(useKnowledge: boolean) {
+    if (!batch) return;
+    const items = batch.items;
+    setBatch(null);
     setDigestHidden(false);
-    updateLine(line.key, { state: "working", note: "Starting…", read: undefined });
-    await submitOne(line.key, line.name, line.extracted, action === "build_from_knowledge" ? "fromKnowledge" : "fromFile");
+    const lines: JobLine[] = items.map((it, i) => ({
+      key: `${Date.now()}-${i}-${it.name}`,
+      name: it.name,
+      state: "working",
+      note: "Starting…",
+    }));
+    setLines((prev) => [...prev, ...lines]);
+    for (let i = 0; i < items.length; i++) {
+      await submitOne(
+        lines[i].key,
+        items[i].name,
+        items[i].extracted,
+        useKnowledge ? "augmented" : "fromFile"
+      );
+    }
   }
 
   async function ingestFiles(picked: File[]) {
@@ -228,26 +238,31 @@ export default function AddMaterial({
     // One upload = up to MAX_FILES_PER_UPLOAD; the rest wait for another batch.
     const overflow = picked.length > MAX_FILES_PER_UPLOAD;
     if (overflow) picked = picked.slice(0, MAX_FILES_PER_UPLOAD);
-    const batch: JobLine[] = picked.map((f, i) => ({
-      key: `${Date.now()}-${i}-${f.name}`,
+    const extractKeys: JobLine[] = picked.map((f, i) => ({
+      key: `${Date.now()}-x${i}-${f.name}`,
       name: f.name,
       state: "extracting",
       note: "Reading the file on your device…",
     }));
     if (overflow) {
-      batch.unshift({
+      extractKeys.unshift({
         key: `${Date.now()}-overflow`,
         name: "Heads up",
         state: "skipped",
         note: `Up to ${MAX_FILES_PER_UPLOAD} files per upload — took the first ${MAX_FILES_PER_UPLOAD}; add the rest in another batch.`,
       });
     }
-    setLines((prev) => [...prev, ...batch]);
+    setLines((prev) => [...prev, ...extractKeys]);
+
+    const items: { name: string; extracted: ExtractedMaterial }[] = [];
     for (let i = 0; i < picked.length; i++) {
-      const key = batch[i].key;
+      const key = extractKeys[overflow ? i + 1 : i].key;
       try {
         const extracted = await extractFileInBrowser(picked[i]);
-        await intake(key, picked[i].name, extracted);
+        items.push({ name: picked[i].name, extracted });
+        // Extraction is local plumbing — drop the line once it's done so the
+        // batch card is the only thing asking for attention.
+        setLines((ls) => ls.filter((l) => l.key !== key));
       } catch (err) {
         updateLine(key, {
           state: "error",
@@ -255,18 +270,15 @@ export default function AddMaterial({
         });
       }
     }
+    await intake(items);
   }
 
   async function submitText(e: React.FormEvent) {
     e.preventDefault();
     if (text.trim().length < 100) return;
-    const key = `${Date.now()}-pasted`;
-    setLines((prev) => [
-      ...prev,
-      { key, name: "pasted text", state: "extracting", note: "Kube is taking a look…" },
-    ]);
-    await intake(key, "pasted text", { text, images: [] });
+    const pasted = text;
     setText("");
+    await intake([{ name: "pasted text", extracted: { text: pasted, images: [] } }]);
   }
 
   // The full-screen digesting animation is only for the real (server) build —
@@ -419,24 +431,37 @@ export default function AddMaterial({
         </form>
       )}
 
+      {reading && (
+        <div className="mt-4 flex items-center gap-2.5 text-sm" style={{ color: "var(--ink-soft)" }}>
+          <span
+            className="inline-block h-3.5 w-3.5 rounded-full border-2"
+            style={{ borderColor: "var(--kube-line)", borderTopColor: "var(--kube)", animation: "k-spin .8s linear infinite" }}
+          />
+          Kube is reading your material…
+        </div>
+      )}
+
+      {batch && (
+        <BatchCard
+          names={batch.items.map((i) => i.name)}
+          read={batch.read}
+          onChoose={proceed}
+          onCancel={() => setBatch(null)}
+        />
+      )}
+
       {lines.length > 0 && (
         <div className="mt-4 space-y-3">
-          {lines.map((l) =>
-            l.state === "confirm" ? (
-              <ConfirmCard key={l.key} line={l} onBreakdown={(ln) => proceed(ln, "digest_as_content")} onCancel={dropLine} />
-            ) : l.state === "choose" && l.read ? (
-              <ReadCard key={l.key} line={l} read={l.read} onChoose={proceed} />
-            ) : (
-              <div key={l.key} className="flex items-start gap-2 text-sm">
-                <span aria-hidden>
-                  {l.state === "done" ? "✓" : l.state === "error" ? "✕" : l.state === "skipped" ? "▸" : "…"}
-                </span>
-                <span style={{ color: l.state === "error" ? "var(--red)" : l.state === "done" ? "var(--kube)" : "var(--ink-soft)" }}>
-                  <span className="font-semibold">{l.name}:</span> {l.note}
-                </span>
-              </div>
-            )
-          )}
+          {lines.map((l) => (
+            <div key={l.key} className="flex items-start gap-2 text-sm">
+              <span aria-hidden>
+                {l.state === "done" ? "✓" : l.state === "error" ? "✕" : l.state === "skipped" ? "▸" : "…"}
+              </span>
+              <span style={{ color: l.state === "error" ? "var(--red)" : l.state === "done" ? "var(--kube)" : "var(--ink-soft)" }}>
+                <span className="font-semibold">{l.name}:</span> {l.note}
+              </span>
+            </div>
+          ))}
         </div>
       )}
       {anyWorking && (
@@ -486,81 +511,97 @@ export default function AddMaterial({
   );
 }
 
-// Climb's confirm-first, cram-vs-deep card. The friction ("confirm this file")
-// and the tier question ("break it down, or upgrade for deep teaching") in one.
-function ConfirmCard({
-  line,
-  onBreakdown,
-  onCancel,
-}: {
-  line: JobLine;
-  onBreakdown: (line: JobLine) => void;
-  onCancel: (key: string) => void;
-}) {
-  return (
-    <div className="rounded-2xl border p-4" style={{ borderColor: "var(--kube-line)", background: "var(--kube-soft)" }}>
-      <div className="flex items-start gap-2.5">
-        <span className="mt-0.5 grid h-6 w-6 flex-none place-items-center rounded-md" style={{ background: "var(--kube)", color: "#fff", fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 700 }}>K</span>
-        <div className="min-w-0">
-          <div className="text-sm font-semibold" style={{ color: "var(--ink)" }}>How should Kube handle this?</div>
-          <div className="mt-0.5 text-[11px]" style={{ color: "var(--faint)", fontFamily: "var(--font-mono)" }}>{line.name}</div>
-        </div>
-      </div>
-
-      <div className="mt-3.5 space-y-2.5">
-        <button
-          type="button"
-          onClick={() => onBreakdown(line)}
-          className="block w-full rounded-xl px-4 py-3 text-left"
-          style={{ background: "var(--kube)", boxShadow: "0 3px 0 rgba(20,32,43,.16)" }}
-        >
-          <span className="block text-sm font-semibold text-white">Break it down for cramming</span>
-          <span className="mt-0.5 block text-xs" style={{ color: "rgba(255,255,255,0.85)" }}>Notes, flashcards, matching &amp; mock exams from this file.</span>
-        </button>
-        <Link
-          href="/learn/upgrade"
-          className="block w-full rounded-xl border px-4 py-3 text-left"
-          style={{ borderColor: "var(--kube-line)", background: "var(--card)" }}
-        >
-          <span className="block text-sm font-semibold" style={{ color: "var(--kube)" }}>Deep digest — teach me it →</span>
-          <span className="mt-0.5 block text-xs" style={{ color: "var(--faint)" }}>Full step-by-step lessons that teach every concept. Summit.</span>
-        </Link>
-      </div>
-      <button
-        type="button"
-        onClick={() => onCancel(line.key)}
-        className="mt-2.5 text-xs font-semibold"
-        style={{ color: "var(--faint)" }}
-      >
-        Not this one — remove
-      </button>
-    </div>
-  );
-}
-
-// Kube's read of one uploaded file, with the student's options. This is the
-// "someone to talk to when a file lands" surface.
-function ReadCard({
-  line,
+// Kube's read of the WHOLE upload, and the one question that follows it:
+// build from these documents as they are, or let Kube's own knowledge fill
+// their gaps. Two options, because that is the only real decision here.
+function BatchCard({
+  names,
   read,
   onChoose,
+  onCancel,
 }: {
-  line: JobLine;
-  read: Observation;
-  onChoose: (line: JobLine, action: "build_from_knowledge" | "digest_as_content" | "add_material_first") => void;
+  names: string[];
+  read: Observation | null;
+  onChoose: (useKnowledge: boolean) => void;
+  onCancel: () => void;
 }) {
-  const alts = (read.altActions || []).filter((a) => a.id !== read.primaryAction).slice(0, 2);
+  const augmentedFirst = read?.recommend === "augmented";
+  const asIs = (
+    <button
+      key="asis"
+      type="button"
+      onClick={() => onChoose(false)}
+      className="block w-full rounded-xl px-4 py-3 text-left"
+      style={
+        augmentedFirst
+          ? { border: "1px solid var(--kube-line)", background: "var(--card)" }
+          : { background: "var(--kube)", boxShadow: "0 3px 0 rgba(20,32,43,.16)" }
+      }
+    >
+      <span
+        className="block text-sm font-semibold"
+        style={{ color: augmentedFirst ? "var(--kube)" : "#fff" }}
+      >
+        Build from these documents
+      </span>
+      <span
+        className="mt-0.5 block text-xs"
+        style={{ color: augmentedFirst ? "var(--faint)" : "rgba(255,255,255,0.85)" }}
+      >
+        Only what&apos;s in your material — nothing added.
+      </span>
+    </button>
+  );
+  const augmented = (
+    <button
+      key="aug"
+      type="button"
+      onClick={() => onChoose(true)}
+      className="block w-full rounded-xl px-4 py-3 text-left"
+      style={
+        augmentedFirst
+          ? { background: "var(--kube)", boxShadow: "0 3px 0 rgba(20,32,43,.16)" }
+          : { border: "1px solid var(--kube-line)", background: "var(--card)" }
+      }
+    >
+      <span
+        className="block text-sm font-semibold"
+        style={{ color: augmentedFirst ? "#fff" : "var(--kube)" }}
+      >
+        These documents + Kube&apos;s knowledge
+      </span>
+      <span
+        className="mt-0.5 block text-xs"
+        style={{ color: augmentedFirst ? "rgba(255,255,255,0.85)" : "var(--faint)" }}
+      >
+        Your material leads; Kube fills the gaps it leaves.
+      </span>
+    </button>
+  );
+
   return (
-    <div className="rounded-2xl border p-4" style={{ borderColor: "var(--kube-line)", background: "var(--kube-soft)" }}>
+    <div
+      className="mt-4 rounded-2xl border p-4"
+      style={{ borderColor: "var(--kube-line)", background: "var(--kube-soft)" }}
+    >
       <div className="flex items-start gap-2.5">
-        <span className="mt-0.5 grid h-6 w-6 flex-none place-items-center rounded-md" style={{ background: "var(--kube)", color: "#fff", fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 700 }}>K</span>
+        <span
+          className="mt-0.5 grid h-6 w-6 flex-none place-items-center rounded-md"
+          style={{ background: "var(--kube)", color: "#fff", fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 700 }}
+        >
+          K
+        </span>
         <div className="min-w-0">
-          <div className="text-sm font-semibold" style={{ color: "var(--ink)" }}>{read.whatItIs}</div>
-          <div className="mt-0.5 text-[11px]" style={{ color: "var(--faint)", fontFamily: "var(--font-mono)" }}>{line.name}</div>
+          <div className="text-sm font-semibold" style={{ color: "var(--ink)" }}>
+            {read?.whatItIs ?? `${names.length} file${names.length === 1 ? "" : "s"} ready — how should Kube build this?`}
+          </div>
+          <div className="mt-0.5 text-[11px]" style={{ color: "var(--faint)", fontFamily: "var(--font-mono)" }}>
+            {names.join(" · ")}
+          </div>
         </div>
       </div>
 
-      {read.observations?.length > 0 && (
+      {read?.observations && read.observations.length > 0 && (
         <ul className="mt-3 space-y-1.5">
           {read.observations.map((o, i) => (
             <li key={i} className="flex items-start gap-2 text-sm" style={{ color: "var(--ink-soft)", lineHeight: 1.45 }}>
@@ -571,31 +612,23 @@ function ReadCard({
         </ul>
       )}
 
-      {read.note && (
-        <p className="mt-2.5 text-xs italic" style={{ color: "var(--faint)", lineHeight: 1.5 }}>{read.note}</p>
+      {read?.note && (
+        <p className="mt-2.5 text-xs italic" style={{ color: "var(--faint)", lineHeight: 1.5 }}>
+          {read.note}
+        </p>
       )}
 
-      <div className="mt-3.5 flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => onChoose(line, read.primaryAction)}
-          className="rounded-xl px-4 py-2.5 text-sm font-semibold text-white"
-          style={{ background: "var(--kube)", boxShadow: "0 3px 0 rgba(20,32,43,.16)" }}
-        >
-          {read.primaryLabel}
-        </button>
-        {alts.map((a) => (
-          <button
-            key={a.id}
-            type="button"
-            onClick={() => onChoose(line, a.id)}
-            className="rounded-xl border px-4 py-2.5 text-sm font-semibold"
-            style={{ borderColor: "var(--kube-line)", color: "var(--kube)", background: "var(--card)" }}
-          >
-            {a.label}
-          </button>
-        ))}
+      <div className="mt-3.5 space-y-2.5">
+        {augmentedFirst ? [augmented, asIs] : [asIs, augmented]}
       </div>
+      <button
+        type="button"
+        onClick={onCancel}
+        className="mt-2.5 text-xs font-semibold"
+        style={{ color: "var(--faint)" }}
+      >
+        Not now — remove
+      </button>
     </div>
   );
 }
