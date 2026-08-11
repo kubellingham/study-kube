@@ -25,6 +25,8 @@ import Matching from "./Matching";
 import Definitions from "./Definitions";
 import Flashcards from "./Flashcards";
 import Sprint from "./Sprint";
+import MobileTabs, { MOBILE_TABS_H } from "@/app/learn/components/MobileTabs";
+import { useIsMobile } from "@/lib/use-media";
 
 const T = {
   ink: "#16202b", inkSoft: "#46566a", faint: "#8593a3",
@@ -62,6 +64,7 @@ interface SubjectRow { id: string; code: string; title: string; badge: string; }
 
 export default function PracticePage() {
   const params = useParams<{ courseId: string }>();
+  const isMobile = useIsMobile();
   const { user, userLoading, status, bundle } = useCourse(params.courseId);
   const router = useRouter();
   const cramLocked = useCramLocked();
@@ -153,6 +156,7 @@ export default function PracticePage() {
   return (
     <div style={{ display: "flex", height: "100dvh", width: "100%", background: T.bgDeep, color: T.ink, fontFamily: T.body, overflow: "hidden" }}>
       {/* ── Left sidebar ── */}
+      {!isMobile && (
       <aside style={{ width: 256, flex: "none", background: T.card, borderRight: `1px solid ${T.line}`, display: "flex", flexDirection: "column", padding: "22px 14px 16px" }}>
         <div style={{ display: "flex", alignItems: "baseline", padding: "4px 10px 22px", fontFamily: T.display, fontWeight: 600, fontSize: 23, letterSpacing: "-.02em", lineHeight: 1 }}>
           <span style={{ color: T.ink }}>Studying</span><span style={{ color: T.kube }}>Kube</span>
@@ -178,9 +182,10 @@ export default function PracticePage() {
           </button>
         </div>
       </aside>
+      )}
 
       {/* ── Centre ── */}
-      <main style={{ flex: 1, minWidth: 0, overflowY: "auto", position: "relative" }}>
+      <main style={{ flex: 1, minWidth: 0, overflowY: "auto", position: "relative", paddingBottom: isMobile ? MOBILE_TABS_H + 12 : 0 }}>
         {/* subject switcher */}
         <div style={{ position: "sticky", top: 0, zIndex: 40, padding: "16px 40px 14px", background: T.bgDeep, display: "flex", justifyContent: "flex-end" }}>
           <div style={{ position: "relative" }}>
@@ -213,7 +218,7 @@ export default function PracticePage() {
 
         {tool ? (
           /* ── Tool view ── */
-          <div style={{ maxWidth: 680, margin: "0 auto", padding: "6px 40px 90px" }}>
+          <div style={{ maxWidth: 680, margin: "0 auto", padding: isMobile ? "6px 16px 40px" : "6px 40px 90px" }}>
             <button onClick={() => setTool(null)} style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "none", border: "none", cursor: "pointer", fontFamily: T.mono, fontWeight: 600, fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", color: T.faint, padding: 0 }}>
               <span style={{ display: "grid", placeItems: "center", transform: "rotate(180deg)" }}>{ARROW}</span> All tools
             </button>
@@ -242,7 +247,7 @@ export default function PracticePage() {
           </div>
         ) : (
           /* ── Hub ── */
-          <div style={{ maxWidth: 880, margin: "0 auto", padding: "6px 40px 90px" }}>
+          <div style={{ maxWidth: 880, margin: "0 auto", padding: isMobile ? "6px 16px 40px" : "6px 40px 90px" }}>
             <div style={{ fontFamily: T.mono, fontSize: 11, fontWeight: 600, letterSpacing: ".18em", textTransform: "uppercase", color: T.kube }}>{course.code} · Practice</div>
             <h1 style={{ fontFamily: T.display, fontWeight: 600, fontSize: 44, letterSpacing: "-.02em", lineHeight: 1.02, color: T.ink, margin: "8px 0 0" }}>The practice gym</h1>
             <p style={{ fontSize: 15, lineHeight: 1.6, color: T.inkSoft, margin: "12px 0 0", maxWidth: "60ch" }}>{fullPool.length} concepts from everything you&apos;ve fed this course, gathered for fast drilling — same brain as the lessons, a different door in.</p>
@@ -276,7 +281,7 @@ export default function PracticePage() {
             )}
 
             {/* Tool cards */}
-            <div style={{ marginTop: 20, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
+            <div style={{ marginTop: 20, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 18 }}>
               {TOOLS.map((t) => {
                 const stat = t.id === "matching" ? `${pool.length} concepts ready`
                   : t.id === "definitions" ? "3 difficulty levels"
@@ -304,6 +309,7 @@ export default function PracticePage() {
       </main>
 
       {/* ── Right rail ── */}
+      {!isMobile && (
       <aside style={{ width: 352, flex: "none", background: T.bgDeep, borderLeft: `1px solid ${T.line}`, overflowY: "auto", padding: "24px 22px", display: "flex", flexDirection: "column", gap: 18 }}>
         {(!entLoaded || summit) ? (
           <div style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 18, padding: 20 }}>
@@ -367,6 +373,9 @@ export default function PracticePage() {
           )}
         </div>
       </aside>
+      )}
+
+      {isMobile && <MobileTabs courseId={params.courseId} active="Practice" />}
     </div>
   );
 }

@@ -23,6 +23,8 @@ import { loadFlags } from "@/lib/learn/flags";
 import { loadMistakes } from "@/lib/learn/mistakes";
 import AddMaterial from "@/app/learn/components/AddMaterial";
 import OpeningAnimation from "@/app/learn/components/OpeningAnimation";
+import MobileTabs, { MOBILE_TABS_H } from "@/app/learn/components/MobileTabs";
+import { useIsMobile } from "@/lib/use-media";
 import { useEntitlement } from "@/lib/use-entitlement";
 import { hasSummit, hasClimb, LOCKED, TIER_LABEL } from "@/lib/entitlement";
 
@@ -97,6 +99,7 @@ interface SubjectRow { id: string; code: string; title: string; badge: string; }
 
 export default function CourseLadderPage() {
   const params = useParams<{ courseId: string }>();
+  const isMobile = useIsMobile();
   const { user, userLoading, status, bundle, owned, syllabus, files, reload } = useCourse(params.courseId);
   const router = useRouter();
   const [progress, setProgress] = useState<LearnProgress | null>(null);
@@ -223,11 +226,79 @@ export default function CourseLadderPage() {
 
   let nodeSeq = 0; // for the zig-zag sine offset
 
+  // The status cards: the right rail on desktop, appended to the scroll
+  // column on a phone.
+  const rail = (
+    <>
+        {(!entLoaded || summit) ? (
+          // Active plan — calm, no hard sell. Optimistic while entitlement
+          // loads (like the rest of the page) so a Summit user never flashes
+          // the upsell card.
+          <div style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 18, padding: 20 }}>
+            <span style={{ display: "inline-block", background: T.kube, color: "#fff", fontFamily: T.mono, fontWeight: 600, fontSize: 11, letterSpacing: ".14em", textTransform: "uppercase", padding: "4px 10px", borderRadius: 7 }}>{entitlement?.tier ? TIER_LABEL[entitlement.tier] : "Kube Summit"}</span>
+            <div style={{ fontFamily: T.display, fontWeight: 600, fontSize: 18, color: T.ink, marginTop: 12 }}>Your climb is unlocked.</div>
+            <p style={{ fontSize: 13, lineHeight: 1.5, color: T.inkSoft, margin: "6px 0 0" }}>
+              {entitlement?.expiresAt
+                ? `Yours through ${new Date(entitlement.expiresAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}.`
+                : "Every circle, the tutor, and your plan — all on."}
+            </p>
+          </div>
+        ) : (
+          // Tree behind glass — warm upsell, never a scold.
+          <div style={{ background: T.kubeSoft, border: `1px solid ${T.kubeLine}`, borderRadius: 18, padding: 20 }}>
+            <span style={{ display: "inline-block", background: T.kube, color: "#fff", fontFamily: T.mono, fontWeight: 600, fontSize: 11, letterSpacing: ".14em", textTransform: "uppercase", padding: "4px 10px", borderRadius: 7 }}>Kube Summit</span>
+            <div style={{ fontFamily: T.display, fontWeight: 600, fontSize: 19, color: T.ink, marginTop: 13 }}>Ready when you are.</div>
+            <p style={{ fontSize: 13.5, lineHeight: 1.5, color: T.inkSoft, margin: "7px 0 0" }}>Your tree is built and waiting. Summit turns every circle tappable — the full teaching, your daily plan, and the tutor on tap.</p>
+            <Link href="/learn/upgrade" style={{ display: "block", textAlign: "center", width: "100%", marginTop: 16, background: T.kube, color: "#fff", border: "none", borderRadius: 13, padding: 13, fontFamily: T.mono, fontWeight: 600, fontSize: 12.5, letterSpacing: ".1em", textTransform: "uppercase", cursor: "pointer", boxShadow: "0 4px 0 rgba(20,32,43,.18)" }}>Unlock with Summit</Link>
+          </div>
+        )}
+
+        <div style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 18, padding: 20 }}>
+          <span style={{ fontFamily: T.mono, fontWeight: 600, fontSize: 11, letterSpacing: ".14em", textTransform: "uppercase", color: T.faint }}>{course?.code} · your climb</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 14 }}>
+            <svg width="72" height="72" viewBox="0 0 72 72" style={{ flex: "none" }}>
+              <circle cx="36" cy="36" r="30" fill="none" stroke={T.line} strokeWidth="8" />
+              <circle cx="36" cy="36" r="30" fill="none" stroke={T.kube} strokeWidth="8" strokeLinecap="round" strokeDasharray={`${(circ * pct / 100).toFixed(1)} ${circ.toFixed(1)}`} transform="rotate(-90 36 36)" />
+            </svg>
+            <div>
+              <div style={{ fontFamily: T.display, fontWeight: 600, fontSize: 22, color: T.ink }}>{done}<span style={{ color: T.faint, fontSize: 15 }}> / {total}</span></div>
+              <div style={{ fontSize: 13, color: T.inkSoft, marginTop: 2 }}>topics climbed</div>
+            </div>
+          </div>
+          {curTopic && (
+            <Link href={summit ? `/learn/${params.courseId}/lesson/${curTopic.id}` : "/learn/upgrade"} style={{ display: "block", width: "100%", marginTop: 16, background: summit ? T.kube : T.amber, color: "#fff", borderRadius: 13, padding: "13px 14px", fontFamily: T.mono, fontWeight: 600, fontSize: 11.5, letterSpacing: ".06em", textTransform: "uppercase", textAlign: "center", boxShadow: summit ? "0 4px 0 rgba(20,32,43,.18)" : "0 4px 0 rgba(150,92,16,.4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{summit ? `Continue: ${curTopic.title}` : "Unlock with Summit"}</Link>
+          )}
+        </div>
+
+        <Link href={`/learn/${params.courseId}/exam`} style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 18, padding: "18px 20px", display: "flex", gap: 13, alignItems: "flex-start" }}>
+          <span style={{ flex: "none", display: "grid", placeItems: "center", width: 44, height: 44, borderRadius: 12, background: T.amberSoft }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={T.amber} strokeWidth="2" strokeLinejoin="round"><path d="M6 4h9l3 3v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z" /><path d="M9 13.5l2 2 4-4" strokeLinecap="round" /></svg>
+          </span>
+          <span>
+            <span style={{ display: "block", fontFamily: T.display, fontWeight: 600, fontSize: 17, color: T.ink }}>Mock exam</span>
+            <span style={{ display: "block", fontSize: 13, lineHeight: 1.5, color: T.inkSoft, marginTop: 4 }}>{hub == null ? "Past-paper questions across the whole course." : hub.tries > 0 ? `Best ${hub.best}% · try #${hub.tries + 1} — sit it again.` : "First attempt not taken — sit the past-paper set."}</span>
+          </span>
+        </Link>
+
+        <Link href={`/learn/${params.courseId}/mistakes`} style={{ background: T.card, border: `1px solid ${hub && hub.redo > 0 ? T.red : T.line}`, borderRadius: 18, padding: "18px 20px", display: "flex", gap: 13, alignItems: "flex-start" }}>
+          <span style={{ flex: "none", display: "grid", placeItems: "center", width: 44, height: 44, borderRadius: 12, background: T.redSoft }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={T.red} strokeWidth="2" strokeLinejoin="round"><path d="M12 3l9 16H3l9-16z" /><path d="M12 10v4M12 17v.5" strokeLinecap="round" /></svg>
+          </span>
+          <span>
+            <span style={{ display: "block", fontFamily: T.display, fontWeight: 600, fontSize: 17, color: T.ink }}>{hub && hub.redo > 0 ? `${hub.redo} to redo` : "Mistakes & flags"}</span>
+            <span style={{ display: "block", fontSize: 13, lineHeight: 1.5, color: T.inkSoft, marginTop: 4 }}>Missed &amp; flagged questions from your mistakes, waiting to be cleared.</span>
+          </span>
+        </Link>
+    </>
+  );
+
+
   return (
     <div style={{ display: "flex", height: "100dvh", width: "100%", background: T.bgDeep, color: T.ink, fontFamily: T.body, overflow: "hidden" }}>
       {opening && <OpeningAnimation accent={T.kube} onDone={() => setOpening(false)} />}
 
-      {/* ── Left sidebar ── */}
+      {/* ── Left sidebar (desktop; a bottom tab bar replaces it on phones) ── */}
+      {!isMobile && (
       <aside style={{ width: 256, flex: "none", background: T.card, borderRight: `1px solid ${T.line}`, display: "flex", flexDirection: "column", padding: "22px 14px 16px" }}>
         <div style={{ display: "flex", alignItems: "baseline", padding: "4px 10px 22px", fontFamily: T.display, fontWeight: 600, fontSize: 23, letterSpacing: "-.02em", lineHeight: 1 }}>
           <span style={{ color: T.ink }}>Studying</span><span style={{ color: T.kube }}>Kube</span>
@@ -261,11 +332,12 @@ export default function CourseLadderPage() {
           </button>
         </div>
       </aside>
+      )}
 
       {/* ── Centre column ── */}
-      <main ref={mainRef} onScroll={onScroll} style={{ flex: 1, minWidth: 0, overflowY: "auto", position: "relative" }}>
+      <main ref={mainRef} onScroll={onScroll} style={{ flex: 1, minWidth: 0, overflowY: "auto", position: "relative", paddingBottom: isMobile ? MOBILE_TABS_H + 12 : 0 }}>
         {/* Sticky header */}
-        <div style={{ position: "sticky", top: 0, zIndex: 40, padding: "16px 32px", background: T.bgDeep }}>
+        <div style={{ position: "sticky", top: 0, zIndex: 40, padding: isMobile ? "12px 16px" : "16px 32px", background: T.bgDeep }}>
           <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 10, marginBottom: 12 }}>
             {owned && (
               <Link href={`/learn/${params.courseId}/manage`} title="Add files, rename, or delete" style={{ display: "flex", alignItems: "center", gap: 8, background: T.card, border: `1px solid ${T.line}`, borderRadius: 14, padding: "10px 14px", color: T.inkSoft, fontFamily: T.mono, fontWeight: 600, fontSize: 11.5, letterSpacing: ".06em", textTransform: "uppercase" }}>
@@ -457,71 +529,24 @@ export default function CourseLadderPage() {
               <Link href="/learn/upgrade" style={{ display: "inline-block", marginTop: 12, background: T.kube, color: "#fff", borderRadius: 12, padding: "10px 18px", fontFamily: T.mono, fontWeight: 600, fontSize: 12, letterSpacing: ".08em", textTransform: "uppercase" }}>Unlock Kube</Link>
             </div>
           )}
+
+          {isMobile && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 18, marginTop: 22 }}>{rail}</div>
+          )}
         </div>
       </main>
 
-      {/* ── Right rail ── */}
+      {/* ── Right rail (desktop). On a phone the same cards are appended to
+           the scroll column instead, so nothing is lost. ── */}
+      {!isMobile && (
       <aside style={{ width: 352, flex: "none", background: T.bgDeep, borderLeft: `1px solid ${T.line}`, overflowY: "auto", padding: "24px 22px", display: "flex", flexDirection: "column", gap: 18 }}>
-        {(!entLoaded || summit) ? (
-          // Active plan — calm, no hard sell. Optimistic while entitlement
-          // loads (like the rest of the page) so a Summit user never flashes
-          // the upsell card.
-          <div style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 18, padding: 20 }}>
-            <span style={{ display: "inline-block", background: T.kube, color: "#fff", fontFamily: T.mono, fontWeight: 600, fontSize: 11, letterSpacing: ".14em", textTransform: "uppercase", padding: "4px 10px", borderRadius: 7 }}>{entitlement?.tier ? TIER_LABEL[entitlement.tier] : "Kube Summit"}</span>
-            <div style={{ fontFamily: T.display, fontWeight: 600, fontSize: 18, color: T.ink, marginTop: 12 }}>Your climb is unlocked.</div>
-            <p style={{ fontSize: 13, lineHeight: 1.5, color: T.inkSoft, margin: "6px 0 0" }}>
-              {entitlement?.expiresAt
-                ? `Yours through ${new Date(entitlement.expiresAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}.`
-                : "Every circle, the tutor, and your plan — all on."}
-            </p>
-          </div>
-        ) : (
-          // Tree behind glass — warm upsell, never a scold.
-          <div style={{ background: T.kubeSoft, border: `1px solid ${T.kubeLine}`, borderRadius: 18, padding: 20 }}>
-            <span style={{ display: "inline-block", background: T.kube, color: "#fff", fontFamily: T.mono, fontWeight: 600, fontSize: 11, letterSpacing: ".14em", textTransform: "uppercase", padding: "4px 10px", borderRadius: 7 }}>Kube Summit</span>
-            <div style={{ fontFamily: T.display, fontWeight: 600, fontSize: 19, color: T.ink, marginTop: 13 }}>Ready when you are.</div>
-            <p style={{ fontSize: 13.5, lineHeight: 1.5, color: T.inkSoft, margin: "7px 0 0" }}>Your tree is built and waiting. Summit turns every circle tappable — the full teaching, your daily plan, and the tutor on tap.</p>
-            <Link href="/learn/upgrade" style={{ display: "block", textAlign: "center", width: "100%", marginTop: 16, background: T.kube, color: "#fff", border: "none", borderRadius: 13, padding: 13, fontFamily: T.mono, fontWeight: 600, fontSize: 12.5, letterSpacing: ".1em", textTransform: "uppercase", cursor: "pointer", boxShadow: "0 4px 0 rgba(20,32,43,.18)" }}>Unlock with Summit</Link>
-          </div>
-        )}
-
-        <div style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 18, padding: 20 }}>
-          <span style={{ fontFamily: T.mono, fontWeight: 600, fontSize: 11, letterSpacing: ".14em", textTransform: "uppercase", color: T.faint }}>{course?.code} · your climb</span>
-          <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 14 }}>
-            <svg width="72" height="72" viewBox="0 0 72 72" style={{ flex: "none" }}>
-              <circle cx="36" cy="36" r="30" fill="none" stroke={T.line} strokeWidth="8" />
-              <circle cx="36" cy="36" r="30" fill="none" stroke={T.kube} strokeWidth="8" strokeLinecap="round" strokeDasharray={`${(circ * pct / 100).toFixed(1)} ${circ.toFixed(1)}`} transform="rotate(-90 36 36)" />
-            </svg>
-            <div>
-              <div style={{ fontFamily: T.display, fontWeight: 600, fontSize: 22, color: T.ink }}>{done}<span style={{ color: T.faint, fontSize: 15 }}> / {total}</span></div>
-              <div style={{ fontSize: 13, color: T.inkSoft, marginTop: 2 }}>topics climbed</div>
-            </div>
-          </div>
-          {curTopic && (
-            <Link href={summit ? `/learn/${params.courseId}/lesson/${curTopic.id}` : "/learn/upgrade"} style={{ display: "block", width: "100%", marginTop: 16, background: summit ? T.kube : T.amber, color: "#fff", borderRadius: 13, padding: "13px 14px", fontFamily: T.mono, fontWeight: 600, fontSize: 11.5, letterSpacing: ".06em", textTransform: "uppercase", textAlign: "center", boxShadow: summit ? "0 4px 0 rgba(20,32,43,.18)" : "0 4px 0 rgba(150,92,16,.4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{summit ? `Continue: ${curTopic.title}` : "Unlock with Summit"}</Link>
-          )}
-        </div>
-
-        <Link href={`/learn/${params.courseId}/exam`} style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 18, padding: "18px 20px", display: "flex", gap: 13, alignItems: "flex-start" }}>
-          <span style={{ flex: "none", display: "grid", placeItems: "center", width: 44, height: 44, borderRadius: 12, background: T.amberSoft }}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={T.amber} strokeWidth="2" strokeLinejoin="round"><path d="M6 4h9l3 3v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z" /><path d="M9 13.5l2 2 4-4" strokeLinecap="round" /></svg>
-          </span>
-          <span>
-            <span style={{ display: "block", fontFamily: T.display, fontWeight: 600, fontSize: 17, color: T.ink }}>Mock exam</span>
-            <span style={{ display: "block", fontSize: 13, lineHeight: 1.5, color: T.inkSoft, marginTop: 4 }}>{hub == null ? "Past-paper questions across the whole course." : hub.tries > 0 ? `Best ${hub.best}% · try #${hub.tries + 1} — sit it again.` : "First attempt not taken — sit the past-paper set."}</span>
-          </span>
-        </Link>
-
-        <Link href={`/learn/${params.courseId}/mistakes`} style={{ background: T.card, border: `1px solid ${hub && hub.redo > 0 ? T.red : T.line}`, borderRadius: 18, padding: "18px 20px", display: "flex", gap: 13, alignItems: "flex-start" }}>
-          <span style={{ flex: "none", display: "grid", placeItems: "center", width: 44, height: 44, borderRadius: 12, background: T.redSoft }}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={T.red} strokeWidth="2" strokeLinejoin="round"><path d="M12 3l9 16H3l9-16z" /><path d="M12 10v4M12 17v.5" strokeLinecap="round" /></svg>
-          </span>
-          <span>
-            <span style={{ display: "block", fontFamily: T.display, fontWeight: 600, fontSize: 17, color: T.ink }}>{hub && hub.redo > 0 ? `${hub.redo} to redo` : "Mistakes & flags"}</span>
-            <span style={{ display: "block", fontSize: 13, lineHeight: 1.5, color: T.inkSoft, marginTop: 4 }}>Missed &amp; flagged questions from your mistakes, waiting to be cleared.</span>
-          </span>
-        </Link>
+        {rail}
       </aside>
+      )}
+
+      {isMobile && <MobileTabs courseId={params.courseId} active="Learn" />}
     </div>
   );
 }
+
+
