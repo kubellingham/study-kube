@@ -21,6 +21,8 @@ export default function ManageCoursePage() {
   const [savedBase, setSavedBase] = useState({ code: "", title: "" });
   const [saveMsg, setSaveMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [rechecking, setRechecking] = useState(false);
+  const [recheckMsg, setRecheckMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [confirm, setConfirm] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [delErr, setDelErr] = useState<string | null>(null);
@@ -77,6 +79,19 @@ export default function ManageCoursePage() {
     } catch (err) {
       setSaveMsg({ ok: false, text: err instanceof Error ? err.message : "Could not save." });
     } finally { setSaving(false); }
+  }
+
+  async function recheck() {
+    setRechecking(true); setRecheckMsg(null);
+    try {
+      const res = await authedFetch(`/api/course/${params.courseId}/recheck`, { method: "POST" });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "The answer check failed.");
+      setRecheckMsg({ ok: true, text: d.note });
+      reload();
+    } catch (err) {
+      setRecheckMsg({ ok: false, text: err instanceof Error ? err.message : "The answer check failed." });
+    } finally { setRechecking(false); }
   }
 
   async function del() {
@@ -140,6 +155,33 @@ export default function ManageCoursePage() {
           {saving ? "Saving…" : "Save changes"}
         </button>
       </form>
+
+      {/* Re-mark. Kube writes the question, the options and the answer key in
+          one pass, and it can point at the wrong row — so a second checker
+          re-solves everything without seeing the key. New material goes through
+          this automatically; this button re-marks what's already built. */}
+      <div className="k-card mt-6 px-6 py-6">
+        <h2 className="text-lg font-semibold">Re-check the answers</h2>
+        <p className="mt-1 text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>
+          Kube solves every question in this subject again — from scratch, without looking at its
+          own answer key — and fixes any that were marked wrong. Costs a fraction of a cent and
+          leaves your progress alone.
+        </p>
+        {recheckMsg && (
+          <p className="mt-3 text-sm leading-relaxed" style={{ color: recheckMsg.ok ? "var(--kube)" : "var(--red)" }}>
+            {recheckMsg.text}
+          </p>
+        )}
+        <button
+          type="button"
+          onClick={recheck}
+          disabled={rechecking}
+          className="mt-4 rounded-xl px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+          style={{ background: "var(--kube)" }}
+        >
+          {rechecking ? "Re-marking every question…" : "Re-check the answers"}
+        </button>
+      </div>
 
       {/* Danger zone */}
       <div className="mt-6 rounded-2xl border px-6 py-6" style={{ borderColor: "var(--red)", background: "var(--red-soft)" }}>

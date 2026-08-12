@@ -181,7 +181,14 @@ export default function KubeChat({
                   <RichInline text={t.intro ?? ""} />
                 </p>
                 <div className="flex flex-col gap-2">
-                  {[...t.options, WALK_ME_THROUGH].map((opt, oi) => (
+                  {/* The model sometimes offers its own "walk me through it"
+                      line, which then appeared twice next to ours. */}
+                  {[
+                    ...t.options.filter(
+                      (o) => o.trim().toLowerCase() !== WALK_ME_THROUGH.toLowerCase()
+                    ),
+                    WALK_ME_THROUGH,
+                  ].map((opt, oi) => (
                     <button
                       key={oi}
                       disabled={busy || i !== lastIdx}

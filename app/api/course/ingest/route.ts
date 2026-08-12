@@ -29,9 +29,16 @@ import {
   normalizeCourse,
   type GenMode,
 } from "@/lib/course/generate";
+import {
+  verifyLessons,
+  verifyExamQuestions,
+  emptyReport,
+  reportLine,
+  type VerifyReport,
+} from "@/lib/course/verify";
 import type { Section, ExamQuestion, IngestedFile } from "@/lib/course/types";
 import { UsageMeter, formatCost } from "@/lib/usage";
-import { CLIMB_PRICE_IN, CLIMB_PRICE_OUT, SUMMIT_PRICE_IN, SUMMIT_PRICE_OUT, SUMMIT_MODEL, SUMMIT_VISION_MODEL } from "@/lib/openrouter";
+import { CLIMB_PRICE_IN, CLIMB_PRICE_OUT, SUMMIT_PRICE_IN, SUMMIT_PRICE_OUT, SUMMIT_MODEL, SUMMIT_VISION_MODEL, CHAT_BUDGET_MODEL } from "@/lib/openrouter";
 
 export const runtime = "nodejs";
 // 300s is the hard ceiling on Vercel's Hobby plan — it can't be raised. The
@@ -73,6 +80,56 @@ async function drillWithinBudget<T, R>(
     softDeadline(budgetMs),
   ]);
   return { results, complete: outcome === "complete" };
+}
+
+// Answer-checking is cheap (questions only — no material) but it must never be
+// the reason a paid digest fails to save. It gets its own small budget, and on
+// timeout the unit ships exactly as authored.
+const VERIFY_BUDGET_MS = 45_000;
+
+/** Re-mark a freshly generated unit: every drill check and every exam question
+ *  is solved again, independently, by a checker that never sees the key. See
+ *  lib/course/verify.ts for why this exists. Returns the unit unchanged if the
+ *  checker can't finish in its budget. */
+async function checkAnswers<
+  G extends {
+    topics: { title: string; lessons: { steps: unknown[] }[] }[];
+    examQuestions: { prompt: string; options: string[]; answer: number }[];
+  },
+>(generated: G, model: string, meter: UsageMeter): Promise<{ generated: G; report: VerifyReport }> {
+  const work = (async () => {
+    let report = emptyReport();
+    const topics = await mapWithConcurrency(generated.topics, 3, async (t) => {
+      const r = await verifyLessons(
+        t.lessons as { steps: { kind: string; prompt?: string; code?: string; options?: string[]; answer?: number }[] }[],
+        t.title,
+        { model, meter }
+      ).catch(() => null);
+      if (!r) return t;
+      report = {
+        checked: report.checked + r.report.checked,
+        repaired: report.repaired + r.report.repaired,
+        dropped: report.dropped + r.report.dropped,
+        unverified: report.unverified + r.report.unverified,
+      };
+      return { ...t, lessons: r.lessons };
+    });
+    const ex = await verifyExamQuestions(generated.examQuestions, { model, meter }).catch(() => null);
+    if (ex) {
+      report = {
+        checked: report.checked + ex.report.checked,
+        repaired: report.repaired + ex.report.repaired,
+        dropped: report.dropped + ex.report.dropped,
+        unverified: report.unverified + ex.report.unverified,
+      };
+    }
+    return {
+      generated: { ...generated, topics, examQuestions: ex ? ex.questions : generated.examQuestions } as G,
+      report,
+    };
+  })();
+  const outcome = await Promise.race([work, softDeadline(VERIFY_BUDGET_MS)]);
+  return outcome === "timeout" ? { generated, report: emptyReport() } : outcome;
 }
 
 const MAX_FILE_BYTES = 4 * 1024 * 1024; // fallback multipart path only
@@ -130,6 +187,11 @@ export async function POST(req: NextRequest) {
   // engine whenever the owner isn't on the premium path — one funded key runs
   // the whole pipeline instead of stalling on an empty Anthropic balance.
   const useBudgetSteps = !owner && budgetEngineReady();
+  // The answer checker always runs on the budget engine, on every tier. It sees
+  // questions only — never the source material — so it's a rounding error on
+  // the bill, and marking a wrong answer right is the one failure no tier can
+  // be allowed to ship.
+  const checkerModel = CHAT_BUDGET_MODEL;
   // Set once the body is parsed: "file" = build strictly from the upload;
   // "augmented" = the upload leads, Kube's own knowledge fills its gaps.
   let genMode: GenMode = "file";
@@ -315,7 +377,9 @@ export async function POST(req: NextRequest) {
           return lessons;
         });
         await Promise.race([examP, softDeadline(4000)]);
-        const generated = composeGeneratedUnit(skeleton, lessonsByTopic, examQuestions);
+        const composed = composeGeneratedUnit(skeleton, lessonsByTopic, examQuestions);
+        await setJob({ note: "Checking every answer key…" });
+        const { generated, report: vr } = await checkAnswers(composed, checkerModel, meter);
 
         let added = 0;
         let addedQ = 0;
@@ -340,9 +404,10 @@ export async function POST(req: NextRequest) {
             updatedAt: Date.now(),
           });
         });
-        const kNote = complete
+        const kBase = complete
           ? `Built ${added} concept${added === 1 ? "" : "s"} from your outline. Add your notes anytime to ground it in your exact course.`
           : `Built ${added} concept${added === 1 ? "" : "s"} before time ran out — your ladder's up and saved. Add your unit files to go deeper.`;
+        const kNote = reportLine(vr) ? `${kBase} (Answer check: ${reportLine(vr)}.)` : kBase;
         await setJob({ status: "done", cost: meter.summary(), note: kNote });
         return;
       }
@@ -411,7 +476,15 @@ export async function POST(req: NextRequest) {
         if (isClimbOnly) {
           const skeleton = await generateUnitSkeletonCheap(courseTitle, unitNumber, rawText, existingTopics, images, meter);
           await setJob({ note: `Mapped ${skeleton.topics.length} concept${skeleton.topics.length === 1 ? "" : "s"} — writing your practice & exams…` });
-          const questionsRaw = await generateExamBankCheap(courseTitle, unitNumber, rawText, skeleton.topics, images, meter).catch(() => []);
+          const rawQuestions = await generateExamBankCheap(courseTitle, unitNumber, rawText, skeleton.topics, images, meter).catch(() => []);
+          await setJob({ note: "Checking every answer key…" });
+          const climbCheck = await Promise.race([
+            verifyExamQuestions(rawQuestions, { model: checkerModel, meter }).catch(() => null),
+            softDeadline(VERIFY_BUDGET_MS),
+          ]);
+          const questionsRaw =
+            climbCheck && climbCheck !== "timeout" ? climbCheck.questions : rawQuestions;
+          const climbReport = climbCheck && climbCheck !== "timeout" ? climbCheck.report : emptyReport();
           record.cost = meter.summary();
           let addedC = 0;
           let addedCQ = 0;
@@ -443,7 +516,9 @@ export async function POST(req: NextRequest) {
           await setJob({
             status: "done",
             cost: meter.summary(),
-            note: `Unit ${unitNumber} distilled — ${addedC} concept${addedC === 1 ? "" : "s"} with recap, flashcards & ${addedCQ} exam question${addedCQ === 1 ? "" : "s"}. Practice and notes are ready.`,
+            note:
+              `Unit ${unitNumber} distilled — ${addedC} concept${addedC === 1 ? "" : "s"} with recap, flashcards & ${addedCQ} exam question${addedCQ === 1 ? "" : "s"}. Practice and notes are ready.` +
+              (reportLine(climbReport) ? ` (Answer check: ${reportLine(climbReport)}.)` : ""),
           });
           return;
         }
@@ -477,7 +552,9 @@ export async function POST(req: NextRequest) {
           return lessons;
         });
         await Promise.race([examP, softDeadline(4000)]);
-        const generated = composeGeneratedUnit(skeleton, lessonsByTopic, examQuestions);
+        const composed = composeGeneratedUnit(skeleton, lessonsByTopic, examQuestions);
+        await setJob({ note: "Checking every answer key…" });
+        const { generated, report: vr } = await checkAnswers(composed, checkerModel, meter);
 
         record.cost = meter.summary();
         let added = 0;
@@ -522,9 +599,11 @@ export async function POST(req: NextRequest) {
         await setJob({
           status: "done",
           cost: meter.summary(),
-          note: complete
-            ? `Unit ${unitNumber} digested — ${added} new topic${added === 1 ? "" : "s"}, ${addedQ} exam question${addedQ === 1 ? "" : "s"}.`
-            : `Unit ${unitNumber}: saved the ${added} topic${added === 1 ? "" : "s"} that finished before time ran out (add this file again to build the rest onto the same unit).`,
+          note:
+            (complete
+              ? `Unit ${unitNumber} digested — ${added} new topic${added === 1 ? "" : "s"}, ${addedQ} exam question${addedQ === 1 ? "" : "s"}.`
+              : `Unit ${unitNumber}: saved the ${added} topic${added === 1 ? "" : "s"} that finished before time ran out (add this file again to build the rest onto the same unit).`) +
+            (reportLine(vr) ? ` (Answer check: ${reportLine(vr)}.)` : ""),
         });
         return;
       }
