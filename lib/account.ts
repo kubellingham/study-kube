@@ -21,4 +21,5 @@ export const USER_DATA_COLLECTIONS = [
   "practiceState",
   "questionFlags",
   "slideFeedback",
+  "studyPlan",
 ] as const;

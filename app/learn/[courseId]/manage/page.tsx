@@ -8,6 +8,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useCourse } from "@/lib/learn/use-course";
 import { authedFetch } from "@/lib/authed-fetch";
 import AddMaterial from "@/app/learn/components/AddMaterial";
+import { loadPlan, setCourseSemester, SEMESTERS } from "@/lib/learn/plan";
 
 const KIND_LABEL: Record<string, string> = { syllabus: "syllabus", unit: "unit", pastpaper: "past paper", notes: "notes" };
 
@@ -23,6 +24,7 @@ export default function ManageCoursePage() {
   const [saving, setSaving] = useState(false);
   const [rechecking, setRechecking] = useState(false);
   const [recheckMsg, setRecheckMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [semester, setSemester] = useState<number | null>(null);
   const [confirm, setConfirm] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [delErr, setDelErr] = useState<string | null>(null);
@@ -38,6 +40,18 @@ export default function ManageCoursePage() {
       setSavedBase({ code: bundle.course.code, title: bundle.course.title });
     }
   }, [bundle]);
+
+  useEffect(() => {
+    if (!user) return;
+    loadPlan(user.uid).then((p) => setSemester(p.semesters[params.courseId] ?? null));
+  }, [user, params.courseId]);
+
+  /** File this subject under a semester — tapping the current one unfiles it. */
+  async function fileSemester(next: number | null) {
+    if (!user) return;
+    setSemester(next);
+    await setCourseSemester(user.uid, params.courseId, next).catch(() => {});
+  }
 
   if (userLoading || !user || status === "loading") {
     return <div className="flex-1 grid place-items-center text-sm" style={{ color: "var(--faint)" }}>Loading…</div>;
@@ -155,6 +169,36 @@ export default function ManageCoursePage() {
           {saving ? "Saving…" : "Save changes"}
         </button>
       </form>
+
+      {/* Which semester this subject belongs to. Groups the shelf on /learn so
+          the semester you're in is what you land on. */}
+      <div className="k-card mt-6 px-6 py-6">
+        <h2 className="text-lg font-semibold">Semester</h2>
+        <p className="mt-1 text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>
+          {semester === null
+            ? "Not filed yet. Pick a semester and this subject joins that shelf on your subjects page."
+            : `Filed under Semester ${semester}. Tap it again to unfile.`}
+        </p>
+        <div className="mt-4 flex flex-wrap gap-1.5">
+          {SEMESTERS.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => fileSemester(s === semester ? null : s)}
+              className="rounded-lg border text-sm font-semibold"
+              style={{
+                borderColor: s === semester ? "var(--kube)" : "var(--line)",
+                background: s === semester ? "var(--kube-soft)" : "var(--card)",
+                color: s === semester ? "var(--kube)" : "var(--ink-soft)",
+                minWidth: 40,
+                minHeight: 40,
+              }}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* Re-mark. Kube writes the question, the options and the answer key in
           one pass, and it can point at the wrong row — so a second checker

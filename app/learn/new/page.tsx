@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useUser } from "@/lib/use-user";
 import { authedFetch } from "@/lib/authed-fetch";
+import { loadPlan, setCourseSemester } from "@/lib/learn/plan";
 
 export default function NewCoursePage() {
   const { user, loading } = useUser();
@@ -30,6 +31,14 @@ export default function NewCoursePage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not create the course.");
+      // A subject you add mid-semester almost always belongs to the semester
+      // you're in — file it there so the shelf stays sorted without asking.
+      if (user) {
+        const plan = await loadPlan(user.uid).catch(() => null);
+        if (plan?.currentSemester !== null && plan?.currentSemester !== undefined) {
+          await setCourseSemester(user.uid, data.id, plan.currentSemester).catch(() => {});
+        }
+      }
       router.push(`/learn/${data.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create the course.");
