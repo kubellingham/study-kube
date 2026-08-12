@@ -13,6 +13,7 @@ import type { ExamQuestion } from "@/lib/course/types";
 import { loadFlags, saveFlag, type Flags } from "@/lib/learn/flags";
 import { loadMistakes, clearMistake, type Mistakes } from "@/lib/learn/mistakes";
 import FlagButton from "@/app/learn/components/FlagButton";
+import { RichInline } from "@/app/learn/components/Rich";
 
 interface Entry {
   key: string;
@@ -195,7 +196,7 @@ export default function MistakesPage() {
                   <p className="mt-1 text-xs" style={{ color: "var(--kube)" }}>Answer: {e.answer}</p>
                 )}
                 {e.explanation && (
-                  <p className="mt-2 text-xs leading-relaxed" style={{ color: "var(--ink-soft)" }}>{e.explanation}</p>
+                  <p className="mt-2 text-xs leading-relaxed" style={{ color: "var(--ink-soft)" }}><RichInline text={e.explanation} /></p>
                 )}
                 <div className="mt-3 flex items-center gap-4 text-xs">
                   {e.topicId && (

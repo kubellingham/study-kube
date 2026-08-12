@@ -12,6 +12,7 @@ import { keyWords } from "@/lib/course/concepts";
 import { authedFetch } from "@/lib/authed-fetch";
 import { loadFlags, saveFlag, type Flags } from "@/lib/learn/flags";
 import FlagButton from "@/app/learn/components/FlagButton";
+import { RichInline } from "@/app/learn/components/Rich";
 
 type Level = "easy" | "normal" | "hard";
 const LEVELS: { id: Level; label: string; blurb: string }[] = [
@@ -256,13 +257,13 @@ export default function Definitions({
             {verdict.verdict === "right" ? (
               <div className="rounded-xl px-4 py-3" style={{ background: "var(--kube-soft)" }}>
                 <p className="text-sm font-semibold" style={{ color: "var(--kube)" }}>Right — in your own words counts.</p>
-                {verdict.note && <p className="mt-1 text-sm" style={{ color: "var(--ink-soft)" }}>{verdict.note}</p>}
+                {verdict.note && <p className="mt-1 text-sm" style={{ color: "var(--ink-soft)" }}><RichInline text={verdict.note} /></p>}
               </div>
             ) : verdict.verdict === "almost" ? (
               <div>
                 <p className="k-eyebrow" style={{ color: "var(--amber)" }}>almost there</p>
                 <p className="mt-1 text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>
-                  Closer wording: <span style={{ color: "var(--ink)" }}>{verdict.better}</span>
+                  Closer wording: <span style={{ color: "var(--ink)" }}><RichInline text={verdict.better} /></span>
                 </p>
                 {verdict.corrections && (
                   <>
@@ -283,7 +284,7 @@ export default function Definitions({
                               color: "var(--ink)",
                             }}
                           >
-                            {corr}
+                            <RichInline text={corr} />
                             {picked && (
                               <span className="mt-1 block text-xs" style={{ color: isBest ? "var(--kube)" : "var(--amber)" }}>
                                 {isBest ? "— yes, that's the one." : "— close, but the other is sharper."}
@@ -299,7 +300,7 @@ export default function Definitions({
             ) : (
               <div className="rounded-xl px-4 py-3" style={{ background: "var(--red-soft)" }}>
                 <p className="text-sm font-semibold" style={{ color: "var(--red)" }}>Not quite — here&apos;s the idea:</p>
-                <p className="mt-1 text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>{verdict.better}</p>
+                <p className="mt-1 text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}><RichInline text={verdict.better} /></p>
               </div>
             )}
 

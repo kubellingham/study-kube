@@ -7,6 +7,7 @@
 // SM-2-lite schedule — no Kube override. Deck-end whispers what's due soon.
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Concept } from "@/lib/course/concepts";
+import { RichInline } from "@/app/learn/components/Rich";
 import {
   bySpacing,
   nextCardState,
@@ -179,7 +180,7 @@ export default function Flashcards({
         {!flipped ? (
           <p className="text-base font-semibold leading-snug" style={{ color: "var(--ink)" }}>{card.term}</p>
         ) : (
-          <p className="text-[13px] leading-snug" style={{ color: "var(--ink-soft)" }}>{card.brief}</p>
+          <p className="text-[13px] leading-snug" style={{ color: "var(--ink-soft)" }}><RichInline text={card.brief} /></p>
         )}
       </div>
 

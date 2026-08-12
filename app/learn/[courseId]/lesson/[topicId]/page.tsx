@@ -34,7 +34,7 @@ import {
 } from "@/lib/learn/feedback";
 import { loadFlags, saveFlag, flagKey, type Flags } from "@/lib/learn/flags";
 import FlagButton from "@/app/learn/components/FlagButton";
-import Rich from "@/app/learn/components/Rich";
+import Rich, { RichInline } from "@/app/learn/components/Rich";
 import Diagram from "@/app/learn/components/Diagram";
 import KubeChat, {
   type KubeChatContext,
@@ -302,7 +302,7 @@ function CheckCard({
         <span className="k-eyebrow">{mode === "assess" ? "review — this one counts" : "check yourself"}</span>
         <FlagButton on={flagged} onToggle={onFlag} size={16} />
       </div>
-      <h2 className="mt-1 text-xl leading-snug">{step.prompt}</h2>
+      <h2 className="mt-1 text-xl leading-snug"><RichInline text={step.prompt} /></h2>
       {step.code && <pre className="k-code mt-4">{step.code}</pre>}
       <div className="mt-5 flex flex-col gap-3">
         {opts.options.map((opt, i) => {
@@ -329,7 +329,7 @@ function CheckCard({
                 color: isShaking ? "var(--red)" : "var(--ink)",
               }}
             >
-              {opt}
+              <RichInline text={opt} />
               {isSweeping && <SweepOverlay />}
             </button>
           );
@@ -347,7 +347,7 @@ function CheckCard({
       {passed && (
         <div className="k-rise mt-5 rounded-2xl px-4 py-4" style={{ background: "var(--kube-soft)" }}>
           <p className="text-sm leading-relaxed" style={{ color: "var(--kube)" }}>
-            {step.praise}
+            <RichInline text={step.praise} />
           </p>
           {mode === "assess" && missed && onAskKube && (
             <button
@@ -728,7 +728,7 @@ export default function TopicPage() {
             {isReview ? "Still yours." : "The whole circle is yours."}
           </h1>
           <p className="mt-2 max-w-sm text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>
-            {topic.whyItMatters}
+            <RichInline text={topic.whyItMatters} />
           </p>
           <div className="mt-7 flex w-full flex-col gap-3">
             {next ? (
@@ -777,7 +777,7 @@ export default function TopicPage() {
           </span>
           <h1 className="mt-2 text-2xl">{topic.title}</h1>
           <p className="mt-2 text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>
-            {topic.whyItMatters}
+            <RichInline text={topic.whyItMatters} />
           </p>
           <p className="mt-2 text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>
             {topic.review?.count ?? 5} questions on what you climbed earlier —
@@ -802,7 +802,7 @@ export default function TopicPage() {
       {header}
       <h1 className="text-2xl">{topic.title}</h1>
       <p className="mt-2 text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>
-        {topic.whyItMatters}
+        <RichInline text={topic.whyItMatters} />
       </p>
 
       {topicComplete && topic.recap.length > 0 && (
@@ -816,7 +816,7 @@ export default function TopicPage() {
                 <span aria-hidden style={{ color: "var(--kube)" }}>
                   ●
                 </span>
-                <span>{line}</span>
+                <span><RichInline text={line} /></span>
               </li>
             ))}
           </ul>

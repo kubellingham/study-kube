@@ -10,6 +10,7 @@
 import { useMemo, useRef, useState } from "react";
 import type { Concept } from "@/lib/course/concepts";
 import { confusableClusters } from "@/lib/course/concepts";
+import { RichInline } from "@/app/learn/components/Rich";
 
 const BOARD = 5;
 const DECK = 14;
@@ -248,7 +249,7 @@ export default function Matching({ pool }: { pool: Concept[] }) {
                   transform: isSnap ? "scale(0.9)" : "none",
                 }}
               >
-                {c.tell}
+                <RichInline text={c.tell} />
               </button>
             );
           })}

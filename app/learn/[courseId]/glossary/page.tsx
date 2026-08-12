@@ -7,6 +7,7 @@ import { useParams } from "next/navigation";
 import { useCourse } from "@/lib/learn/use-course";
 import { collectVocab } from "@/lib/learn/glossary";
 import { useCramLocked, CramLocked } from "@/app/learn/components/PlanGate";
+import { RichInline } from "@/app/learn/components/Rich";
 
 export default function GlossaryPage() {
   const params = useParams<{ courseId: string }>();
@@ -72,7 +73,7 @@ export default function GlossaryPage() {
                     lesson →
                   </Link>
                 </dt>
-                <dd className="mt-1 text-[0.8125rem] leading-relaxed" style={{ color: "var(--ink-soft)" }}>{v.def}</dd>
+                <dd className="mt-1 text-[0.8125rem] leading-relaxed" style={{ color: "var(--ink-soft)" }}><RichInline text={v.def} /></dd>
               </div>
             ))}
           </dl>
@@ -110,7 +111,7 @@ export default function GlossaryPage() {
                       <span aria-hidden style={{ color: "var(--kube-line)" }}>
                         ●
                       </span>
-                      <span>{line}</span>
+                      <span><RichInline text={line} /></span>
                     </li>
                   ))}
                 </ul>

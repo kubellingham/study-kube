@@ -7,7 +7,7 @@
 // Strictly lesson-scoped; conversation lives with the parent, one per slide.
 import { useEffect, useRef, useState } from "react";
 import { authedFetch } from "@/lib/authed-fetch";
-import Rich from "@/app/learn/components/Rich";
+import Rich, { RichInline } from "@/app/learn/components/Rich";
 
 export interface KubeChatContext {
   courseTitle: string;
@@ -178,7 +178,7 @@ export default function KubeChat({
               /* Clarify: locate the snag before any teaching happens. */
               <div key={i} className="mr-4 space-y-2">
                 <p className="text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>
-                  {t.intro}
+                  <RichInline text={t.intro ?? ""} />
                 </p>
                 <div className="flex flex-col gap-2">
                   {[...t.options, WALK_ME_THROUGH].map((opt, oi) => (
@@ -193,7 +193,7 @@ export default function KubeChat({
                         background: "var(--card)",
                       }}
                     >
-                      {opt}
+                      <RichInline text={opt} />
                     </button>
                   ))}
                 </div>

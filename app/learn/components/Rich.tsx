@@ -39,6 +39,13 @@ function renderInline(text: string): React.ReactNode[] {
   });
 }
 
+/** The same inline markup, with NO paragraph wrapper — for the many one-line
+ *  places model prose shows up (praise, prompts, options, hints, explanations,
+ *  recap lines). Without this they render raw, e.g. a literal "**HT**". */
+export function RichInline({ text }: { text: string }) {
+  return <>{renderInline(text)}</>;
+}
+
 export default function Rich({ body }: { body: string }) {
   return (
     <div className="space-y-3">

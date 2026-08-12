@@ -10,6 +10,7 @@ import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCourse } from "@/lib/learn/use-course";
 import { useCramLocked, CramLocked } from "@/app/learn/components/PlanGate";
+import { RichInline } from "@/app/learn/components/Rich";
 import type { ExamQuestion } from "@/lib/course/types";
 import { shuffledOptions } from "@/lib/course/lessons";
 import {
@@ -259,7 +260,7 @@ function ChallengeInner() {
         </div>
 
         <div className="k-card mt-6 px-6 py-6">
-          <p className="text-lg leading-snug">{q.prompt}</p>
+          <p className="text-lg leading-snug"><RichInline text={q.prompt} /></p>
           {q.code && <pre className="k-code mt-4">{q.code}</pre>}
           <div className="mt-5 flex flex-col gap-2.5">
             {q.options.map((opt, i) => {
@@ -280,7 +281,7 @@ function ChallengeInner() {
                     color: "var(--ink)",
                   }}
                 >
-                  {opt}
+                  <RichInline text={opt} />
                 </button>
               );
             })}

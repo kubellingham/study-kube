@@ -16,6 +16,7 @@ import { saveExamAttempt } from "@/lib/learn/progress";
 import { loadFlags, saveFlag, type Flags } from "@/lib/learn/flags";
 import { loadMistakes, recordMistakes } from "@/lib/learn/mistakes";
 import FlagButton from "@/app/learn/components/FlagButton";
+import { RichInline } from "@/app/learn/components/Rich";
 
 type Mode = "open" | "closed";
 type TopicStatus = "solid" | "shaky" | "gap";
@@ -360,7 +361,7 @@ function ExamInner() {
 
         <div className="k-card k-rise mt-6 px-6 py-6" key={qIdx}>
           <div className="flex items-start justify-between gap-3">
-            <h2 className="text-xl leading-snug">{q.prompt}</h2>
+            <h2 className="text-xl leading-snug"><RichInline text={q.prompt} /></h2>
             <FlagButton on={!!flags[q.id]} onToggle={() => toggleFlag(q)} />
           </div>
           {q.code && <pre className="k-code mt-4">{q.code}</pre>}
@@ -386,7 +387,7 @@ function ExamInner() {
                   className="rounded-2xl border px-4 py-3 text-left text-sm font-medium"
                   style={st}
                 >
-                  {opt}
+                  <RichInline text={opt} />
                 </button>
               );
             })}
@@ -398,7 +399,7 @@ function ExamInner() {
               <p className="text-xs font-semibold" style={{ color: chosen === q.answer ? "var(--kube)" : "var(--red)" }}>
                 {chosen === q.answer ? "Right." : `Answer: ${q.options[q.answer]}`}
               </p>
-              <p className="mt-1 text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>{q.explanation}</p>
+              <p className="mt-1 text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}><RichInline text={q.explanation} /></p>
             </div>
           )}
 
@@ -409,7 +410,7 @@ function ExamInner() {
                   className="rounded-xl px-4 py-3 text-sm"
                   style={{ background: "var(--amber-soft)", color: "var(--amber)" }}
                 >
-                  {q.hint}
+                  <RichInline text={q.hint} />
                 </p>
               ) : (
                 <button
@@ -584,7 +585,7 @@ function ExamInner() {
               <div key={q.id} className="k-card px-5 py-4">
                 <p className="text-sm font-semibold" style={{ color: "var(--ink)" }}>{q.prompt}</p>
                 <p className="mt-1 text-xs" style={{ color: "var(--kube)" }}>Answer: {q.options[q.answer]}</p>
-                <p className="mt-2 text-xs leading-relaxed" style={{ color: "var(--ink-soft)" }}>{q.explanation}</p>
+                <p className="mt-2 text-xs leading-relaxed" style={{ color: "var(--ink-soft)" }}><RichInline text={q.explanation} /></p>
               </div>
             ))}
           </div>
@@ -616,7 +617,7 @@ function ExamInner() {
                     Answer: {q.options[q.answer]}
                   </p>
                   <p className="mt-2 text-xs leading-relaxed" style={{ color: "var(--ink-soft)" }}>
-                    {q.explanation}
+                    <RichInline text={q.explanation} />
                   </p>
                 </div>
               ))}
