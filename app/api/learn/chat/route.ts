@@ -3,6 +3,8 @@ import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { requireEntitlement } from "@/lib/entitlement-server";
 import { getAnthropic, CHAT_MODEL } from "@/lib/anthropic";
+import { chatJSON, CHAT_BUDGET_MODEL } from "@/lib/openrouter";
+import { budgetEngineReady } from "@/lib/course/generate";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -88,15 +90,7 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "Missing question or lesson." }, { status: 400 });
   }
 
-  const client = getAnthropic();
-  const stream = client.messages.stream({
-    model: CHAT_MODEL,
-    max_tokens: 1500,
-    output_config: { effort: "low", format: zodOutputFormat(replySchema) },
-    system: [
-      {
-        type: "text",
-        text: `${SYSTEM_BASE}
+  const SYSTEM = `${SYSTEM_BASE}
 
 Course: ${courseTitle}
 Current circle (topic): ${topicTitle}
@@ -106,20 +100,42 @@ Current slice: ${lessonTitle}
 ${lessonContent}
 
 --- TOPICS ALREADY CLIMBED (you may reference these by name) ---
-${coveredSoFar || "(nothing before this — it's the first circle)"}`,
-        cache_control: { type: "ephemeral" },
-      },
-    ],
-    messages: [...history, { role: "user" as const, content: question }],
-  });
+${coveredSoFar || "(nothing before this — it's the first circle)"}`;
+
+  // The reply is JSON either way; only the engine differs. Using the budget
+  // model keeps "Ask Kube" alive on the same funded key as digestion.
+  const useBudget = budgetEngineReady();
 
   try {
-    let jsonText = "";
-    for await (const event of stream) {
-      if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-        jsonText += event.delta.text;
+    let jsonText: string;
+    if (useBudget) {
+      const { data } = await chatJSON({
+        model: CHAT_BUDGET_MODEL,
+        system: SYSTEM,
+        content:
+          history.map((t) => `${t.role === "user" ? "STUDENT" : "KUBE"}: ${t.content}`).join("\n\n") +
+          (history.length ? "\n\n" : "") +
+          `STUDENT: ${question}\n\n` +
+          `Reply as JSON only, no prose or fences, exactly: {"kind":"clarify"|"answer","intro"?:string,"options"?:[string],"beats"?:[string]}`,
+        maxTokens: 1200,
+      });
+      jsonText = JSON.stringify(data);
+    } else {
+      const stream = getAnthropic().messages.stream({
+        model: CHAT_MODEL,
+        max_tokens: 1500,
+        output_config: { effort: "low", format: zodOutputFormat(replySchema) },
+        system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
+        messages: [...history, { role: "user" as const, content: question }],
+      });
+      jsonText = "";
+      for await (const event of stream) {
+        if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+          jsonText += event.delta.text;
+        }
       }
     }
+
     const reply = replySchema.parse(JSON.parse(jsonText));
     // Belt & braces: a malformed mix collapses to a plain answer.
     if (reply.kind === "answer" && (!reply.beats || reply.beats.length === 0)) {
@@ -135,9 +151,18 @@ ${coveredSoFar || "(nothing before this — it's the first circle)"}`,
       });
     }
     return Response.json(reply);
-  } catch {
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : "";
+    console.error("[chat] failed:", detail);
+    // Surface the cause when it's actionable (billing, missing key) rather
+    // than always showing the same dead-end line.
+    const billing = /credit|balance|quota|insufficient|401|403/i.test(detail);
     return Response.json(
-      { error: "Kube couldn't answer just now — try again." },
+      {
+        error: billing
+          ? "Kube's AI service is out of credit — top up the provider key to bring chat back."
+          : "Kube couldn't answer just now — try again.",
+      },
       { status: 502 }
     );
   }

@@ -2,6 +2,8 @@ import { NextRequest, after } from "next/server";
 import { getUid } from "@/lib/api-helpers";
 import { adminDb } from "@/lib/firebase/admin";
 import { getAnthropic, CHAT_MODEL } from "@/lib/anthropic";
+import { chatJSON, CHAT_BUDGET_MODEL } from "@/lib/openrouter";
+import { budgetEngineReady } from "@/lib/course/generate";
 import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 
@@ -75,26 +77,32 @@ export async function POST(req: NextRequest) {
   // Respond immediately; assess and record in the background.
   after(async () => {
     try {
-      const client = getAnthropic();
-      const stream = client.messages.stream({
-        model: CHAT_MODEL,
-        max_tokens: 800,
-        output_config: { effort: "low", format: zodOutputFormat(noteSchema) },
-        system:
-          "You assess a short tutoring chat that happened INSIDE one lesson slide, and write Kube's private note about it. Judge honestly: 'struggled' only when the student genuinely needed help understanding something (confusion, repeated questions, misconceptions) — not for curiosity, testing the tutor, or off-topic chatter.",
-        messages: [
-          {
-            role: "user",
-            content: `Topic: ${topicTitle}\nSlice: ${lessonTitle}\n\n--- CHAT TRANSCRIPT ---\n${transcript
-              .map((t) => `${t.role === "user" ? "STUDENT" : "KUBE"}: ${t.content}`)
-              .join("\n\n")}`,
-          },
-        ],
-      });
-      let jsonText = "";
-      for await (const event of stream) {
-        if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-          jsonText += event.delta.text;
+      const SYSTEM = "You assess a short tutoring chat that happened INSIDE one lesson slide, and write Kube's private note about it. Judge honestly: 'struggled' only when the student genuinely needed help understanding something (confusion, repeated questions, misconceptions) — not for curiosity, testing the tutor, or off-topic chatter.";
+      const userMsg = `Topic: ${topicTitle}\nSlice: ${lessonTitle}\n\n--- CHAT TRANSCRIPT ---\n${transcript
+        .map((t) => `${t.role === "user" ? "STUDENT" : "KUBE"}: ${t.content}`)
+        .join("\n\n")}`;
+      let jsonText: string;
+      if (budgetEngineReady()) {
+        const { data } = await chatJSON({
+          model: CHAT_BUDGET_MODEL,
+          system: SYSTEM,
+          content: userMsg + `\n\nReply as JSON only, no prose or fences, matching the note shape.`,
+          maxTokens: 800,
+        });
+        jsonText = JSON.stringify(data);
+      } else {
+        const stream = getAnthropic().messages.stream({
+          model: CHAT_MODEL,
+          max_tokens: 800,
+          output_config: { effort: "low", format: zodOutputFormat(noteSchema) },
+          system: SYSTEM,
+          messages: [{ role: "user", content: userMsg }],
+        });
+        jsonText = "";
+        for await (const event of stream) {
+          if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+            jsonText += event.delta.text;
+          }
         }
       }
       const note = noteSchema.parse(JSON.parse(jsonText));

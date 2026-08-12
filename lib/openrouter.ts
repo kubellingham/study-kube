@@ -19,6 +19,11 @@ export const CLIMB_VISION_MODEL = process.env.OPENROUTER_CLIMB_VISION_MODEL || "
 export const CLIMB_PRICE_IN = Number(process.env.OPENROUTER_CLIMB_PRICE_IN ?? 0.14);
 export const CLIMB_PRICE_OUT = Number(process.env.OPENROUTER_CLIMB_PRICE_OUT ?? 0.28);
 
+// The conversational engine: in-lesson "Ask Kube", the definitions-drill judge
+// and its background struggle-notes. High-volume, low-stakes turns — the budget
+// model fits, and it keeps chat working on the same funded key as digestion.
+export const CHAT_BUDGET_MODEL = process.env.OPENROUTER_CHAT_MODEL || CLIMB_MODEL;
+
 // Summit's engine. We're testing the deep tier on the lowest logical model
 // first (default = the same budget model as Climb) before deciding whether to
 // spend up. Set SUMMIT_ENGINE="sonnet" to run Summit on the premium Anthropic

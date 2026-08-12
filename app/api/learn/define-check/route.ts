@@ -3,6 +3,8 @@ import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { requireEntitlement } from "@/lib/entitlement-server";
 import { getAnthropic, CHAT_MODEL } from "@/lib/anthropic";
+import { chatJSON, CHAT_BUDGET_MODEL } from "@/lib/openrouter";
+import { budgetEngineReady } from "@/lib/course/generate";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -53,26 +55,34 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "Missing fields." }, { status: 400 });
   }
 
-  const client = getAnthropic();
-  const stream = client.messages.stream({
-    model: CHAT_MODEL,
-    max_tokens: 700,
-    output_config: { effort: "low", format: zodOutputFormat(verdictSchema) },
-    system:
-      "You judge whether a student's definition captures the MEANING of a concept, for a recall drill. Grade by meaning, NEVER by spelling or exact wording — the student's own words and correct synonyms are fully right. But do NOT be fooled by empty words or jargon that dodge the actual idea. Reward understanding; do not reward hollow phrasing. When it's ALMOST there, give your crisp better wording, then TWO candidate corrections to choose between (one clearly better, one plausible-but-off) so the student is taught into the fix. Warm, brief, never condescending — a miss is how it sticks.",
-    messages: [
-      {
-        role: "user",
-        content: `Concept: ${term}\nReference definition (the lesson's own): ${definition}\nDifficulty the student picked: ${level}\n\nStudent's answer: ${answer}`,
-      },
-    ],
-  });
+  const SYSTEM = "You judge whether a student's definition captures the MEANING of a concept, for a recall drill. Grade by meaning, NEVER by spelling or exact wording — the student's own words and correct synonyms are fully right. But do NOT be fooled by empty words or jargon that dodge the actual idea. Reward understanding; do not reward hollow phrasing. When it's ALMOST there, give your crisp better wording, then TWO candidate corrections to choose between (one clearly better, one plausible-but-off) so the student is taught into the fix. Warm, brief, never condescending — a miss is how it sticks.";
+  const userMsg = `Concept: ${term}\nReference definition (the lesson's own): ${definition}\nDifficulty the student picked: ${level}\n\nStudent's answer: ${answer}`;
 
   try {
-    let jsonText = "";
-    for await (const event of stream) {
-      if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-        jsonText += event.delta.text;
+    let jsonText: string;
+    if (budgetEngineReady()) {
+      const { data } = await chatJSON({
+        model: CHAT_BUDGET_MODEL,
+        system: SYSTEM,
+        content:
+          userMsg +
+          `\n\nReply as JSON only, no prose or fences, matching the verdict shape.`,
+        maxTokens: 700,
+      });
+      jsonText = JSON.stringify(data);
+    } else {
+      const stream = getAnthropic().messages.stream({
+        model: CHAT_MODEL,
+        max_tokens: 700,
+        output_config: { effort: "low", format: zodOutputFormat(verdictSchema) },
+        system: SYSTEM,
+        messages: [{ role: "user", content: userMsg }],
+      });
+      jsonText = "";
+      for await (const event of stream) {
+        if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+          jsonText += event.delta.text;
+        }
       }
     }
     const parsed = verdictSchema.parse(JSON.parse(jsonText));
