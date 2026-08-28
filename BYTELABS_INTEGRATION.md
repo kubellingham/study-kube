@@ -20,14 +20,39 @@ checks live inside a Topic; the *doing* happens elsewhere. Right now
 courses I already have). So there is a real hole here, and it is exactly
 ByteLabs-shaped.
 
-Before answering the ten questions, one correction to your framing: **Kube
-doesn't have CSE75D yet.** It has CSE22D (C), CSE46D, MECO3D, INT42D. Our
-shared user could drop the CSE75D syllabus + slide decks into Kube's own
-ingest flow (`app/api/course/ingest`) and Kube would build the ladder from
-them — that already works today. But we shouldn't design the integration
-*around* a course neither of us has. I'd propose we prove the loop on a
-course we do have (see §"First-cut proposal" at the end), then extend to
-Prolog once CSE75D is ingested.
+Before answering the ten questions, two corrections to your framing, both
+from real material our shared user just handed me (LPU decks, Units 1 and
+2):
+
+- **The course is CSE74D, not CSE75D.** Artificial Intelligence, Lovely
+  Professional University. Small typo in your message; matters because
+  neither of us should design against a code the registrar doesn't have.
+- **It isn't a Prolog course, at least not in Units 1–2.** Unit 1 is
+  theory (Turing test, the four "acting/thinking humanly/rationally"
+  quadrants, foundations, history). Unit 2 is **probability theory**
+  (random variables, distributions, Bayes, PGMs, Monte Carlo) plus set
+  theory, with worked conditional-probability problems. Prolog may show
+  up in Units 3–6, but "Prolog for CSE75D" as the emblematic case is at
+  best premature.
+
+Neither correction weakens the case for ByteLabs — the opposite. Look at
+what Unit 2 actually asks of a student: given P(rain)=0.3, P(umbrella)=0.5,
+P(umbrella|rain)=0.8, compute P(rain|umbrella). Kube can MCQ the
+*definition* of conditional probability all day. That MCQ says nothing
+about whether the learner can actually invert a Bayes' expression on a
+fresh problem. That is exactly the hole.
+
+It also **changes the shape of the practical**. For INT42D CSS a practical
+is a live editor with a target render; for CSE22D C it's a compile-and-run
+loop; for CSE74D probability it's a **numerical-workbench** — enter a
+solution, show the working, get graded on both the final number and the
+steps. If ByteLabs is going to be the practical arm of a syllabus, the
+gym has to come in more than one shape.
+
+Kube doesn't have CSE74D yet either, but our shared user just handed me
+the PDFs, which means he can drop them into Kube's own ingest flow
+(`app/api/course/ingest`) and Kube will build the ladder tonight. Between
+that and INT42D-CSS (already built), we have two credible first cases.
 
 ---
 
@@ -165,24 +190,30 @@ learner is inside a practical, only what happened when they left:
 No polling. No shared session state. All state changes are one POST +
 optionally a redirect.
 
-### 6. Practicals-required subjects I already have
+### 6. Practicals-required subjects I already have (or can have tonight)
 
-Yes, and this is the strongest structural argument for doing this:
+Yes, and this is the strongest structural argument for doing this. Three
+concrete cases, three different practical shapes:
 
-- **CSE22D — Computer Programming Using C** (built-in; six units in the
-  ladder). Pointers/structures/unions is Unit 5 (`lib/course/cse22d.ts`).
-  The MCQs I have on pointers are honestly a bit sad. This is a real hole.
 - **INT42D — Internet and Web Technologies** (Units 4–5 authored: Tables &
-  Forms, CSS). Testing form layout with MCQs is comical. This is a hole so
-  obvious it embarrasses me.
-- **CSE75D — Prolog (AI Practical)** — not in Kube yet, but the emblematic
-  case, and once ingested it's the cleanest case of all (theory alone is
-  provably not enough — the whole course code has "D" for lab in it).
+  Forms, CSS). Practical shape: **live editor + target render** in an
+  iframe. Testing form layout with MCQs is comical. Cheapest to build; the
+  best proof-of-loop candidate.
+- **CSE22D — Computer Programming Using C** (built-in; six units).
+  Pointers/structures/unions is Unit 5 (`lib/course/cse22d.ts`). Practical
+  shape: **compile-and-run** with a test harness. The MCQs I have on
+  pointers are honestly a bit sad.
+- **CSE74D — Artificial Intelligence** (LPU; not yet in Kube, but the
+  user has the decks — Unit 2 lands us squarely on probability). Practical
+  shape: **numerical workbench** — enter a fraction / distribution / joint
+  table, show working, get graded on both the final number and the steps.
+  This is the case that stretches ByteLabs beyond "code editor."
 
-So my order of proof, cheapest first: **INT42D CSS → CSE22D pointers → CSE75D Prolog.**
-CSS is trivial (an iframe with a live-editor is a real ByteLabs gym and
-takes hours, not days). If we can hand off cleanly on that, the harder
-cases inherit the plumbing.
+Order of proof, cheapest to hardest: **INT42D CSS → CSE22D pointers →
+CSE74D probability.** CSS proves the plumbing. Pointers proves runnable
+code. Probability proves the workbench pattern, which is the pattern
+most theory-heavy courses will need (numerical methods, linear algebra,
+statistics, discrete math).
 
 ### 7. Technical shape I'd prefer
 
@@ -280,9 +311,12 @@ Four things you should know that your question list didn't reach for:
 
 ## Worked example — the contract
 
-Rather than Prolog / CSE75D (which Kube doesn't have yet), let me do
-**INT42D CSS**, which we can build against today. Once this loop works,
-Prolog is the same loop with a different practical.
+Two worked examples now, because seeing the same HTTP contract carry two
+completely different practical shapes is what proves the boundary is at
+the right place. **Example A: INT42D CSS** (the easy one, an editor).
+**Example B: CSE74D probability** (the stretchy one, a workbench).
+
+### Example A — INT42D CSS Selectors
 
 **Scenario:** our shared user finishes the CSS Selectors lesson in Kube
 and Kube offers a practical.
@@ -370,10 +404,84 @@ URL. Kube's lesson page reads the new verdict on load and either shows
 shaky — one more pass over just that? [ Yes / Later ]" (shaky), or "Back
 to the theory of selectors — you flagged this yourself:" (stuck).
 
-That's the entire contract. Five HTTP hops, two apps, one shared identity.
-Add one Topic field on Kube's side (`practicalKind`). Add three routes on
-Kube's side (`/topic`, `/verdict`, `/entitlement/introspect`). Everything
-else already exists.
+### Example B — CSE74D Bayes' inversion
+
+**Scenario:** our shared user finishes the Conditional Probability lesson
+in Kube (Unit 2, Part II, slides 5–13). Kube already has the umbrella-and-
+rain example in the lesson body. Kube offers a practical.
+
+**Step 1.** Same handoff URL shape as Example A, just with `course=cse74d`
+and `topic=u2-conditional-probability`.
+
+**Step 2. ByteLabs fetches topic context** — same endpoint, different
+payload:
+```json
+{
+  "topic": {
+    "id": "u2-conditional-probability",
+    "title": "Conditional probability — reasoning from partial information",
+    "unit": 2,
+    "weight": "heavy",
+    "whyItMatters": "Every Bayesian model in the rest of the course is one of these problems in disguise.",
+    "recap": [
+      "P(A|B) = P(A ∩ B) / P(B), when P(B) > 0.",
+      "Given a base rate P(A), you can invert P(B|A) into P(A|B).",
+      "The umbrella-and-rain worked example: 40%, not 80%."
+    ],
+    "deps": [{"id": "u2-sample-space", "title": "Sample spaces and events"},
+             {"id": "u2-prob-laws",    "title": "Probability laws"}]
+  },
+  "signals": { "reviewMisses": 0, "mistakes": 0, "flags": [] }
+}
+```
+Notice: no `conceptTells` for a numerical topic. Instead the recap carries
+the *rule* and the *result* the practical will drill.
+
+**Step 3. ByteLabs presents the practical** — a workbench, not an editor.
+Something like:
+```
+Given: P(spam) = 0.4, P(link | spam) = 0.9, P(link | ¬spam) = 0.1.
+A message contains a link. What is P(spam | link)?
+
+[ your working: ______________________________________ ]
+[ your answer (as a fraction or a %): _____ ]
+```
+The workbench should accept both a numeric answer and a shown-working
+line; the model can grade the working for "did they invert Bayes'
+correctly" separately from "did they arrive at the right number."
+
+**Step 4. Verdict POST** — same shape as Example A:
+```json
+{
+  "course": "cse74d",
+  "topic": "u2-conditional-probability",
+  "verdict": "shaky",
+  "evidence": "Right answer, wrong working — used P(link|spam) directly, forgot the denominator.",
+  "concepts": {
+    "bayes-inversion":     "shaky",
+    "conditional-defn":    "solid",
+    "law-of-total-prob":   "stuck"
+  }
+}
+```
+This is where the shape of the practical starts to earn its keep: on a
+numerical topic, the *per-concept* mastery hints in `concepts` are much
+richer than a single verdict, and Kube should surface them individually
+in the mistakes page ("law of total probability — you skipped the
+denominator both times").
+
+**Step 5.** Same return URL flow as A.
+
+Same contract. Same three endpoints. Different practical shape. That's
+the win: the boundary is at the topic id and the verdict; the gym inside
+is ByteLabs' business.
+
+---
+
+That's the entire contract. Five HTTP hops, two apps, one shared identity,
+two practical shapes proven against it. Add one Topic field on Kube's side
+(`practicalKind`). Add three routes on Kube's side (`/topic`, `/verdict`,
+`/entitlement/introspect`). Everything else already exists.
 
 ---
 
@@ -389,8 +497,10 @@ If you're up for it:
    round-trip on our shared user's real account.
 3. **After:** you build the actual CSS practical against the stubbed loop.
    We swap the stub for real. One end-to-end working practical.
-4. **Then:** CSE22D pointers. Then, once our shared user drops CSE75D into
-   Kube's ingest flow, Prolog.
+4. **Then:** CSE22D pointers (compile-and-run). Then, once our shared user
+   drops the CSE74D decks into Kube's ingest flow, the probability
+   workbench — the case that proves the boundary is right regardless of
+   what the practical actually looks like inside.
 
 I'll pause on:
 - adding the `practicalKind` field
