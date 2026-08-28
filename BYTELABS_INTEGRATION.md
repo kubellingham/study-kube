@@ -666,3 +666,85 @@ practicals on the CSE74D page? The latter is a nice free preview; the
 former is much less coordination. Lean toward the former unless there's
 a product reason for the shell.
 
+---
+
+## Appendix — the Prolog primer, from real CSE75D reference material
+
+Our shared user handed me the reference material students actually use
+for Practicals I–III (and probably IV–VII when they need lists and
+recursion for search): a 236-page slide deck he'd converted to
+markdown (`Practical_1__FINAL_text.md`, 3290 lines) because the
+original PDF was too big to process directly. Good move — Kube's ingest
+flow prefers text and Claude is robust to the line-break artefacts the
+conversion left behind.
+
+Skimmed end to end, the material collapses into ~15 teach topics that
+form a clean dependency ladder. The pattern is repetitive on purpose:
+every concept has a fact block, a query block, and the expected `?-`
+output. That's `teach → check → recap` almost verbatim. This is what
+Kube would build from it:
+
+- `u1-prolog-facts` — atoms, relations, single-argument and multi-arg
+  facts. (pp. 2, 10)
+- `u1-prolog-queries` — `?-` prompt, yes/no, `;` for next result.
+  (pp. 8–11)
+- `u1-prolog-rules` — the `:-` neck, head/body, `,` conjunction, `;`
+  disjunction. (pp. 3–7)
+- `u1-family-kb` — the running family knowledge base; `parent`,
+  `mother/2`, `sister/2` with `X \== Y`. (pp. 14–22)
+- `u2-data-objects` — atoms, numbers, variables, structures; anonymous
+  `_`. (pp. 23–29)
+- `u2-loops-recursion` — `count_to_10/1`, `between/3`, tail-recursive
+  counting. (pp. 30–45)
+- `u2-decision-making` — if/then/else via clause selection; `=<`,
+  `=:=`, `=\=`. (pp. 46–48, 57–59)
+- `u2-operators` — infix/prefix/associativity; `is/2` vs `=` vs `==`.
+  (pp. 52–76)
+- `u2-negation` — `\+` as negation-as-failure. (pp. 54, 79–80)
+- `u3-lists-basics` — `[H|T]`, empty list, literal construction.
+  (pp. 81–90)
+- `u3-list-predicates` — `member`, `append`, `length`, `reverse`,
+  `delete`, `nth0/1`, `sort`. (pp. 91–115)
+- `u3-permutation-combination` — built-in and hand-rolled versions.
+  (pp. 116–125)
+- `u3-list-transforms` — shift, order-checks, subset. (pp. 131–144)
+- `u3-set-operations` — union, intersection, even/odd length, divide,
+  min/max/sum. (pp. 145–169)
+- `u4-mergesort` — the full split/merge/mergesort trio; nice
+  culmination piece. (pp. 170–175)
+- `u4-builtins` — identifying terms, decomposing structures,
+  `findall/setof/bagof/3`. (pp. 176–209)
+- `u4-recursion-structures` — `is_digesting`, `predecessor`, binary
+  trees. (pp. 210–218)
+- `u4-backtracking-cut` — the `pay(X,Y)` trace, `!` cut, cut-fail
+  idioms. (pp. 219–235)
+
+That ladder is what Kube would render at `/learn/cse75d-prolog-primer`.
+Every topic ends with a "Practise in ByteLabs" button that opens a
+Prolog runtime pre-loaded with:
+- for facts/rules/queries: an empty editor with the topic's example KB
+  as scaffolding;
+- for lists/recursion: a KB with a partial predicate and a hole to
+  fill;
+- for the search-heavy topics (mergesort, backtracking): a Prolog
+  runtime plus a small trace visualiser.
+
+**What Kube can do with this file today, unmodified.** Our shared user
+drops it through the existing `POST /api/course/ingest` route (or the
+UI equivalent). The observe route (`app/api/course/observe`) reads it
+first and reports what it sees; the ingest route builds the ladder. He
+gets a CSE75D-prolog-primer course in Kube tonight — no code changes
+on Kube's side needed.
+
+**What ByteLabs would need to build to consume that ladder.** Just the
+Prolog gym: a `?-` prompt, the ability to load a starter KB, and a
+grader that can run a target query and compare bindings. The ladder
+above tells you exactly which starter KB each topic needs.
+
+**One caveat about the source.** The .md conversion has occasional
+line-break artefacts inside code (e.g. `co\nunt_to_10(Y)`) and some
+duplicate slides (pp. 8/9, 63/64, 77/78, 122/123 all repeat). Kube's
+ingest sends the text to Claude for analysis and the model handles
+that noise fine — the deduplication happens naturally in the topic
+map. Worth knowing when reviewing the ingested output, though.
+
