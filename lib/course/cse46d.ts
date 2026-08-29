@@ -795,6 +795,7 @@ export const cse46d = buildCourseBundle(
     code: "CSE46D",
     title: "Computer Architecture",
     sections: [sectionU1A, sectionU1B, sectionU2, sectionU3, sectionU4, sectionU5, sectionU6],
+    pairedLab: {},
   },
   examBank
 );

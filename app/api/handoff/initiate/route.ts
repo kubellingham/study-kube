@@ -19,7 +19,7 @@ export const runtime = "nodejs";
 const CODE_TTL_MS = 60_000;
 
 function bytelabsHost(): string {
-  return process.env.BYTELABS_HOST ?? "https://bytelabs.vercel.app";
+  return process.env.BYTELABS_HOST ?? "https://bytelabs-rosy.vercel.app";
 }
 
 function kubeHost(): string {
@@ -62,10 +62,8 @@ export async function POST(req: NextRequest) {
 
   const returnUrl = `${kubeHost()}/learn/${courseId}/lesson/${encodeURIComponent(topicId)}`;
   const redirectUrl =
-    `${bytelabsHost()}/practical` +
+    `${bytelabsHost()}/handoff` +
     `?code=${encodeURIComponent(code)}` +
-    `&course=${encodeURIComponent(courseId)}` +
-    `&topic=${encodeURIComponent(topicId)}` +
     `&return=${encodeURIComponent(returnUrl)}`;
 
   return Response.json({ redirectUrl });

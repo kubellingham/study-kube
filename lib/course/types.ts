@@ -9,12 +9,10 @@ export interface Course {
   code: string; // e.g. "CSE22D"
   title: string;
   sections: Section[];
-  /** The companion lab course hosted in ByteLabs. When present, Kube surfaces
-   *  per-topic "practise in the lab" affordances and treats a passing lab
-   *  verdict as strong mastery evidence for the linked theory topic. */
+  /** Marks this course as paired with ByteLabs. When present, Kube surfaces
+   *  per-topic "Practice in ByteLabs" affordances. ByteLabs uses Kube's own
+   *  courseId as the identifier — there is no separate ByteLabs course id. */
   pairedLab?: {
-    /** ByteLabs' course id — the full curriculum lives there, not here. */
-    labCourseId: string;
     /** How the lab is graded, if at all. ByteLabs owns the grade book. */
     assessment?: { description: string };
   };
