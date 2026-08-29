@@ -42,6 +42,52 @@ import KubeChat, {
 } from "@/app/learn/components/KubeChat";
 import { authedFetch } from "@/lib/authed-fetch";
 
+function ByteLabsLaunchButton({ courseId, topicId }: { courseId: string; topicId: string }) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function launch() {
+    setPending(true);
+    setError(null);
+    try {
+      const res = await authedFetch("/api/handoff/initiate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ courseId, topicId }),
+      });
+      if (!res.ok) throw new Error("Could not start the lab session.");
+      const { redirectUrl } = (await res.json()) as { redirectUrl: string };
+      window.location.href = redirectUrl;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+      setPending(false);
+    }
+  }
+
+  return (
+    <div>
+      <button
+        onClick={launch}
+        disabled={pending}
+        className="w-full rounded-2xl border py-3 text-sm font-semibold transition-opacity"
+        style={{
+          background: "var(--kube-soft)",
+          borderColor: "var(--kube-line)",
+          color: "var(--kube)",
+          opacity: pending ? 0.6 : 1,
+        }}
+      >
+        {pending ? "Opening ByteLabs…" : "Practice in ByteLabs →"}
+      </button>
+      {error && (
+        <p className="mt-2 text-center text-xs" style={{ color: "var(--red)" }}>
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function DrawnCheck() {
   return (
     <svg width="72" height="72" viewBox="0 0 36 36" fill="none" aria-hidden>
@@ -748,6 +794,9 @@ export default function TopicPage() {
                 Top of the ladder — sit the mock exam
               </Link>
             )}
+            {bundle.course.pairedLab && (
+              <ByteLabsLaunchButton courseId={courseId} topicId={topic.id} />
+            )}
             <Link
               href={`/learn/${courseId}`}
               onClick={() => {
@@ -820,6 +869,15 @@ export default function TopicPage() {
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {bundle.course.pairedLab && (
+        <div className="mt-5">
+          <span className="k-eyebrow">paired lab · ByteLabs</span>
+          <div className="mt-3">
+            <ByteLabsLaunchButton courseId={courseId} topicId={topic.id} />
+          </div>
         </div>
       )}
 
