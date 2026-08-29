@@ -9,6 +9,13 @@ export interface Course {
   code: string; // e.g. "CSE22D"
   title: string;
   sections: Section[];
+  /** Marks this course as paired with ByteLabs. When present, Kube surfaces
+   *  per-topic "Practice in ByteLabs" affordances. ByteLabs uses Kube's own
+   *  courseId as the identifier — there is no separate ByteLabs course id. */
+  pairedLab?: {
+    /** How the lab is graded, if at all. ByteLabs owns the grade book. */
+    assessment?: { description: string };
+  };
 }
 
 export interface Section {

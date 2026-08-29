@@ -42,6 +42,105 @@ import KubeChat, {
 } from "@/app/learn/components/KubeChat";
 import { authedFetch } from "@/lib/authed-fetch";
 
+const LAB_VERDICT_CONFIG = {
+  solid: {
+    label: "Lab passed",
+    detail: "The practical confirmed this topic — you've got it solid.",
+    bg: "var(--kube-soft)",
+    border: "var(--kube-line)",
+    color: "var(--kube)",
+  },
+  shaky: {
+    label: "Lab done — a few gaps flagged",
+    detail: "ByteLabs flagged some shaky spots. The theory slices below will shore them up.",
+    bg: "var(--amber-soft)",
+    border: "var(--amber)",
+    color: "var(--amber)",
+  },
+  stuck: {
+    label: "Practical flagged a block",
+    detail: "ByteLabs found a gap that needs the theory. Work through the slices below.",
+    bg: "var(--red-soft)",
+    border: "var(--red)",
+    color: "var(--red)",
+  },
+} as const;
+
+type LabVerdict = keyof typeof LAB_VERDICT_CONFIG;
+
+function LabVerdictBanner({ verdict, onDismiss }: { verdict: LabVerdict; onDismiss: () => void }) {
+  const cfg = LAB_VERDICT_CONFIG[verdict];
+  return (
+    <div
+      className="k-card mt-5 flex items-start gap-3 px-5 py-4"
+      style={{ background: cfg.bg, borderColor: cfg.border }}
+    >
+      <div className="min-w-0 flex-1">
+        <span className="k-eyebrow" style={{ color: cfg.color }}>
+          {cfg.label}
+        </span>
+        <p className="mt-1 text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>
+          {cfg.detail}
+        </p>
+      </div>
+      <button
+        onClick={onDismiss}
+        aria-label="Dismiss lab result"
+        className="shrink-0 text-sm leading-none"
+        style={{ color: "var(--faint)" }}
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
+function ByteLabsLaunchButton({ courseId, topicId }: { courseId: string; topicId: string }) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function launch() {
+    setPending(true);
+    setError(null);
+    try {
+      const res = await authedFetch("/api/handoff/initiate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ courseId, topicId }),
+      });
+      if (!res.ok) throw new Error("Could not start the lab session.");
+      const { redirectUrl } = (await res.json()) as { redirectUrl: string };
+      window.location.href = redirectUrl;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+      setPending(false);
+    }
+  }
+
+  return (
+    <div>
+      <button
+        onClick={launch}
+        disabled={pending}
+        className="w-full rounded-2xl border py-3 text-sm font-semibold transition-opacity"
+        style={{
+          background: "var(--kube-soft)",
+          borderColor: "var(--kube-line)",
+          color: "var(--kube)",
+          opacity: pending ? 0.6 : 1,
+        }}
+      >
+        {pending ? "Opening ByteLabs…" : "Practice in ByteLabs →"}
+      </button>
+      {error && (
+        <p className="mt-2 text-center text-xs" style={{ color: "var(--red)" }}>
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function DrawnCheck() {
   return (
     <svg width="72" height="72" viewBox="0 0 36 36" fill="none" aria-hidden>
@@ -393,6 +492,7 @@ export default function TopicPage() {
   const [flags, setFlags] = useState<Flags>({});
   const [chatOpen, setChatOpen] = useState(false);
   const [chatSeed, setChatSeed] = useState<string | undefined>(undefined);
+  const [labVerdict, setLabVerdict] = useState<LabVerdict | null>(null);
   // One chat per SLIDE: moving forward starts fresh; stepping back restores
   // that slide's conversation; finishing the slice clears everything.
   const [chats, setChats] = useState<Record<string, ChatTurn[]>>({});
@@ -401,6 +501,13 @@ export default function TopicPage() {
   useEffect(() => {
     if (!userLoading && !user) router.replace("/");
     if (user && bundle && topic) {
+      // Detect return from ByteLabs: ?lab=solid|shaky|stuck
+      const lab = new URLSearchParams(window.location.search).get("lab");
+      if (lab === "solid" || lab === "shaky" || lab === "stuck") {
+        setLabVerdict(lab);
+        router.replace(window.location.pathname, { scroll: false });
+      }
+
       Promise.all([
         loadProgress(user.uid, bundle.course.id),
         loadSlideVotes(user.uid, bundle.course.id),
@@ -748,6 +855,9 @@ export default function TopicPage() {
                 Top of the ladder — sit the mock exam
               </Link>
             )}
+            {bundle.course.pairedLab && (
+              <ByteLabsLaunchButton courseId={courseId} topicId={topic.id} />
+            )}
             <Link
               href={`/learn/${courseId}`}
               onClick={() => {
@@ -805,6 +915,10 @@ export default function TopicPage() {
         <RichInline text={topic.whyItMatters} />
       </p>
 
+      {labVerdict && (
+        <LabVerdictBanner verdict={labVerdict} onDismiss={() => setLabVerdict(null)} />
+      )}
+
       {topicComplete && topic.recap.length > 0 && (
         <div className="k-card mt-5 px-5 py-4" style={{ background: "var(--kube-soft)", borderColor: "var(--kube-line)" }}>
           <span className="k-eyebrow" style={{ color: "var(--kube)" }}>
@@ -820,6 +934,15 @@ export default function TopicPage() {
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {bundle.course.pairedLab && (
+        <div className="mt-5">
+          <span className="k-eyebrow">paired lab · ByteLabs</span>
+          <div className="mt-3">
+            <ByteLabsLaunchButton courseId={courseId} topicId={topic.id} />
+          </div>
         </div>
       )}
 
