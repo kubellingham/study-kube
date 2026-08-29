@@ -42,6 +42,59 @@ import KubeChat, {
 } from "@/app/learn/components/KubeChat";
 import { authedFetch } from "@/lib/authed-fetch";
 
+const LAB_VERDICT_CONFIG = {
+  solid: {
+    label: "Lab passed",
+    detail: "The practical confirmed this topic — you've got it solid.",
+    bg: "var(--kube-soft)",
+    border: "var(--kube-line)",
+    color: "var(--kube)",
+  },
+  shaky: {
+    label: "Lab done — a few gaps flagged",
+    detail: "ByteLabs flagged some shaky spots. The theory slices below will shore them up.",
+    bg: "var(--amber-soft)",
+    border: "var(--amber)",
+    color: "var(--amber)",
+  },
+  stuck: {
+    label: "Practical flagged a block",
+    detail: "ByteLabs found a gap that needs the theory. Work through the slices below.",
+    bg: "var(--red-soft)",
+    border: "var(--red)",
+    color: "var(--red)",
+  },
+} as const;
+
+type LabVerdict = keyof typeof LAB_VERDICT_CONFIG;
+
+function LabVerdictBanner({ verdict, onDismiss }: { verdict: LabVerdict; onDismiss: () => void }) {
+  const cfg = LAB_VERDICT_CONFIG[verdict];
+  return (
+    <div
+      className="k-card mt-5 flex items-start gap-3 px-5 py-4"
+      style={{ background: cfg.bg, borderColor: cfg.border }}
+    >
+      <div className="min-w-0 flex-1">
+        <span className="k-eyebrow" style={{ color: cfg.color }}>
+          {cfg.label}
+        </span>
+        <p className="mt-1 text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>
+          {cfg.detail}
+        </p>
+      </div>
+      <button
+        onClick={onDismiss}
+        aria-label="Dismiss lab result"
+        className="shrink-0 text-sm leading-none"
+        style={{ color: "var(--faint)" }}
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
 function ByteLabsLaunchButton({ courseId, topicId }: { courseId: string; topicId: string }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -439,6 +492,7 @@ export default function TopicPage() {
   const [flags, setFlags] = useState<Flags>({});
   const [chatOpen, setChatOpen] = useState(false);
   const [chatSeed, setChatSeed] = useState<string | undefined>(undefined);
+  const [labVerdict, setLabVerdict] = useState<LabVerdict | null>(null);
   // One chat per SLIDE: moving forward starts fresh; stepping back restores
   // that slide's conversation; finishing the slice clears everything.
   const [chats, setChats] = useState<Record<string, ChatTurn[]>>({});
@@ -447,6 +501,13 @@ export default function TopicPage() {
   useEffect(() => {
     if (!userLoading && !user) router.replace("/");
     if (user && bundle && topic) {
+      // Detect return from ByteLabs: ?lab=solid|shaky|stuck
+      const lab = new URLSearchParams(window.location.search).get("lab");
+      if (lab === "solid" || lab === "shaky" || lab === "stuck") {
+        setLabVerdict(lab);
+        router.replace(window.location.pathname, { scroll: false });
+      }
+
       Promise.all([
         loadProgress(user.uid, bundle.course.id),
         loadSlideVotes(user.uid, bundle.course.id),
@@ -853,6 +914,10 @@ export default function TopicPage() {
       <p className="mt-2 text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>
         <RichInline text={topic.whyItMatters} />
       </p>
+
+      {labVerdict && (
+        <LabVerdictBanner verdict={labVerdict} onDismiss={() => setLabVerdict(null)} />
+      )}
 
       {topicComplete && topic.recap.length > 0 && (
         <div className="k-card mt-5 px-5 py-4" style={{ background: "var(--kube-soft)", borderColor: "var(--kube-line)" }}>

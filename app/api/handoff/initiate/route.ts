@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
     createdAt: now,
   });
 
-  const returnUrl = `${kubeHost()}/learn/${courseId}/lesson?topic=${encodeURIComponent(topicId)}`;
+  const returnUrl = `${kubeHost()}/learn/${courseId}/lesson/${encodeURIComponent(topicId)}`;
   const redirectUrl =
     `${bytelabsHost()}/practical` +
     `?code=${encodeURIComponent(code)}` +

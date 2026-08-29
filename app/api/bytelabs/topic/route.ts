@@ -89,7 +89,7 @@ export async function GET(req: NextRequest) {
   // schema exists the mode is always practice.
   const mode: Mode = "practice";
 
-  const returnUrl = `${kubeHost()}/learn/${courseId}/lesson?topic=${encodeURIComponent(topicId)}`;
+  const returnUrl = `${kubeHost()}/learn/${courseId}/lesson/${encodeURIComponent(topicId)}`;
 
   return Response.json({
     topic: {

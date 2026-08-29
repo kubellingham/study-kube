@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
   }
 
   const action = kubeAction(verdict as Verdict);
-  const redirectUrl = `${kubeHost()}/learn/${courseId}/lesson?topic=${encodeURIComponent(topicId)}`;
+  const redirectUrl = `${kubeHost()}/learn/${courseId}/lesson/${encodeURIComponent(topicId)}?lab=${verdict}`;
 
   return Response.json({
     acknowledged: true,
