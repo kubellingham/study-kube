@@ -33,6 +33,7 @@ import {
   type SlideVotes,
 } from "@/lib/learn/feedback";
 import { loadFlags, saveFlag, flagKey, type Flags } from "@/lib/learn/flags";
+import { keysBlocked, useMcqKeys, OptionKeyChip } from "@/lib/learn/keys";
 import FlagButton from "@/app/learn/components/FlagButton";
 import Rich, { RichInline } from "@/app/learn/components/Rich";
 import Diagram from "@/app/learn/components/Diagram";
@@ -206,18 +207,9 @@ function ThumbButtons({
   );
 }
 
-/** True when lesson keyboard shortcuts must stay quiet: the student is
- *  typing (chat input), a dialog is open, or a focused button/link already
- *  owns the Enter key natively. */
-function keysBlocked(): boolean {
-  const el = document.activeElement;
-  if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) return true;
-  if (el instanceof HTMLElement && (el.isContentEditable || el.tagName === "BUTTON" || el.tagName === "A"))
-    return true;
-  return !!document.querySelector('[role="dialog"]');
-}
-
-/** Laptop navigation: Enter = forward, Backspace = back (where back exists). */
+/** Laptop navigation: Enter = forward, Backspace = back (where back exists).
+ *  keysBlocked is imported from lib/learn/keys so exam and practice share
+ *  the same sentinel. */
 function useLessonKeys(onForward: (() => void) | null, onBack: (() => void) | null) {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -365,6 +357,8 @@ function CheckCard({
   // Enter continues only once the answer is in; Backspace steps back where
   // back exists (never on review assessments).
   useLessonKeys(passed ? onPass : null, canBack && onBack ? onBack : null);
+  // 1..N picks the option at that index while the answer is still open.
+  useMcqKeys(opts.options.length, (i) => tap(i), !passed);
 
   function tap(i: number) {
     if (passed || shaking !== null) return;
@@ -413,7 +407,7 @@ function CheckCard({
               key={i}
               onClick={() => tap(i)}
               disabled={passed}
-              className={`relative rounded-2xl border px-4 py-3 text-left text-sm font-medium transition-colors ${isShaking ? "k-shake" : ""}`}
+              className={`relative flex items-start gap-3 rounded-2xl border px-4 py-3 text-left text-sm font-medium transition-colors ${isShaking ? "k-shake" : ""}`}
               style={{
                 background: isRight
                   ? "var(--kube-soft)"
@@ -428,7 +422,8 @@ function CheckCard({
                 color: isShaking ? "var(--red)" : "var(--ink)",
               }}
             >
-              <RichInline text={opt} />
+              <OptionKeyChip index={i} />
+              <span className="min-w-0 flex-1"><RichInline text={opt} /></span>
               {isSweeping && <SweepOverlay />}
             </button>
           );
