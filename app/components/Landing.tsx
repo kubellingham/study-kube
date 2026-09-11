@@ -157,6 +157,26 @@ export default function Landing() {
   const rootRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
+  // Referral capture — read ?ref=CODE from the URL on landing and stash it
+  // in localStorage. `doAuth` below reads it back after sign-in and hands
+  // it to /api/user/init so the referrer gets credited. Any code stays valid
+  // for 30 days (matches how long a friend might take to actually sign up).
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const raw = params.get("ref");
+      if (!raw) return;
+      const clean = raw.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 12);
+      if (!clean) return;
+      window.localStorage.setItem(
+        "kube.ref",
+        JSON.stringify({ code: clean, capturedAt: Date.now() })
+      );
+    } catch {
+      /* private mode / storage disabled — silently ignore */
+    }
+  }, []);
+
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
@@ -509,6 +529,34 @@ export default function Landing() {
         const lbl = q("[data-done-label]");
         if (lbl) lbl.textContent = pending ? "Setting up " + PLANS[plan].name + "…" : "Taking you to your ladder…";
         authPanel("done");
+        // Kick the user init in the background — creates the users/{uid} doc,
+        // generates the referral code, and applies any ?ref= this visitor
+        // arrived with. Deliberately not awaited: a signup shouldn't block
+        // on this, and /api/user/me on the account page re-inits if needed.
+        (async () => {
+          let ref: string | null = null;
+          try {
+            const stash = window.localStorage.getItem("kube.ref");
+            if (stash) {
+              const parsed = JSON.parse(stash) as { code: string; capturedAt: number };
+              const THIRTY_DAYS = 30 * 86_400_000;
+              if (Date.now() - parsed.capturedAt < THIRTY_DAYS) ref = parsed.code;
+              // Clear it once we've handed it to the server — a code redeems once.
+              window.localStorage.removeItem("kube.ref");
+            }
+          } catch {
+            /* ignore storage errors */
+          }
+          try {
+            await authedFetch("/api/user/init", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ref }),
+            });
+          } catch {
+            /* the /me endpoint self-heals on next visit — swallow */
+          }
+        })();
         window.setTimeout(() => {
           if (pending) {
             pending = false;
