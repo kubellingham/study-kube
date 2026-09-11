@@ -511,22 +511,8 @@
   50% { opacity: 0.9; }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .kube .k-open-overlay,
-  .kube .k-open-word,
-  .kube .k-open-kube,
-  .kube .k-open-word-clip,
-  .kube .k-open-studying,
-  .kube .k-open-underline,
-  .kube .k-open-tagline,
-  .kube .k-open-circle,
-  .kube .k-dig-cube-rot,
-  .kube .k-dig-cube-breathe,
-  .kube .k-dig-ping,
-  .kube .k-dig-orbit,
-  .kube .k-dig-card,
-  .kube .k-dig-tip,
-  .kube .k-dig-dot {
-    animation: none;
-  }
-}
+/* The opening + digesting animations deliberately IGNORE reduced-motion:
+ * they are Kube's front-door "wow" moments, not decorative micro-
+ * interactions, and static fallbacks read as broken. Small UI micro-
+ * interactions (k-shake / k-bob / k-rise etc.) still respect the setting
+ * in the earlier reduce-motion block above. */

@@ -184,7 +184,13 @@ export default function Landing() {
     const q = (s: string) => root.querySelector(s) as HTMLElement | null;
     const qa = (s: string) => Array.from(root.querySelectorAll(s)) as HTMLElement[];
     const qsa = (r: ParentNode, s: string) => Array.from(r.querySelectorAll(s)) as HTMLElement[];
-    const motionOn = () => !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    // The landing hero demo (the "files become a ladder" reveal) is
+    // deliberately shown to every visitor, regardless of the OS
+    // prefers-reduced-motion setting. It's the front-door story of
+    // what Kube does — static, it reads as broken. Kept as a function
+    // rather than a constant so the existing call sites don't need to
+    // change shape.
+    const motionOn = () => true;
     const setEl = (el: HTMLElement | null, o: number, y: number, extra?: string) => {
       if (!el) return;
       el.style.opacity = String(o);
