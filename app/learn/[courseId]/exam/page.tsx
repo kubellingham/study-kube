@@ -15,6 +15,7 @@ import { shuffledOptions } from "@/lib/course/lessons";
 import { saveExamAttempt } from "@/lib/learn/progress";
 import { loadFlags, saveFlag, type Flags } from "@/lib/learn/flags";
 import { loadMistakes, recordMistakes } from "@/lib/learn/mistakes";
+import { useMcqKeys, OptionKeyChip } from "@/lib/learn/keys";
 import FlagButton from "@/app/learn/components/FlagButton";
 import { RichInline } from "@/app/learn/components/Rich";
 
@@ -169,6 +170,25 @@ function ExamInner() {
   const results = useMemo(
     () => (phase === "analysis" ? diagnose(questions, answers) : []),
     [phase, questions, answers]
+  );
+
+  // 1..N picks an option during the exam phase. Study-mode reveals mean
+  // the digit stops firing once the answer's committed, so it can't
+  // accidentally overwrite a revealed choice.
+  const examQ = phase === "exam" ? questions[qIdx] : null;
+  const examChosen = phase === "exam" ? answers[qIdx] : null;
+  useMcqKeys(
+    examQ?.options.length ?? 0,
+    (i) => {
+      if (phase !== "exam" || !examQ) return;
+      if (study && examChosen !== null) return;
+      setAnswers((prev) => {
+        const next = [...prev];
+        next[qIdx] = i;
+        return next;
+      });
+    },
+    phase === "exam" && !!examQ && !(study && examChosen !== null),
   );
 
   if (status === "notfound") {
@@ -384,10 +404,11 @@ function ExamInner() {
                     next[qIdx] = i;
                     setAnswers(next);
                   }}
-                  className="rounded-2xl border px-4 py-3 text-left text-sm font-medium"
+                  className="flex items-start gap-3 rounded-2xl border px-4 py-3 text-left text-sm font-medium"
                   style={st}
                 >
-                  <RichInline text={opt} />
+                  <OptionKeyChip index={i} />
+                  <span className="min-w-0 flex-1"><RichInline text={opt} /></span>
                 </button>
               );
             })}

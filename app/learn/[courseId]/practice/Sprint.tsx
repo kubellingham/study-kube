@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ExamQuestion } from "@/lib/course/types";
 import { saveSprintBest } from "@/lib/learn/practice";
+import { useMcqKeys, OptionKeyChip } from "@/lib/learn/keys";
 
 const SECONDS = 60;
 
@@ -97,6 +98,10 @@ export default function Sprint({
     }, right ? 160 : 340);
   }
 
+  // 1..N picks. Silent between rounds (while flash animates) so a fast
+  // typist can't double-answer the same question.
+  useMcqKeys(current?.options.length ?? 0, answer, phase === "run" && !flash);
+
   if (items.length < 3) {
     return (
       <p className="mt-8 text-sm" style={{ color: "var(--faint)" }}>
@@ -177,10 +182,11 @@ export default function Sprint({
               <button
                 key={i}
                 onClick={() => answer(i)}
-                className="rounded-xl border px-4 py-2.5 text-left text-sm font-medium"
+                className="flex items-start gap-3 rounded-xl border px-4 py-2.5 text-left text-sm font-medium"
                 style={{ borderColor: "var(--line)", background: "var(--card)", color: "var(--ink)" }}
               >
-                {opt}
+                <OptionKeyChip index={i} />
+                <span className="min-w-0 flex-1">{opt}</span>
               </button>
             ))}
           </div>
