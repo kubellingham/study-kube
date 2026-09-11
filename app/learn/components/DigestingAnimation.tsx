@@ -7,24 +7,13 @@
 // upload on low-end laptops; this version paints smoothly on the same
 // machines because React never sees the frame updates. Indeterminate
 // on purpose: the wait is long, so nothing ever "completes".
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState } from "react";
 
-const REDUCE_QUERY = "(prefers-reduced-motion: reduce)";
-
-/** External-store subscription for OS reduced-motion — keeps the effect
- *  free of the setState-in-effect cascade. */
-function subscribeReduce(cb: () => void): () => void {
-  if (typeof window === "undefined") return () => {};
-  const mq = window.matchMedia(REDUCE_QUERY);
-  mq.addEventListener("change", cb);
-  return () => mq.removeEventListener("change", cb);
-}
-function readReduce(): boolean {
-  return typeof window !== "undefined" && window.matchMedia(REDUCE_QUERY).matches;
-}
-function readReduceServer(): boolean {
-  return false;
-}
+// This animation deliberately ignores `prefers-reduced-motion`: it's
+// Kube's front-door "we're reading your file" moment, and a static
+// fallback (which we used to show) reads as broken rather than
+// respectful. Micro-interactions elsewhere in learn.css still respect
+// the setting.
 
 const K = {
   ink: "#16202b",
@@ -300,40 +289,6 @@ function LoadingStage({ accent }: { accent: string }) {
   );
 }
 
-/** Reduced-motion version: a still cube + a plain "reading your file…"
- *  label. Same visual family as the animated version but no motion. */
-function StillStage({ accent }: { accent: string }) {
-  return (
-    <div
-      style={{
-        position: "absolute",
-        inset: 0,
-        background: K.bg,
-        display: "grid",
-        placeItems: "center",
-        fontFamily: K.body,
-      }}
-    >
-      <div style={{ textAlign: "center" }}>
-        <div style={{ display: "inline-block" }}>
-          <Cube accent={accent} />
-        </div>
-        <div
-          style={{
-            marginTop: 32,
-            fontFamily: K.display,
-            fontWeight: 500,
-            fontSize: 20,
-            color: K.ink,
-          }}
-        >
-          Kube is reading your file…
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /** Scales the fixed 1280×720 stage to fit its container (contain). */
 export default function DigestingAnimation({
   accent = "#1f6f6b",
@@ -346,7 +301,6 @@ export default function DigestingAnimation({
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0.5);
-  const reduce = useSyncExternalStore(subscribeReduce, readReduce, readReduceServer);
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -387,7 +341,7 @@ export default function DigestingAnimation({
           overflow: "hidden",
         }}
       >
-        {reduce ? <StillStage accent={accent} /> : <LoadingStage accent={accent} />}
+        <LoadingStage accent={accent} />
       </div>
     </div>
   );
