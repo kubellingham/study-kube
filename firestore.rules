@@ -3,6 +3,12 @@ rules_version = '2';
 // Studying Kube — every document carries a `userId`. A user may only read or
 // write documents they own. Applies uniformly to all top-level collections:
 // materials, summaries, decks, cards, quizzes, attempts, messages.
+//
+// Exception: a course marked with a `crewId` is readable by every member of
+// that crew, not just its owner. Writes stay owner-only — a crew member
+// browsing a shared course cannot mutate someone else's material. Crew
+// membership is verified against the reader's own entitlements doc, where
+// crewLeaderUid is written by lib/crew.ts (joinCrew).
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() {
@@ -10,6 +16,28 @@ service cloud.firestore {
     }
     function owns(data) {
       return signedIn() && data.userId == request.auth.uid;
+    }
+    // Returns the caller's crew leader uid, or null if they aren't in a crew.
+    // The entitlements doc is written by the Stripe webhook / joinCrew flow.
+    function myCrewLeaderUid() {
+      return signedIn()
+        ? get(/databases/$(database)/documents/entitlements/$(request.auth.uid))
+            .data.crewLeaderUid
+        : null;
+    }
+    function inCrewFor(data) {
+      return signedIn()
+        && data.keys().hasAny(['crewId'])
+        && data.crewId != null
+        && data.crewId == myCrewLeaderUid();
+    }
+
+    match /courses/{docId} {
+      allow read, delete: if owns(resource.data);
+      allow create: if owns(request.resource.data);
+      allow update: if owns(resource.data) && owns(request.resource.data);
+      // Crew members get read-only access to courses shared with their crew.
+      allow read: if inCrewFor(resource.data);
     }
 
     match /{collection}/{docId} {

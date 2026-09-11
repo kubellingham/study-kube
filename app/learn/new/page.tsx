@@ -14,10 +14,29 @@ export default function NewCoursePage() {
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Crew state, used to show the "share with your crew" toggle. Null when
+  // the user isn't in a crew at all — we hide the affordance in that case
+  // rather than tempt them into a state they can't reach.
+  const [inCrew, setInCrew] = useState(false);
+  const [share, setShare] = useState(true);
 
   useEffect(() => {
     if (!loading && !user) router.replace("/");
   }, [user, loading, router]);
+
+  useEffect(() => {
+    if (!user) return;
+    authedFetch("/api/crew")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        // Either leading a crew or a member of one — both count as "in a crew"
+        // for the sharing affordance.
+        if (d && (d.leader || d.member)) setInCrew(true);
+      })
+      .catch(() => {
+        /* silent — sharing toggle just stays hidden */
+      });
+  }, [user]);
 
   async function create(e: React.FormEvent) {
     e.preventDefault();
@@ -27,7 +46,7 @@ export default function NewCoursePage() {
       const res = await authedFetch("/api/course", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, title }),
+        body: JSON.stringify({ code, title, share: inCrew && share }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not create the course.");
@@ -91,6 +110,26 @@ export default function NewCoursePage() {
           className="mt-2 w-full rounded-xl border px-4 py-3 text-sm outline-none"
           style={{ borderColor: "var(--line)", background: "var(--card)", color: "var(--ink)" }}
         />
+
+        {inCrew && (
+          <label
+            className="mt-5 flex cursor-pointer items-start gap-3 rounded-xl border px-4 py-3"
+            style={{ borderColor: "var(--kube-line)", background: "var(--kube-soft)" }}
+          >
+            <input
+              type="checkbox"
+              checked={share}
+              onChange={(e) => setShare(e.target.checked)}
+              className="mt-0.5"
+              style={{ accentColor: "var(--kube)" }}
+            />
+            <span className="text-sm leading-snug" style={{ color: "var(--ink-soft)" }}>
+              <b style={{ color: "var(--ink)" }}>Share with your crew.</b> Everyone in your crew
+              will see this subject and can study from the units you add. Only you can add or
+              remove material.
+            </span>
+          </label>
+        )}
 
         {error && (
           <p className="mt-4 text-sm" style={{ color: "var(--red)" }}>
