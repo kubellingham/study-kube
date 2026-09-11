@@ -348,7 +348,15 @@ export async function POST(req: NextRequest) {
         const preSections = (snap.get("sections") as Section[]) ?? [];
         const fed = preSections.map((s) => s.unit);
         const unitNumber = fed.length ? Math.max(...fed) + 1 : 1;
-        const existingTopics = preSections.flatMap((s) => s.topics).map((t) => ({ id: t.id, title: t.title }));
+        // Prior context for the generator = topics from units that come
+        // earlier in the LADDER order (not upload order). fromKnowledge
+        // always creates a new unit at Max+1, so every existing topic
+        // qualifies — the filter is defensive but consistent with the
+        // classified-unit path below.
+        const existingTopics = preSections
+          .filter((s) => s.unit <= unitNumber)
+          .flatMap((s) => s.topics)
+          .map((t) => ({ id: t.id, title: t.title }));
         await setJob({ note: "Reading your outline and planning the ladder from Kube's own knowledge…", label: "built from your outline", kind: "unit" });
 
         const fullSkeleton = summitBudget
@@ -466,7 +474,18 @@ export async function POST(req: NextRequest) {
         const fed = preSections.map((s) => s.unit);
         const unitNumber =
           classification.unit ?? (fed.length ? Math.max(...fed) + 1 : 1);
+        // Prior context for the generator = topics from units that come
+        // earlier in the LADDER order, or the same unit (a follow-up
+        // upload extending it), NOT units uploaded earlier that will
+        // sort AFTER this one. A student who uploaded Unit 5 first and
+        // is now adding Unit 2 must not have Unit 5 topics fed back as
+        // "already-known prior material" — normalizeCourse sorts by unit
+        // number, so Unit 2 will land BEFORE Unit 5 in the ladder and
+        // the AI's teach steps should reflect that. `allIds` (below,
+        // for assembleUnit's collision check) still uses the full set —
+        // dedupe integrity is separate from teaching context.
         const existingTopics = preSections
+          .filter((s) => s.unit <= unitNumber)
           .flatMap((s) => s.topics)
           .map((t) => ({ id: t.id, title: t.title }));
 
