@@ -1,12 +1,30 @@
 "use client";
 
-// Kube's "digesting" loader — ported from StudyingKube Video.dc.html (Loading
-// scene). A teal cube spins and pulls in source cards (pdf, video, notes,
-// article) with sonar pings, orbiting workers, and rotating tips. Shown while
-// a file is uploading / being digested. Indeterminate on purpose: the wait is
-// long, so nothing ever "completes".
-import { useEffect, useRef, useState } from "react";
-import { ip, mod, easeOutBack, easeOutCubic, easeInOutCubic, easeInCubic } from "./motion";
+// Kube's "digesting" loader — shown while a file is uploading / being
+// digested. Rewritten to use CSS keyframe animations (see learn.css
+// §"Digesting animation") so the browser runs everything on the
+// compositor. The old RAF+setState engine stuttered under a heavy
+// upload on low-end laptops; this version paints smoothly on the same
+// machines because React never sees the frame updates. Indeterminate
+// on purpose: the wait is long, so nothing ever "completes".
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+
+const REDUCE_QUERY = "(prefers-reduced-motion: reduce)";
+
+/** External-store subscription for OS reduced-motion — keeps the effect
+ *  free of the setState-in-effect cascade. */
+function subscribeReduce(cb: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  const mq = window.matchMedia(REDUCE_QUERY);
+  mq.addEventListener("change", cb);
+  return () => mq.removeEventListener("change", cb);
+}
+function readReduce(): boolean {
+  return typeof window !== "undefined" && window.matchMedia(REDUCE_QUERY).matches;
+}
+function readReduceServer(): boolean {
+  return false;
+}
 
 const K = {
   ink: "#16202b",
@@ -27,11 +45,13 @@ const SRC = {
   web: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.2 3 14.8 0 18M12 3c-3 3.2-3 14.8 0 18" stroke-linecap="round"/></svg>',
 };
 
+/** Source cards ferried from each corner into the cube. Delays stagger
+ *  their 3.2s cycles evenly (0, 0.8s, 1.6s, 2.4s). */
 const SOURCES = [
-  { ic: SRC.pdf, label: "lecture.pdf", sx: 250, sy: 150, rot: -7 },
-  { ic: SRC.yt, label: "Khan clip", sx: 1030, sy: 176, rot: 6 },
-  { ic: SRC.txt, label: "my notes", sx: 236, sy: 452, rot: 5 },
-  { ic: SRC.web, label: "article", sx: 1044, sy: 470, rot: -6 },
+  { ic: SRC.pdf, label: "lecture.pdf", sx: 250, sy: 150, rot: -7, delay: 0 },
+  { ic: SRC.yt, label: "Khan clip", sx: 1030, sy: 176, rot: 6, delay: 0.8 },
+  { ic: SRC.txt, label: "my notes", sx: 236, sy: 452, rot: 5, delay: 1.6 },
+  { ic: SRC.web, label: "article", sx: 1044, sy: 470, rot: -6, delay: 2.4 },
 ];
 
 const TIPS = [
@@ -42,16 +62,46 @@ const TIPS = [
   "Good notes today, gold marks in the exam.",
 ];
 
-function Cube3D({ size, accent, spin, tilt, scale }: { size: number; accent: string; spin: number; tilt: number; scale: number }) {
-  const t = size / 2;
+const CUBE_CX = 640;
+const CUBE_CY = 296;
+const CUBE_SIZE = 150;
+
+/** A 3D cube built with six flat faces. The gentle spin lives on the outer
+ *  rotator, the initial pop-in + breathe on the inner scaler — nested so
+ *  both animations compose without a transform conflict. */
+function Cube({ accent }: { accent: string }) {
+  const t = CUBE_SIZE / 2;
   const face = (tf: string, shade: string, i: number) => (
-    <div key={i} style={{ position: "absolute", left: 0, top: 0, width: size, height: size, borderRadius: 16, background: accent, transform: tf, backfaceVisibility: "hidden", boxShadow: "inset 0 0 0 2px rgba(255,255,255,.10)" }}>
+    <div
+      key={i}
+      style={{
+        position: "absolute",
+        left: 0,
+        top: 0,
+        width: CUBE_SIZE,
+        height: CUBE_SIZE,
+        borderRadius: 16,
+        background: accent,
+        transform: tf,
+        backfaceVisibility: "hidden",
+        boxShadow: "inset 0 0 0 2px rgba(255,255,255,.10)",
+      }}
+    >
       <div style={{ position: "absolute", inset: 0, borderRadius: 16, background: shade }} />
     </div>
   );
   return (
-    <div style={{ width: size, height: size, perspective: 900, transform: `scale(${scale})` }}>
-      <div style={{ position: "relative", width: size, height: size, transformStyle: "preserve-3d", transform: `rotateX(${tilt}deg) rotateY(${spin}deg)`, filter: "drop-shadow(0 8px 22px rgba(20,32,43,.28))" }}>
+    <div className="k-dig-cube-breathe" style={{ width: CUBE_SIZE, height: CUBE_SIZE, perspective: 900 }}>
+      <div
+        className="k-dig-cube-rot"
+        style={{
+          position: "relative",
+          width: CUBE_SIZE,
+          height: CUBE_SIZE,
+          transformStyle: "preserve-3d",
+          filter: "drop-shadow(0 8px 22px rgba(20,32,43,.28))",
+        }}
+      >
         {face(`translateZ(${t}px)`, "rgba(255,255,255,0)", 0)}
         {face(`rotateY(180deg) translateZ(${t}px)`, "rgba(0,0,0,.30)", 1)}
         {face(`rotateY(90deg) translateZ(${t}px)`, "rgba(0,0,0,.22)", 2)}
@@ -63,89 +113,240 @@ function Cube3D({ size, accent, spin, tilt, scale }: { size: number; accent: str
   );
 }
 
-/** The 1280×720 loading stage, driven by `lt` (seconds). Faithful to the design. */
-function LoadingStage({ lt, accent }: { lt: number; accent: string }) {
-  const cubeCX = 640;
-  const cubeCY = 296;
-  const P = 3.2;
-  const N = SOURCES.length;
-  const travel = 1.25;
-
-  let absorb = 0;
-  SOURCES.forEach((s, i) => {
-    const local = mod(lt - i * (P / N), P);
-    absorb = Math.max(absorb, Math.exp(-Math.pow((local - travel) / 0.12, 2)));
-  });
-  const spin = 36 + 8 * Math.sin(lt * 1.6);
-  const breathe = 1 + 0.035 * Math.sin(lt * 3.1);
-  const cubeScale = ip(lt, [0, 0.55], [0.55, 1], easeOutBack) * breathe * (1 + 0.09 * absorb);
-
-  const pings = [0, 1].map((k) => {
-    const ph = mod(lt * 0.55 + k * 0.5, 1);
-    return { r: 86 + ph * 74, op: (1 - ph) * 0.3 };
-  });
-  const orbits = [0, 1, 2].map((i) => {
-    const ang = lt * 1.1 + i * 2.094;
-    return { x: Math.cos(ang) * 104, y: Math.sin(ang) * 64 - 4, z: Math.sin(ang) };
-  });
-
-  const TD = 3.0;
-  const ti = Math.floor(lt / TD) % TIPS.length;
-  const sub = mod(lt, TD) / TD;
-  const tipOp = Math.max(0, Math.min(1, Math.min(sub / 0.1, (1 - sub) / 0.12)));
-  const tipY = (1 - Math.min(1, sub / 0.16)) * 8;
-  const dot = (i: number) => 0.35 + 0.55 * (0.5 + 0.5 * Math.sin(lt * 5 - i * 0.9));
-
+/** The 1280×720 loading stage. All motion is CSS keyframes in learn.css. */
+function LoadingStage({ accent }: { accent: string }) {
   return (
     <div style={{ position: "absolute", inset: 0, background: K.bg, overflow: "hidden", fontFamily: K.body }}>
-      <svg width="360" height="360" viewBox="0 0 360 360" style={{ position: "absolute", left: cubeCX, top: cubeCY, transform: "translate(-50%,-50%)", zIndex: 1 }}>
-        {pings.map((pg, k) => (
-          <circle key={k} cx="180" cy="180" r={pg.r} fill="none" stroke={accent} strokeWidth="2" opacity={pg.op} />
-        ))}
-      </svg>
+      {/* Sonar pings — two expanding rings; the second is delayed a
+       *  half-period so they alternate. */}
+      <div
+        style={{
+          position: "absolute",
+          left: CUBE_CX,
+          top: CUBE_CY,
+          width: 320,
+          height: 320,
+          marginLeft: -160,
+          marginTop: -160,
+          zIndex: 1,
+          pointerEvents: "none",
+        }}
+      >
+        <div
+          className="k-dig-ping"
+          style={{
+            position: "absolute",
+            inset: 0,
+            borderRadius: "50%",
+            border: `2px solid ${accent}`,
+            transformOrigin: "center",
+          }}
+        />
+        <div
+          className="k-dig-ping k-dig-ping-b"
+          style={{
+            position: "absolute",
+            inset: 0,
+            borderRadius: "50%",
+            border: `2px solid ${accent}`,
+            transformOrigin: "center",
+          }}
+        />
+      </div>
 
-      {orbits.map((o, i) => (
-        <div key={i} style={{ position: "absolute", left: cubeCX + o.x, top: cubeCY + o.y, transform: "translate(-50%,-50%)", width: 9, height: 9, borderRadius: "50%", background: accent, opacity: 0.3 + 0.4 * (o.z + 1) / 2, zIndex: o.z > 0 ? 4 : 1 }} />
+      {/* Orbit dots — elliptical (104 × 64) around the cube centre. */}
+      {[0, 1, 2].map((i) => (
+        <div
+          key={i}
+          style={{
+            position: "absolute",
+            left: CUBE_CX,
+            top: CUBE_CY,
+            width: 9,
+            height: 9,
+            marginLeft: -4.5,
+            marginTop: -8.5,
+            zIndex: 2,
+            pointerEvents: "none",
+          }}
+        >
+          <div
+            className="k-dig-orbit"
+            style={{
+              width: 9,
+              height: 9,
+              borderRadius: "50%",
+              background: accent,
+              opacity: 0.55,
+              animationDelay: `${-i * (5.71 / 3)}s`,
+            }}
+          />
+        </div>
       ))}
 
-      <div style={{ position: "absolute", left: cubeCX, top: cubeCY, transform: "translate(-50%,-50%)", zIndex: 3 }}>
-        <Cube3D size={150} accent={accent} spin={spin} tilt={-22} scale={cubeScale} />
+      {/* The cube itself, centred. */}
+      <div
+        style={{
+          position: "absolute",
+          left: CUBE_CX,
+          top: CUBE_CY,
+          marginLeft: -CUBE_SIZE / 2,
+          marginTop: -CUBE_SIZE / 2,
+          zIndex: 3,
+        }}
+      >
+        <Cube accent={accent} />
       </div>
 
-      {SOURCES.map((s, i) => {
-        const local = mod(lt - i * (P / N), P);
-        if (local > travel + 0.1) return null;
-        const cx = ip(local, [0, travel], [s.sx, cubeCX], easeInOutCubic);
-        const cy = ip(local, [0, travel], [s.sy, cubeCY], easeInOutCubic);
-        const op = ip(local, [0, 0.28], [0, 1]) * ip(local, [travel - 0.18, travel], [1, 0]);
-        const sc = ip(local, [0, 0.28], [0.6, 1], easeOutBack) * ip(local, [travel - 0.34, travel], [1, 0.18], easeInCubic);
-        return (
-          <div key={i} style={{ position: "absolute", left: 0, top: 0, transform: `translate(${cx}px, ${cy}px) translate(-50%,-50%) scale(${sc}) rotate(${s.rot}deg)`, opacity: op, zIndex: 5, display: "flex", alignItems: "center", gap: 9, background: K.card, border: `1px solid ${K.line}`, borderRadius: 12, padding: "9px 13px", boxShadow: "0 12px 26px -12px rgba(15,32,50,.45)", whiteSpace: "nowrap" }}>
-            <span style={{ display: "grid", placeItems: "center", width: 22, height: 22, color: accent }} dangerouslySetInnerHTML={{ __html: s.ic }} />
-            <span style={{ fontFamily: K.mono, fontSize: 12, fontWeight: 600, color: K.ink }}>{s.label}</span>
-          </div>
-        );
-      })}
+      {/* Source cards — each ferried from its corner into the cube on a
+       *  3.2s cycle, staggered 0.8s apart. */}
+      {SOURCES.map((s, i) => (
+        <div
+          key={i}
+          className="k-dig-card"
+          style={{
+            zIndex: 5,
+            display: "flex",
+            alignItems: "center",
+            gap: 9,
+            background: K.card,
+            border: `1px solid ${K.line}`,
+            borderRadius: 12,
+            padding: "9px 13px",
+            boxShadow: "0 12px 26px -12px rgba(15,32,50,.45)",
+            whiteSpace: "nowrap",
+            ["--sx" as string]: `${s.sx}px`,
+            ["--sy" as string]: `${s.sy}px`,
+            ["--cx" as string]: `${CUBE_CX}px`,
+            ["--cy" as string]: `${CUBE_CY}px`,
+            ["--rot" as string]: `${s.rot}deg`,
+            ["--k-delay" as string]: `${s.delay}s`,
+          } as React.CSSProperties}
+        >
+          <span
+            style={{ display: "grid", placeItems: "center", width: 22, height: 22, color: accent }}
+            dangerouslySetInnerHTML={{ __html: s.ic }}
+          />
+          <span style={{ fontFamily: K.mono, fontSize: 12, fontWeight: 600, color: K.ink }}>
+            {s.label}
+          </span>
+        </div>
+      ))}
 
-      <div style={{ position: "absolute", left: 0, right: 0, top: 470, display: "flex", justifyContent: "center", gap: 9, zIndex: 6 }}>
+      {/* Loading dots — three pulses staggered so the "wave" reads. */}
+      <div
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          top: 470,
+          display: "flex",
+          justifyContent: "center",
+          gap: 9,
+          zIndex: 6,
+        }}
+      >
         {[0, 1, 2].map((i) => (
-          <div key={i} style={{ width: 9, height: 9, borderRadius: "50%", background: accent, opacity: dot(i) }} />
+          <div
+            key={i}
+            className="k-dig-dot"
+            style={{
+              width: 9,
+              height: 9,
+              borderRadius: "50%",
+              background: accent,
+              animationDelay: `${-i * 0.18}s`,
+            }}
+          />
         ))}
       </div>
-      <div style={{ position: "absolute", left: 0, right: 0, top: 500, textAlign: "center", zIndex: 6, padding: "0 80px" }}>
-        <div style={{ fontFamily: K.display, fontWeight: 500, fontSize: 23, letterSpacing: "-0.01em", color: K.ink, opacity: tipOp, transform: `translateY(${tipY}px)` }}>{TIPS[ti]}</div>
+
+      {/* Tips rotator — 5 tips × 3s each, 15s cycle. Each tip fades in and
+       *  out inside its own 3s slot; staggered so at any moment exactly one
+       *  is visible. */}
+      <div
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          top: 500,
+          textAlign: "center",
+          zIndex: 6,
+          padding: "0 80px",
+        }}
+      >
+        {TIPS.map((tip, i) => (
+          <div
+            key={i}
+            className="k-dig-tip"
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              padding: "0 80px",
+              fontFamily: K.display,
+              fontWeight: 500,
+              fontSize: 23,
+              letterSpacing: "-0.01em",
+              color: K.ink,
+              animationDelay: `${i * 3}s`,
+            }}
+          >
+            {tip}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Reduced-motion version: a still cube + a plain "reading your file…"
+ *  label. Same visual family as the animated version but no motion. */
+function StillStage({ accent }: { accent: string }) {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        background: K.bg,
+        display: "grid",
+        placeItems: "center",
+        fontFamily: K.body,
+      }}
+    >
+      <div style={{ textAlign: "center" }}>
+        <div style={{ display: "inline-block" }}>
+          <Cube accent={accent} />
+        </div>
+        <div
+          style={{
+            marginTop: 32,
+            fontFamily: K.display,
+            fontWeight: 500,
+            fontSize: 20,
+            color: K.ink,
+          }}
+        >
+          Kube is reading your file…
+        </div>
       </div>
     </div>
   );
 }
 
 /** Scales the fixed 1280×720 stage to fit its container (contain). */
-export default function DigestingAnimation({ accent = "#1f6f6b", className, style }: { accent?: string; className?: string; style?: React.CSSProperties }) {
+export default function DigestingAnimation({
+  accent = "#1f6f6b",
+  className,
+  style,
+}: {
+  accent?: string;
+  className?: string;
+  style?: React.CSSProperties;
+}) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0.5);
-  const [lt, setLt] = useState(0);
-  const raf = useRef<number>(0);
-  const start = useRef<number>(0);
+  const reduce = useSyncExternalStore(subscribeReduce, readReduce, readReduceServer);
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -160,22 +361,33 @@ export default function DigestingAnimation({ accent = "#1f6f6b", className, styl
     return () => ro.disconnect();
   }, []);
 
-  useEffect(() => {
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    start.current = performance.now();
-    const tick = (now: number) => {
-      const t = (now - start.current) / 1000;
-      setLt(reduce ? 1.0 : t);
-      if (!reduce) raf.current = requestAnimationFrame(tick);
-    };
-    raf.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf.current);
-  }, []);
-
   return (
-    <div ref={wrapRef} className={className} style={{ position: "relative", width: "100%", height: "100%", overflow: "hidden", display: "grid", placeItems: "center", background: K.bg, ...style }}>
-      <div style={{ width: 1280, height: 720, position: "relative", transform: `scale(${scale})`, flex: "none", borderRadius: 24, overflow: "hidden" }}>
-        <LoadingStage lt={lt} accent={accent} />
+    <div
+      ref={wrapRef}
+      className={className}
+      style={{
+        position: "relative",
+        width: "100%",
+        height: "100%",
+        overflow: "hidden",
+        display: "grid",
+        placeItems: "center",
+        background: K.bg,
+        ...style,
+      }}
+    >
+      <div
+        style={{
+          width: 1280,
+          height: 720,
+          position: "relative",
+          transform: `scale(${scale})`,
+          flex: "none",
+          borderRadius: 24,
+          overflow: "hidden",
+        }}
+      >
+        {reduce ? <StillStage accent={accent} /> : <LoadingStage accent={accent} />}
       </div>
     </div>
   );

@@ -1,12 +1,16 @@
 "use client";
 
-// Kube's opening title — ported from StudyingKube Video.dc.html (Opening
-// scene), compressed for use as a loading screen. "Kube" appears, "Studying"
-// slides out from behind it, they part, a tagline settles, then the wordmark
-// parks up to the sidebar logo slot as the whole overlay fades to reveal the
-// app. Plays on app entry and when leaving a lesson by the back path.
-import { useEffect, useRef, useState } from "react";
-import { ip, easeOutBack, easeOutCubic, easeInOutCubic } from "./motion";
+// Kube's opening title — Studying/Kube wordmark choreography that plays on
+// app entry and when leaving a lesson by the back path. Rewritten to use
+// CSS keyframe animations (see learn.css §"Opening animation") so the
+// browser runs everything on the compositor. The old RAF+setState engine
+// stuttered on low-end laptops and jumped to the end; this version paints
+// smoothly on the same machines because React never sees the frame updates.
+//
+// Total: 3.35s (fires onDone at the end). Reduced-motion holds a static
+// branded card for 1s so people who disable animations still get a
+// welcome moment before the app appears.
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 const K = {
   ink: "#16202b",
@@ -19,63 +23,205 @@ const K = {
   mono: "'JetBrains Mono',monospace",
 };
 
-const END = 3.35; // seconds — total before onDone
+const END_MS = 3350;
+const REDUCED_HOLD_MS = 1000;
 
-function Stage({ lt, accent }: { lt: number; accent: string }) {
-  // (1) Kube appears  (2) Studying emerges from behind  (3) they part
-  const kOp = ip(lt, [0.15, 0.8], [0, 1]);
-  const kSc = ip(lt, [0.15, 0.95], [0.7, 1], easeOutBack);
-  const xS = ip(lt, [1.0, 1.9], [118, 0], easeInOutCubic);
-  const xK = ip(lt, [1.0, 1.9], [118, 250], easeInOutCubic);
-  const clipW = xK; // Studying is only revealed to the LEFT of Kube's edge
+const REDUCE_QUERY = "(prefers-reduced-motion: reduce)";
 
-  // (4) park the wordmark to the top-left sidebar-logo slot
-  const gL = ip(lt, [2.25, 3.15], [450, 30], easeInOutCubic);
-  const gT = ip(lt, [2.25, 3.15], [312, 26], easeInOutCubic);
-  const gS = ip(lt, [2.25, 3.15], [1, 0.38], easeInOutCubic);
+/** External-store subscription for the OS reduced-motion preference —
+ *  keeps the effect free of the setState-in-effect cascade. */
+function subscribeReduce(cb: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  const mq = window.matchMedia(REDUCE_QUERY);
+  mq.addEventListener("change", cb);
+  return () => mq.removeEventListener("change", cb);
+}
+function readReduce(): boolean {
+  return typeof window !== "undefined" && window.matchMedia(REDUCE_QUERY).matches;
+}
+function readReduceServer(): boolean {
+  return false;
+}
 
-  const decay = ip(lt, [2.25, 2.8], [1, 0]);
-  const ulW = ip(lt, [1.9, 2.35], [0, 150], easeOutCubic) * decay;
-  const tagOp = ip(lt, [1.35, 1.95], [0, 1]) * decay;
-  const tagY = ip(lt, [1.35, 1.95], [12, 0], easeOutCubic);
-  const drift = Math.sin(lt * 0.7);
-
+/** The 1280×720 stage — every child position/size matches the original so
+ *  the CSS keyframes in learn.css land on identical frames. */
+function Stage({ accent }: { accent: string }) {
   return (
     <div style={{ position: "absolute", inset: 0, background: K.bg, overflow: "hidden" }}>
-      <div style={{ position: "absolute", width: 620, height: 620, borderRadius: "50%", border: `1px solid ${K.kubeLine}`, opacity: 0.5 * decay, left: 820 + drift * 14, top: -160 - drift * 10 }} />
-      <div style={{ position: "absolute", width: 420, height: 420, borderRadius: "50%", background: K.kubeSoft, opacity: 0.6 * decay, left: -140 - drift * 12, top: 380 + drift * 8 }} />
+      {/* Decorative circles (fade with tagline). */}
+      <div
+        className="k-open-circle"
+        style={{
+          position: "absolute",
+          width: 620,
+          height: 620,
+          borderRadius: "50%",
+          border: `1px solid ${K.kubeLine}`,
+          left: 820,
+          top: -160,
+          ["--k-circle-op" as string]: "0.5",
+        } as React.CSSProperties}
+      />
+      <div
+        className="k-open-circle"
+        style={{
+          position: "absolute",
+          width: 420,
+          height: 420,
+          borderRadius: "50%",
+          background: K.kubeSoft,
+          left: -140,
+          top: 380,
+          ["--k-circle-op" as string]: "0.6",
+        } as React.CSSProperties}
+      />
 
-      <div style={{ position: "absolute", left: 0, right: 0, top: 404, display: "flex", flexDirection: "column", alignItems: "center", zIndex: 3, pointerEvents: "none" }}>
-        <div style={{ height: 4, width: `${ulW}px`, borderRadius: 999, background: accent, opacity: 0.9 * decay }} />
-        <div style={{ marginTop: 22, fontFamily: K.mono, fontSize: 14, fontWeight: 500, letterSpacing: "0.24em", textTransform: "uppercase", color: K.faint, opacity: tagOp, transform: `translateY(${tagY}px)` }}>
+      {/* Underline + tagline, centered below the wordmark park spot. */}
+      <div
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          top: 404,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          zIndex: 3,
+          pointerEvents: "none",
+        }}
+      >
+        <div
+          className="k-open-underline"
+          style={{ height: 4, borderRadius: 999, background: accent }}
+        />
+        <div
+          className="k-open-tagline"
+          style={{
+            marginTop: 22,
+            fontFamily: K.mono,
+            fontSize: 14,
+            fontWeight: 500,
+            letterSpacing: "0.24em",
+            textTransform: "uppercase",
+            color: K.faint,
+          }}
+        >
           Climb your course, one concept at a time
         </div>
       </div>
 
-      <div style={{ position: "absolute", left: 0, top: 0, width: 384, height: 74, transformOrigin: "left top", transform: `translate(${gL}px, ${gT}px) scale(${gS})`, zIndex: 5, fontFamily: K.display, fontWeight: 600, fontSize: 62, letterSpacing: "-0.02em", lineHeight: "72px", whiteSpace: "nowrap" }}>
-        <div style={{ position: "absolute", left: 0, top: 0, width: `${clipW}px`, height: 74, overflow: "hidden" }}>
-          <span style={{ position: "absolute", top: 0, left: xS, color: K.ink }}>Studying</span>
+      {/* The wordmark group: parks to (30, 26) with scale 0.38 at the end. */}
+      <div
+        className="k-open-word"
+        style={{
+          position: "absolute",
+          left: 0,
+          top: 0,
+          width: 384,
+          height: 74,
+          zIndex: 5,
+          fontFamily: K.display,
+          fontWeight: 600,
+          fontSize: 62,
+          letterSpacing: "-0.02em",
+          lineHeight: "72px",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {/* Studying clipped to the left of Kube's edge — width grows as Kube slides right. */}
+        <div
+          className="k-open-word-clip"
+          style={{ position: "absolute", left: 0, top: 0, height: 74, overflow: "hidden" }}
+        >
+          <span
+            className="k-open-studying"
+            style={{ position: "absolute", top: 0, left: 0, color: K.ink }}
+          >
+            Studying
+          </span>
         </div>
-        <span style={{ position: "absolute", top: 0, left: xK, color: accent, opacity: kOp, transform: `scale(${kSc})`, transformOrigin: "left center", zIndex: 2 }}>Kube</span>
+        <span
+          className="k-open-kube"
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            color: accent,
+            transformOrigin: "left center",
+            zIndex: 2,
+          }}
+        >
+          Kube
+        </span>
       </div>
     </div>
   );
 }
 
-export default function OpeningAnimation({ onDone, accent = "#1f6f6b" }: { onDone: () => void; accent?: string }) {
+/** The reduced-motion branch: still branded card, held for a beat so it
+ *  reads as a welcome rather than a flash. */
+function StillCard({ accent }: { accent: string }) {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        background: K.bg,
+        display: "grid",
+        placeItems: "center",
+      }}
+    >
+      <div style={{ textAlign: "center" }}>
+        <div
+          style={{
+            fontFamily: K.display,
+            fontWeight: 600,
+            fontSize: 62,
+            letterSpacing: "-0.02em",
+            lineHeight: "72px",
+            whiteSpace: "nowrap",
+          }}
+        >
+          <span style={{ color: K.ink }}>Studying</span>
+          <span style={{ color: accent, marginLeft: 12 }}>Kube</span>
+        </div>
+        <div
+          style={{
+            marginTop: 22,
+            fontFamily: K.mono,
+            fontSize: 14,
+            fontWeight: 500,
+            letterSpacing: "0.24em",
+            textTransform: "uppercase",
+            color: K.faint,
+          }}
+        >
+          Climb your course, one concept at a time
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function OpeningAnimation({
+  onDone,
+  accent = "#1f6f6b",
+}: {
+  onDone: () => void;
+  accent?: string;
+}) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0.5);
-  const [lt, setLt] = useState(0);
-  const raf = useRef<number>(0);
-  const start = useRef<number>(0);
+  const reduce = useSyncExternalStore(subscribeReduce, readReduce, readReduceServer);
   const done = useRef(false);
 
+  // Fit the 1280×720 stage to cover the viewport. Recomputed only on
+  // resize, not per frame — so this is essentially free.
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
     const fit = () => {
       const r = el.getBoundingClientRect();
-      // cover: fill the screen; the bg matches so any overscan is invisible.
       setScale(Math.max(r.width / 1280, r.height / 720));
     };
     fit();
@@ -84,40 +230,44 @@ export default function OpeningAnimation({ onDone, accent = "#1f6f6b" }: { onDon
     return () => ro.disconnect();
   }, []);
 
+  // Fire onDone when the animation would end. CSS runs the visual —
+  // this timer just tells React it's safe to unmount the overlay.
   useEffect(() => {
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reduce) {
-      const t = setTimeout(() => onDone(), 350);
-      return () => clearTimeout(t);
-    }
-    start.current = performance.now();
-    const tick = (now: number) => {
-      const t = (now - start.current) / 1000;
-      setLt(t);
-      if (t >= END) {
-        if (!done.current) {
-          done.current = true;
-          onDone();
-        }
-        return;
+    const duration = reduce ? REDUCED_HOLD_MS : END_MS;
+    const t = setTimeout(() => {
+      if (!done.current) {
+        done.current = true;
+        onDone();
       }
-      raf.current = requestAnimationFrame(tick);
-    };
-    raf.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf.current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const overlayOp = ip(lt, [2.75, 3.3], [1, 0]);
+    }, duration);
+    return () => clearTimeout(t);
+  }, [reduce, onDone]);
 
   return (
     <div
       ref={wrapRef}
       aria-hidden
-      style={{ position: "fixed", inset: 0, zIndex: 200, background: K.bg, overflow: "hidden", display: "grid", placeItems: "center", opacity: overlayOp, pointerEvents: lt > 2.9 ? "none" : "auto" }}
+      className={reduce ? undefined : "k-open-overlay"}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 200,
+        background: K.bg,
+        overflow: "hidden",
+        display: "grid",
+        placeItems: "center",
+      }}
     >
-      <div style={{ width: 1280, height: 720, position: "relative", transform: `scale(${scale})`, flex: "none" }}>
-        <Stage lt={lt} accent={accent} />
+      <div
+        style={{
+          width: 1280,
+          height: 720,
+          position: "relative",
+          transform: `scale(${scale})`,
+          flex: "none",
+        }}
+      >
+        {reduce ? <StillCard accent={accent} /> : <Stage accent={accent} />}
       </div>
     </div>
   );
