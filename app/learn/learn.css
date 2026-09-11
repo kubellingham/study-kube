@@ -297,3 +297,236 @@
     transform: rotate(360deg);
   }
 }
+
+/* ---------------- Opening animation (OpeningAnimation.tsx) ----------------
+ *
+ * Rewritten from the RAF+setState engine so old / low-end laptops don't drop
+ * frames and jump to end. Each moving piece has its own CSS animation that
+ * the browser runs on the compositor. Total 3.35s. Landmark timings match
+ * the original (see percentages: 0.15s → 4.5%, 0.8s → 23.9%, 1.0s → 29.9%,
+ * 1.35s → 40.3%, 1.9s → 56.7%, 1.95s → 58.2%, 2.25s → 67.2%, 2.75s → 82.1%,
+ * 2.9s → 86.6%, 3.15s → 94.0%, 3.3s → 98.5%).
+ */
+
+.kube .k-open-overlay {
+  animation: k-open-overlay 3.35s linear forwards;
+}
+@keyframes k-open-overlay {
+  0%, 82.1% { opacity: 1; pointer-events: auto; }
+  86.6% { opacity: 1; pointer-events: none; }
+  98.5%, 100% { opacity: 0; pointer-events: none; }
+}
+
+/* The wordmark group parks to the top-left sidebar slot. */
+.kube .k-open-word {
+  transform: translate(450px, 312px) scale(1);
+  transform-origin: left top;
+  animation: k-open-word-park 3.35s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+@keyframes k-open-word-park {
+  0%, 67.2% { transform: translate(450px, 312px) scale(1); }
+  94%, 100% { transform: translate(30px, 26px) scale(0.38); }
+}
+
+/* Kube: fade + scale-in (easeOutBack) + slide right (easeInOutCubic). Uses
+ * the modern `translate` and `scale` individual transform properties so
+ * three concurrent property animations compose without conflicting. */
+.kube .k-open-kube {
+  opacity: 0;
+  scale: 0.7;
+  translate: 118px 0;
+  animation:
+    k-open-kube-fade 0.65s 0.15s linear forwards,
+    k-open-kube-scale 0.8s 0.15s cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
+    k-open-kube-slide 0.9s 1s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+@keyframes k-open-kube-fade { to { opacity: 1; } }
+@keyframes k-open-kube-scale { to { scale: 1; } }
+@keyframes k-open-kube-slide { to { translate: 250px 0; } }
+
+/* Studying wrapper: width grows from 118px to 250px, revealing Studying
+ * as Kube slides right (same timing so the reveal tracks the Kube edge). */
+.kube .k-open-word-clip {
+  width: 118px;
+  animation: k-open-word-clip 0.9s 1s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+@keyframes k-open-word-clip { to { width: 250px; } }
+
+/* Studying: slides right-to-left inside the clip so it emerges from Kube. */
+.kube .k-open-studying {
+  translate: 118px 0;
+  animation: k-open-studying 0.9s 1s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+@keyframes k-open-studying { to { translate: 0 0; } }
+
+/* Underline: quick grow 0→150 (1.9→2.35s), then decay 150→0 (2.25→2.8s).
+ * Combined as a single keyframe with landmark stops. */
+.kube .k-open-underline {
+  width: 0;
+  animation: k-open-underline 3.35s linear forwards;
+}
+@keyframes k-open-underline {
+  0%, 56.7% { width: 0; }
+  67.2% { width: 148px; }
+  70.1% { width: 122px; }
+  83.6%, 100% { width: 0; }
+}
+
+/* Tagline: fade in 1.35→1.95s (opacity + translateY easeOutCubic), fade out
+ * 2.25→2.8s. */
+.kube .k-open-tagline {
+  opacity: 0;
+  translate: 0 12px;
+  animation: k-open-tagline 3.35s linear forwards;
+}
+@keyframes k-open-tagline {
+  0%, 40.3% { opacity: 0; translate: 0 12px; }
+  58.2%, 67.2% { opacity: 1; translate: 0 0; }
+  83.6%, 100% { opacity: 0; translate: 0 0; }
+}
+
+/* Decorative circles: hold, then fade with the tagline. */
+.kube .k-open-circle {
+  animation: k-open-circle-fade 3.35s linear forwards;
+}
+@keyframes k-open-circle-fade {
+  0%, 67.2% { opacity: var(--k-circle-op, 0.5); }
+  83.6%, 100% { opacity: 0; }
+}
+
+/* ---------------- Digesting animation (DigestingAnimation.tsx) ----------
+ *
+ * Indefinite loading loop. All motion is CSS keyframes on the compositor —
+ * no RAF, no React re-renders per frame. The cube gently oscillates and
+ * breathes, sonar pings pulse, orbit dots trace an ellipse, source cards
+ * cycle from corners into the cube, tips rotate, loading dots pulse.
+ * Reduced-motion mode is a still cube + a "reading your file…" label.
+ */
+
+/* Cube gentle oscillation (±8° around 36°Y, period 3.93s) + breathe scale
+ * (±3.5%, period 2.03s). Runs on a nested wrapper so they compose. */
+.kube .k-dig-cube-rot {
+  transform: rotateX(-22deg) rotateY(36deg);
+  animation: k-dig-cube-rot 3.93s ease-in-out infinite;
+}
+@keyframes k-dig-cube-rot {
+  0%, 100% { transform: rotateX(-22deg) rotateY(28deg); }
+  50% { transform: rotateX(-22deg) rotateY(44deg); }
+}
+.kube .k-dig-cube-breathe {
+  animation:
+    k-dig-cube-in 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) both,
+    k-dig-cube-breathe 2.03s ease-in-out infinite 0.55s;
+}
+@keyframes k-dig-cube-in { from { scale: 0.55; } to { scale: 1; } }
+@keyframes k-dig-cube-breathe {
+  0%, 100% { scale: 1; }
+  50% { scale: 1.035; }
+}
+
+/* Sonar pings — two expanding rings, second delayed by half the period. */
+.kube .k-dig-ping {
+  animation: k-dig-ping 1.818s linear infinite;
+}
+.kube .k-dig-ping-b {
+  animation-delay: -0.909s; /* negative delay so it's mid-animation on mount */
+}
+@keyframes k-dig-ping {
+  0% { transform: translate(-50%, -50%) scale(0.5375); opacity: 0.3; }
+  100% { transform: translate(-50%, -50%) scale(1); opacity: 0; }
+}
+
+/* Orbit dots — elliptical path (104 × 64) around cube center, staggered
+ * 120° apart via negative delay. */
+.kube .k-dig-orbit {
+  offset-path: path('M 104 0 A 104 64 0 1 1 -104 0 A 104 64 0 1 1 104 0');
+  offset-rotate: 0deg;
+  animation: k-dig-orbit 5.71s linear infinite;
+}
+@keyframes k-dig-orbit { to { offset-distance: 100%; } }
+
+/* Source card cycle — 3.2s total, cards visible only in the first 1.25s
+ * (travel to cube). Position keyframes travel from (--sx, --sy) to
+ * (--cx, --cy). Four cards use --delay to stagger by 0.8s each. */
+.kube .k-dig-card {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(var(--sx), var(--sy)) translate(-50%, -50%) scale(0.6) rotate(var(--rot, 0deg));
+  opacity: 0;
+  animation: k-dig-card 3.2s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  animation-delay: var(--k-delay, 0s);
+}
+@keyframes k-dig-card {
+  0% {
+    transform: translate(var(--sx), var(--sy)) translate(-50%, -50%) scale(0.6) rotate(var(--rot, 0deg));
+    opacity: 0;
+  }
+  8.75% {
+    transform: translate(
+      calc(var(--sx) + (var(--cx) - var(--sx)) * 0.093),
+      calc(var(--sy) + (var(--cy) - var(--sy)) * 0.093)
+    ) translate(-50%, -50%) scale(1) rotate(var(--rot, 0deg));
+    opacity: 1;
+  }
+  28.4% {
+    transform: translate(
+      calc(var(--sx) + (var(--cx) - var(--sx)) * 0.526),
+      calc(var(--sy) + (var(--cy) - var(--sy)) * 0.526)
+    ) translate(-50%, -50%) scale(1) rotate(var(--rot, 0deg));
+    opacity: 1;
+  }
+  33.4% {
+    transform: translate(
+      calc(var(--sx) + (var(--cx) - var(--sx)) * 0.712),
+      calc(var(--sy) + (var(--cy) - var(--sy)) * 0.712)
+    ) translate(-50%, -50%) scale(0.7) rotate(var(--rot, 0deg));
+    opacity: 0.5;
+  }
+  39.1%, 100% {
+    transform: translate(var(--cx), var(--cy)) translate(-50%, -50%) scale(0.18) rotate(var(--rot, 0deg));
+    opacity: 0;
+  }
+}
+
+/* Tips rotator — 5 tips × 3s each, 15s total loop. Each tip fades in / out
+ * within its 3s window. Delay = i × 3s per tip. */
+.kube .k-dig-tip {
+  opacity: 0;
+  animation: k-dig-tip 15s linear infinite;
+}
+@keyframes k-dig-tip {
+  0% { opacity: 0; transform: translateY(8px); }
+  2% { opacity: 1; transform: translateY(0); }
+  18% { opacity: 1; transform: translateY(0); }
+  20%, 100% { opacity: 0; transform: translateY(0); }
+}
+
+/* Loading dots — three dots pulsing, staggered so the "wave" reads. */
+.kube .k-dig-dot {
+  animation: k-dig-dot 1.257s ease-in-out infinite;
+}
+@keyframes k-dig-dot {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 0.9; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kube .k-open-overlay,
+  .kube .k-open-word,
+  .kube .k-open-kube,
+  .kube .k-open-word-clip,
+  .kube .k-open-studying,
+  .kube .k-open-underline,
+  .kube .k-open-tagline,
+  .kube .k-open-circle,
+  .kube .k-dig-cube-rot,
+  .kube .k-dig-cube-breathe,
+  .kube .k-dig-ping,
+  .kube .k-dig-orbit,
+  .kube .k-dig-card,
+  .kube .k-dig-tip,
+  .kube .k-dig-dot {
+    animation: none;
+  }
+}
