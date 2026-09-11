@@ -12,10 +12,20 @@ export async function GET(req: NextRequest) {
   const [led, member] = await Promise.all([getCrewForLeader(auth.uid), getCrewForMember(auth.uid)]);
   return Response.json({
     leader: led && led.active
-      ? { inviteCode: led.inviteCode, size: led.size, count: led.memberUids?.length ?? 1 }
+      ? {
+          leaderUid: led.leaderUid,
+          inviteCode: led.inviteCode,
+          size: led.size,
+          count: led.memberUids?.length ?? 1,
+        }
       : null,
     member: member && member.leaderUid !== auth.uid
-      ? { leaderEmail: member.leaderEmail, size: member.size, count: member.memberUids?.length ?? 1 }
+      ? {
+          leaderUid: member.leaderUid,
+          leaderEmail: member.leaderEmail,
+          size: member.size,
+          count: member.memberUids?.length ?? 1,
+        }
       : null,
   });
 }

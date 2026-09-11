@@ -27,6 +27,9 @@ export interface FirestoreCourseDoc {
   examBank: ExamQuestion[];
   syllabus?: SyllabusInfo | null;
   files?: IngestedFile[];
+  /** When set, every member of the crew (leader = crewId) can read this
+   *  course. Only the userId owner can write. See firestore.rules. */
+  crewId?: string | null;
   createdAt: number;
 }
 
@@ -79,18 +82,22 @@ export function useCourse(courseId: string) {
     (async () => {
       try {
         const snap = await getDoc(doc(db(), "courses", courseId));
-        if (snap.exists() && snap.get("userId") === user.uid) {
+        // Rules gate reads to owner OR crew member — if the fetch succeeded,
+        // one of those is true. We just need to distinguish for the UI (owner
+        // gets Manage affordances; crew members get read-only).
+        if (snap.exists()) {
           const data = snap.data() as FirestoreCourseDoc;
           setBundle(bundleFromDoc(snap.id, data));
           setSyllabus(data.syllabus ?? null);
           setFiles(data.files ?? []);
-          setOwned(true);
+          setOwned(data.userId === user.uid);
           setStatus("ready");
         } else {
           setStatus("notfound");
         }
       } catch {
-        // Non-owner reads are rejected by the rules — same as not found.
+        // Non-owner + non-crew reads are rejected by the rules — same as
+        // not found.
         setStatus("notfound");
       }
     })();

@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { signOut } from "firebase/auth";
 import { db, auth } from "@/lib/firebase/client";
+import { authedFetch } from "@/lib/authed-fetch";
 import { useUser } from "@/lib/use-user";
 import { isOwner } from "@/lib/owner";
 import { listBuiltinBundles } from "@/lib/course";
@@ -34,6 +35,9 @@ interface SubjectCard {
   sections: number;
   topics: number;
   climbed: number;
+  /** True when this card is a crew-shared course owned by SOMEONE ELSE in
+   *  the caller's crew — the read-only "our study group's library" view. */
+  crew?: boolean;
 }
 
 /** "You're in Semester N" + the toggle that lets you file subjects into one. */
@@ -225,7 +229,22 @@ function SubjectRow({
   const pct = c.topics > 0 ? (c.climbed / c.topics) * 100 : 0;
   const body = (
     <>
-      <span className="k-eyebrow">{c.code}</span>
+      <div className="flex items-center gap-2">
+        <span className="k-eyebrow">{c.code}</span>
+        {c.crew && (
+          <span
+            className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase"
+            style={{
+              background: "var(--kube-soft)",
+              color: "var(--kube)",
+              letterSpacing: "0.08em",
+            }}
+            title="Shared with your crew"
+          >
+            Crew
+          </span>
+        )}
+      </div>
       <h2 className="mt-1 text-xl">{c.title}</h2>
       <p className="mt-1 text-sm" style={{ color: "var(--ink-soft)" }}>
         {c.topics === 0
@@ -294,8 +313,16 @@ export default function LearnHomePage() {
     if (!user) return;
     (async () => {
       const builtin = listBuiltinBundles(user.email);
-      let mine: { id: string; code: string; title: string; sections: number; topics: number }[] =
-        [];
+      type FetchedCard = {
+        id: string;
+        code: string;
+        title: string;
+        sections: number;
+        topics: number;
+        crew?: boolean;
+      };
+      let mine: FetchedCard[] = [];
+      let shared: FetchedCard[] = [];
       try {
         const snap = await getDocs(
           query(collection(db(), "courses"), where("userId", "==", user.uid))
@@ -314,6 +341,40 @@ export default function LearnHomePage() {
         // No owned courses (or transient error) — show built-ins regardless.
       }
 
+      // Crew-shared courses owned by other members of the caller's crew.
+      // Fetched only when the caller is actually in a crew (avoids a wasted
+      // Firestore round-trip for solo users).
+      try {
+        const crewRes = await authedFetch("/api/crew");
+        if (crewRes.ok) {
+          const crewJson = (await crewRes.json()) as {
+            leader: { leaderUid: string } | null;
+            member: { leaderUid: string } | null;
+          };
+          const leaderUid = crewJson.leader?.leaderUid ?? crewJson.member?.leaderUid ?? null;
+          if (leaderUid) {
+            const shSnap = await getDocs(
+              query(collection(db(), "courses"), where("crewId", "==", leaderUid))
+            );
+            shared = shSnap.docs
+              .filter((d) => d.get("userId") !== user.uid) // already in `mine`
+              .map((d) => {
+                const sections = (d.get("sections") as { topics: unknown[] }[]) ?? [];
+                return {
+                  id: d.id,
+                  code: d.get("code") as string,
+                  title: d.get("title") as string,
+                  sections: sections.length,
+                  topics: sections.reduce((n, s) => n + s.topics.length, 0),
+                  crew: true,
+                };
+              });
+          }
+        }
+      } catch {
+        /* silent — no crew shelf shown */
+      }
+
       const all = [
         ...builtin.map((b) => ({
           id: b.course.id,
@@ -322,8 +383,10 @@ export default function LearnHomePage() {
           sections: b.course.sections.length,
           topics: b.ladder.length,
           topicIds: b.ladder.map((t) => t.id),
+          crew: false,
         })),
-        ...mine.map((m) => ({ ...m, topicIds: null as string[] | null })),
+        ...mine.map((m) => ({ ...m, topicIds: null as string[] | null, crew: false })),
+        ...shared.map((m) => ({ ...m, topicIds: null as string[] | null, crew: true })),
       ];
 
       const cards = await Promise.all(
@@ -340,6 +403,7 @@ export default function LearnHomePage() {
             sections: c.sections,
             topics: c.topics,
             climbed: Math.min(climbed, c.topics),
+            crew: c.crew,
           };
         })
       );
