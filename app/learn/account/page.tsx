@@ -218,6 +218,16 @@ export default function AccountPage() {
           {busy ? "Deleting…" : "Delete my account"}
         </button>
       </div>
+
+      <p className="mt-6 text-xs" style={{ color: "var(--faint)" }}>
+        <a href="/legal" style={{ color: "var(--ink-soft)", textDecoration: "underline" }}>
+          Privacy &amp; terms
+        </a>
+        {"  ·  "}
+        <a href="mailto:ikube77@gmail.com" style={{ color: "var(--ink-soft)", textDecoration: "underline" }}>
+          Contact
+        </a>
+      </p>
     </main>
   );
 }

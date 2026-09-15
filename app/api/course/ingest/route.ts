@@ -38,7 +38,14 @@ import {
 } from "@/lib/course/verify";
 import type { Section, ExamQuestion, IngestedFile } from "@/lib/course/types";
 import { UsageMeter, formatCost } from "@/lib/usage";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { CLIMB_PRICE_IN, CLIMB_PRICE_OUT, SUMMIT_PRICE_IN, SUMMIT_PRICE_OUT, SUMMIT_MODEL, SUMMIT_VISION_MODEL, CHAT_BUDGET_MODEL } from "@/lib/openrouter";
+
+// Per-user cap for the digest endpoint. A real digest takes minutes and burns
+// tokens, so five in ten minutes is generous for a genuine user and
+// devastating to a bored replay-the-PDF loop.
+const INGEST_LIMIT = 5;
+const INGEST_WINDOW_MS = 10 * 60_000;
 
 export const runtime = "nodejs";
 // 300s is the hard ceiling on Vercel's Hobby plan — it can't be raised. The
@@ -168,6 +175,22 @@ export async function POST(req: NextRequest) {
   const gate = await requireEntitlement(req, "climb");
   if (!gate.ok) return gate.response;
   const uid = gate.uid;
+
+  // Owner bypass — the account behind Kube needs to run demos and admin work
+  // without tripping its own rate limits. Everyone else runs through.
+  if (!isOwner(gate.email)) {
+    const rl = checkRateLimit(`ingest:${uid}`, INGEST_LIMIT, INGEST_WINDOW_MS);
+    if (!rl.ok) {
+      const seconds = Math.ceil(rl.retryAfterMs / 1000);
+      const wait = seconds < 60 ? `${seconds}s` : `${Math.ceil(seconds / 60)}m`;
+      return Response.json(
+        {
+          error: `Kube's catching its breath — you've digested ${rl.limit} files in the last ten minutes. Try again in ${wait}.`,
+        },
+        { status: 429, headers: { "Retry-After": String(seconds) } }
+      );
+    }
+  }
 
   // Tier decides the engine: Climb DISTILLS (concept map + exams on the budget
   // model, no drilling); Summit+ gets the deep four-quarter teaching on Sonnet.
