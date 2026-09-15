@@ -554,10 +554,12 @@ export default function Landing() {
             /* ignore storage errors */
           }
           try {
+            const currentUser = auth().currentUser;
+            const displayName = currentUser?.displayName ?? null;
             await authedFetch("/api/user/init", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ ref }),
+              body: JSON.stringify({ ref, displayName }),
             });
           } catch {
             /* the /me endpoint self-heals on next visit — swallow */

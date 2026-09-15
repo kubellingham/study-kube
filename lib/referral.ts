@@ -37,8 +37,22 @@ export interface UserDoc {
   referredBy: string | null;
   referralCount: number;
   referralMonthsGranted: number;
+  /** Captured on first init so the referrer can see who joined via their code
+   *  without a separate auth-admin call (firebase-admin/auth can't run on
+   *  Vercel here). Nullable — a user who hasn't signed in since we added
+   *  this field just shows as "A friend" in the list. */
+  email: string | null;
+  displayName: string | null;
   createdAt: number;
   updatedAt: number;
+}
+
+/** Referrer-visible summary of someone who joined via the referrer's code. */
+export interface ReferredJoin {
+  uid: string;
+  displayName: string | null;
+  email: string | null;
+  joinedAt: number;
 }
 
 function randomCode(): string {
@@ -63,16 +77,31 @@ export function normaliseCode(raw: string): string {
 export async function ensureUserDoc(
   uid: string,
   referredByCode: string | null,
+  identity: { email: string | null; displayName: string | null } = { email: null, displayName: null },
   now: number = Date.now()
 ): Promise<UserDoc> {
   const db = adminDb();
   const userRef = db.collection("users").doc(uid);
 
-  // Fast path: doc exists AND no ref to apply → return as-is.
+  // Fast path: doc exists, no ref to apply, and identity is already filled in.
   const existing = await userRef.get();
   const cleanRef = referredByCode ? normaliseCode(referredByCode) : null;
-  if (existing.exists && (!cleanRef || (existing.data() as UserDoc).referredBy)) {
-    return existing.data() as UserDoc;
+  if (existing.exists) {
+    const d = existing.data() as UserDoc;
+    const needsIdentity =
+      (!d.email && identity.email) || (!d.displayName && identity.displayName);
+    if (!cleanRef && !needsIdentity && d.referralCount !== undefined) {
+      return d;
+    }
+    if (!cleanRef && needsIdentity) {
+      // Backfill identity without a transaction — nothing else to coordinate.
+      const patch: Partial<UserDoc> = { updatedAt: now };
+      if (!d.email && identity.email) patch.email = identity.email;
+      if (!d.displayName && identity.displayName) patch.displayName = identity.displayName;
+      await userRef.update(patch);
+      return { ...d, ...patch } as UserDoc;
+    }
+    if (d.referredBy) return d;
   }
 
   // Create-or-attach path: transaction so the code claim + user doc + referrer
@@ -91,6 +120,8 @@ export async function ensureUserDoc(
         referredBy: referrerUid,
         referralCount: 0,
         referralMonthsGranted: 0,
+        email: identity.email,
+        displayName: identity.displayName,
         createdAt: now,
         updatedAt: now,
       };
@@ -99,16 +130,19 @@ export async function ensureUserDoc(
       return doc;
     }
 
-    // Doc exists. If it never had a referrer AND we have one to record, apply
-    // it now (a user who signed up before the referral system rolled out can
-    // still be credited to whoever brought them). Otherwise no-op.
+    // Doc exists. Apply referrer (if new) and/or backfill identity.
     const d = snap.data() as UserDoc;
+    const patch: Partial<UserDoc> = { updatedAt: now };
+    let credited = false;
     if (!d.referredBy && referrerUid) {
-      tx.update(userRef, { referredBy: referrerUid, updatedAt: now });
-      await creditReferrer(tx, referrerUid, now);
-      return { ...d, referredBy: referrerUid, updatedAt: now };
+      patch.referredBy = referrerUid;
+      credited = true;
     }
-    return d;
+    if (!d.email && identity.email) patch.email = identity.email;
+    if (!d.displayName && identity.displayName) patch.displayName = identity.displayName;
+    if (Object.keys(patch).length > 1) tx.update(userRef, patch);
+    if (credited && referrerUid) await creditReferrer(tx, referrerUid, now);
+    return { ...d, ...patch } as UserDoc;
   });
 }
 
@@ -211,3 +245,23 @@ export const REFERRAL_CONFIG = {
   rewardTier: REWARD_TIER,
   codeLength: CODE_LEN,
 } as const;
+
+/** Latest users who joined with this referrer's code. Capped so a very
+ *  successful ambassador doesn't blow the response size. */
+export async function listReferrals(referrerUid: string, limit = 20): Promise<ReferredJoin[]> {
+  const snap = await adminDb()
+    .collection("users")
+    .where("referredBy", "==", referrerUid)
+    .orderBy("createdAt", "desc")
+    .limit(limit)
+    .get();
+  return snap.docs.map((d) => {
+    const u = d.data() as UserDoc;
+    return {
+      uid: u.uid,
+      displayName: u.displayName ?? null,
+      email: u.email ?? null,
+      joinedAt: u.createdAt,
+    };
+  });
+}

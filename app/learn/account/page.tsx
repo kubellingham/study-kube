@@ -12,6 +12,13 @@ import { auth } from "@/lib/firebase/client";
 import { useUser } from "@/lib/use-user";
 import { authedFetch } from "@/lib/authed-fetch";
 
+interface ReferralJoin {
+  uid: string;
+  displayName: string | null;
+  email: string | null;
+  joinedAt: number;
+}
+
 interface ReferralInfo {
   code: string;
   count: number;
@@ -19,6 +26,19 @@ interface ReferralInfo {
   toNextReward: number;
   perReward: number;
   rewardDays: number;
+  joined?: ReferralJoin[];
+}
+
+function relativeJoined(ts: number): string {
+  const s = Math.max(1, Math.floor((Date.now() - ts) / 1000));
+  if (s < 60) return "just now";
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 30) return `${d}d ago`;
+  return new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 export default function AccountPage() {
@@ -172,6 +192,64 @@ export default function AccountPage() {
               );
             })}
           </div>
+
+          {referral.joined && referral.joined.length > 0 && (
+            <div className="mt-4">
+              <div
+                className="k-eyebrow"
+                style={{ color: "var(--faint)", marginBottom: 8 }}
+              >
+                Who joined
+              </div>
+              <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
+                {referral.joined.map((j) => {
+                  const name = j.displayName || j.email?.split("@")[0] || "A friend";
+                  return (
+                    <li
+                      key={j.uid}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        padding: "8px 0",
+                        borderBottom: "1px solid var(--line)",
+                      }}
+                    >
+                      <span
+                        aria-hidden
+                        style={{
+                          display: "grid",
+                          placeItems: "center",
+                          width: 28,
+                          height: 28,
+                          borderRadius: "50%",
+                          background: "var(--kube-soft)",
+                          color: "var(--kube)",
+                          fontWeight: 700,
+                          fontSize: 12,
+                          flex: "none",
+                        }}
+                      >
+                        {name.slice(0, 1).toUpperCase()}
+                      </span>
+                      <span
+                        className="text-sm"
+                        style={{ color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                      >
+                        {name}
+                      </span>
+                      <span
+                        className="ml-auto text-xs"
+                        style={{ color: "var(--faint)", fontFamily: "var(--font-mono)" }}
+                      >
+                        {relativeJoined(j.joinedAt)}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 

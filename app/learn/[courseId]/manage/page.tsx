@@ -14,7 +14,7 @@ const KIND_LABEL: Record<string, string> = { syllabus: "syllabus", unit: "unit",
 
 export default function ManageCoursePage() {
   const params = useParams<{ courseId: string }>();
-  const { user, userLoading, status, bundle, owned, files, reload } = useCourse(params.courseId);
+  const { user, userLoading, status, bundle, owned, crewShared, files, reload } = useCourse(params.courseId);
   const router = useRouter();
 
   const [code, setCode] = useState("");
@@ -22,6 +22,8 @@ export default function ManageCoursePage() {
   const [savedBase, setSavedBase] = useState({ code: "", title: "" });
   const [saveMsg, setSaveMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [shareBusy, setShareBusy] = useState(false);
+  const [shareMsg, setShareMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [rechecking, setRechecking] = useState(false);
   const [recheckMsg, setRecheckMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [semester, setSemester] = useState<number | null>(null);
@@ -106,6 +108,29 @@ export default function ManageCoursePage() {
     } catch (err) {
       setRecheckMsg({ ok: false, text: err instanceof Error ? err.message : "The answer check failed." });
     } finally { setRechecking(false); }
+  }
+
+  async function toggleShare(next: boolean) {
+    setShareBusy(true);
+    setShareMsg(null);
+    try {
+      const res = await authedFetch(`/api/course/${params.courseId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, title, share: next }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Could not update sharing.");
+      setShareMsg({
+        ok: true,
+        text: next ? "Shared with your crew." : "No longer shared.",
+      });
+      reload();
+    } catch (err) {
+      setShareMsg({ ok: false, text: err instanceof Error ? err.message : "Could not update sharing." });
+    } finally {
+      setShareBusy(false);
+    }
   }
 
   async function del() {
@@ -224,6 +249,48 @@ export default function ManageCoursePage() {
           style={{ background: "var(--kube)" }}
         >
           {rechecking ? "Re-marking every question…" : "Re-check the answers"}
+        </button>
+      </div>
+
+      {/* Crew sharing */}
+      <div className="k-card mt-6 px-6 py-6">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold">Share with your crew</h2>
+          {crewShared && (
+            <span
+              className="k-eyebrow"
+              style={{ color: "var(--kube)" }}
+            >
+              shared
+            </span>
+          )}
+        </div>
+        <p className="mt-1 text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>
+          {crewShared
+            ? "Everyone in your crew can see this subject and study from it. Only you can add material, rename or delete it."
+            : "Turn this on and everyone in your crew (leader = you, or the leader you joined) can study the same subject."}
+        </p>
+        {shareMsg && (
+          <p className="mt-3 text-sm leading-relaxed" style={{ color: shareMsg.ok ? "var(--kube)" : "var(--red)" }}>
+            {shareMsg.text}
+          </p>
+        )}
+        <button
+          type="button"
+          onClick={() => toggleShare(!crewShared)}
+          disabled={shareBusy}
+          className="mt-4 rounded-xl border px-5 py-2.5 text-sm font-semibold disabled:opacity-50"
+          style={
+            crewShared
+              ? { borderColor: "var(--line)", color: "var(--ink-soft)", background: "var(--card)" }
+              : { borderColor: "var(--kube)", color: "#fff", background: "var(--kube)" }
+          }
+        >
+          {shareBusy
+            ? "Saving…"
+            : crewShared
+              ? "Stop sharing"
+              : "Share with your crew"}
         </button>
       </div>
 
