@@ -183,10 +183,21 @@ export default function AdminPage() {
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 16 }}>
             <h2 style={{ fontFamily: K.display, fontWeight: 600, fontSize: 18, margin: 0 }}>Mint a code</h2>
             {passkey === true ? (
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, color: K.kube, background: K.kubeSoft, border: `1px solid ${K.kubeLine}`, borderRadius: 999, padding: "5px 11px" }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><rect x="4" y="10" width="16" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0" strokeLinecap="round" /></svg>
-                Passkey on
-              </span>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, color: K.kube, background: K.kubeSoft, border: `1px solid ${K.kubeLine}`, borderRadius: 999, padding: "5px 11px" }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><rect x="4" y="10" width="16" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0" strokeLinecap="round" /></svg>
+                  Passkey on
+                </span>
+                <button
+                  type="button"
+                  onClick={registerPasskey}
+                  disabled={pkBusy}
+                  title="Enrol this device (Windows Hello / Touch ID) as a second passkey. Useful when your first passkey lives on your phone."
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, color: K.kube, background: "#fff", border: `1px solid ${K.kubeLine}`, borderRadius: 999, padding: "5px 11px", cursor: pkBusy ? "default" : "pointer" }}
+                >
+                  {pkBusy ? "Enrolling…" : "+ Add this device"}
+                </button>
+              </div>
             ) : passkey === false ? (
               <button type="button" onClick={registerPasskey} disabled={pkBusy} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, color: K.amber, background: "#fff", border: `1px solid ${K.amber}`, borderRadius: 999, padding: "5px 11px", cursor: pkBusy ? "default" : "pointer" }}>
                 {pkBusy ? "Setting up…" : "🔑 Set up a passkey"}
