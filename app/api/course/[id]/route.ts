@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getUid } from "@/lib/api-helpers";
 import { adminDb } from "@/lib/firebase/admin";
+import { getCrewForMember } from "@/lib/crew";
 
 export const runtime = "nodejs";
 
@@ -31,8 +32,28 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!title || title.length > 120) {
     return Response.json({ error: "Please give the course a title." }, { status: 400 });
   }
+
+  // Optional: flip this course's crew-share state. Only the owner reaches
+  // this handler (ownCourse), and share:true is only honoured when the owner
+  // is still in a crew. Passing share:false always unshares.
+  const patch: Record<string, unknown> = { code, title };
+  if (typeof body.share === "boolean") {
+    if (body.share) {
+      const crew = await getCrewForMember(gate.uid);
+      if (!crew) {
+        return Response.json(
+          { error: "You're not in a crew yet — join or start one before sharing a subject." },
+          { status: 400 }
+        );
+      }
+      patch.crewId = crew.leaderUid;
+    } else {
+      patch.crewId = null;
+    }
+  }
+
   try {
-    await gate.ref.set({ code, title }, { merge: true });
+    await gate.ref.set(patch, { merge: true });
     return Response.json({ ok: true });
   } catch (err) {
     return Response.json({ error: err instanceof Error ? err.message : "Could not save." }, { status: 500 });

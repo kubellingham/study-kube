@@ -1,6 +1,12 @@
 import { NextRequest } from "next/server";
 import { getAuth } from "@/lib/api-helpers";
-import { ensureUserDoc, getUserDoc, referralsToNextReward, REFERRAL_CONFIG } from "@/lib/referral";
+import {
+  ensureUserDoc,
+  getUserDoc,
+  listReferrals,
+  referralsToNextReward,
+  REFERRAL_CONFIG,
+} from "@/lib/referral";
 
 export const runtime = "nodejs";
 
@@ -11,7 +17,10 @@ export async function GET(req: NextRequest) {
   if (!auth) {
     return Response.json({ error: "Not signed in." }, { status: 401 });
   }
-  const doc = (await getUserDoc(auth.uid)) ?? (await ensureUserDoc(auth.uid, null));
+  const doc =
+    (await getUserDoc(auth.uid)) ??
+    (await ensureUserDoc(auth.uid, null, { email: auth.email, displayName: null }));
+  const joined = await listReferrals(auth.uid).catch(() => []);
   return Response.json({
     user: doc,
     referral: {
@@ -21,6 +30,7 @@ export async function GET(req: NextRequest) {
       toNextReward: referralsToNextReward(doc.referralCount),
       perReward: REFERRAL_CONFIG.perReward,
       rewardDays: REFERRAL_CONFIG.rewardDays,
+      joined,
     },
   });
 }

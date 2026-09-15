@@ -65,6 +65,7 @@ export function useCourse(courseId: string) {
   const [status, setStatus] = useState<CourseStatus>("loading");
   const [bundle, setBundle] = useState<CourseBundle | null>(null);
   const [owned, setOwned] = useState(false);
+  const [crewShared, setCrewShared] = useState(false);
   const [syllabus, setSyllabus] = useState<SyllabusInfo | null>(null);
   const [files, setFiles] = useState<IngestedFile[]>([]);
   const [reloadKey, setReloadKey] = useState(0);
@@ -91,6 +92,7 @@ export function useCourse(courseId: string) {
           setSyllabus(data.syllabus ?? null);
           setFiles(data.files ?? []);
           setOwned(data.userId === user.uid);
+          setCrewShared(!!data.crewId);
           setStatus("ready");
         } else {
           setStatus("notfound");
@@ -109,6 +111,7 @@ export function useCourse(courseId: string) {
     status,
     bundle,
     owned,
+    crewShared,
     syllabus,
     files,
     reload: () => setReloadKey((k) => k + 1),

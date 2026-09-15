@@ -40,6 +40,34 @@ interface SubjectCard {
   crew?: boolean;
 }
 
+/** A small numbered step tile used in the "no subjects yet" empty state. */
+function EmptyStep({ n, title, body }: { n: number; title: string; body: string }) {
+  return (
+    <div
+      className="rounded-2xl border px-4 py-4"
+      style={{ borderColor: "var(--line)", background: "var(--card)" }}
+    >
+      <span
+        className="grid place-items-center rounded-full text-xs font-bold"
+        style={{
+          width: 26,
+          height: 26,
+          background: "var(--kube-soft)",
+          color: "var(--kube)",
+        }}
+      >
+        {n}
+      </span>
+      <p className="mt-2 text-sm font-semibold" style={{ color: "var(--ink)" }}>
+        {title}
+      </p>
+      <p className="mt-1 text-xs leading-relaxed" style={{ color: "var(--ink-soft)" }}>
+        {body}
+      </p>
+    </div>
+  );
+}
+
 /** "You're in Semester N" + the toggle that lets you file subjects into one. */
 function SemesterBar({
   plan,
@@ -510,9 +538,28 @@ export default function LearnHomePage() {
           <h1 className="text-3xl">Let&apos;s make your first subject.</h1>
           <p className="mt-2 text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>
             Name a course, feed it your material, and Kube turns it into one calm
-            ladder to climb. You&apos;ll land back here every time — tap a subject to
-            open it, or switch subjects from the top of any course.
+            ladder to climb. You&apos;ll land back here every time.
           </p>
+          <div
+            className="mt-5 grid gap-3"
+            style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}
+          >
+            <EmptyStep
+              n={1}
+              title="Name your course"
+              body="A code like CSE46D and a title — that&rsquo;s your shelf label."
+            />
+            <EmptyStep
+              n={2}
+              title="Feed it your material"
+              body="Unit PDFs, lecture decks, your notes, past papers. Kube reads it all."
+            />
+            <EmptyStep
+              n={3}
+              title="Climb the ladder"
+              body="Concepts, lessons, practice, and mock exams — in one calm order."
+            />
+          </div>
         </>
       ) : (
         <>
