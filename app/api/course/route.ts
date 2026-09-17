@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { getUid } from "@/lib/api-helpers";
 import { adminDb } from "@/lib/firebase/admin";
-import { getCrewForMember } from "@/lib/crew";
+import { getMyCrew } from "@/lib/crew";
 
 export const runtime = "nodejs";
 
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
 
   let crewId: string | null = null;
   if (share) {
-    const crew = await getCrewForMember(uid);
+    const crew = await getMyCrew(uid);
     if (!crew) {
       return Response.json(
         { error: "You're not in a crew yet — join or start one before sharing a subject." },

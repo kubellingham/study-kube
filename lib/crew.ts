@@ -121,3 +121,16 @@ export async function getCrewForMember(uid: string): Promise<Crew | null> {
   const snap = await crewRef(leaderUid).get();
   return snap.exists ? (snap.data() as Crew) : null;
 }
+
+/** Return the crew the caller is *in* — whether they lead it or they joined
+ *  one with a code. Server-side share checks must use this, not just
+ *  getCrewForMember: a leader has no crewLeaderUid entry on their own
+ *  entitlement doc (that field is only written when someone joins via
+ *  invite), so getCrewForMember on the leader returns null. Which is right —
+ *  they aren't a *member*; they're the leader. This helper answers the
+ *  broader "is there a crew associated with this uid" question. */
+export async function getMyCrew(uid: string): Promise<Crew | null> {
+  const lead = await getCrewForLeader(uid);
+  if (lead && lead.active) return lead;
+  return getCrewForMember(uid);
+}
