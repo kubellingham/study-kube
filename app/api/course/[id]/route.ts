@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { getUid } from "@/lib/api-helpers";
 import { adminDb } from "@/lib/firebase/admin";
-import { getCrewForMember } from "@/lib/crew";
+import { getMyCrew } from "@/lib/crew";
 
 export const runtime = "nodejs";
 
@@ -39,7 +39,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const patch: Record<string, unknown> = { code, title };
   if (typeof body.share === "boolean") {
     if (body.share) {
-      const crew = await getCrewForMember(gate.uid);
+      const crew = await getMyCrew(gate.uid);
       if (!crew) {
         return Response.json(
           { error: "You're not in a crew yet — join or start one before sharing a subject." },
