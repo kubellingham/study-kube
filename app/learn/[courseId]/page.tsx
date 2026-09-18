@@ -26,6 +26,7 @@ import { retentionDue, type RetentionItem } from "@/lib/learn/retention";
 import { pingStudy } from "@/lib/learn/events";
 import { loadPlan, setCourseExamDate } from "@/lib/learn/plan";
 import { dailyPlan } from "@/lib/learn/scheduler";
+import { loadRhythm, type Rhythm } from "@/lib/learn/rhythm";
 import AddMaterial from "@/app/learn/components/AddMaterial";
 import OpeningAnimation from "@/app/learn/components/OpeningAnimation";
 import MobileTabs, { MOBILE_TABS_H } from "@/app/learn/components/MobileTabs";
@@ -116,6 +117,7 @@ export default function CourseLadderPage() {
   // A stable "now" for this page view — keeps the daily plan pure (no Date.now
   // during render) and steady while the page is open.
   const [pageNow] = useState(() => Date.now());
+  const [rhythm, setRhythm] = useState<Rhythm | null>(null);
   const [subjectList, setSubjectList] = useState<SubjectRow[]>([]);
   const [subjectOpen, setSubjectOpen] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
@@ -150,6 +152,7 @@ export default function CourseLadderPage() {
       loadProgress(user.uid, bundle.course.id).then(setProgress);
       pingStudy(user.uid, bundle.course.id);
       loadPlan(user.uid).then((p) => setExamAt(p.examDates[bundle.course.id] ?? null)).catch(() => {});
+      loadRhythm(user.uid).then(setRhythm).catch(() => {});
     }
   }, [user, userLoading, router, bundle]);
 
@@ -287,6 +290,18 @@ export default function CourseLadderPage() {
               )}
             </div>
             <p style={{ fontSize: 14, lineHeight: 1.5, color: T.ink, margin: "10px 0 0", fontWeight: 500 }}>{plan.message}</p>
+
+            {rhythm && rhythm.enough && (
+              <p style={{ fontSize: 12, lineHeight: 1.45, color: T.faint, margin: "8px 0 0" }}>
+                {[
+                  rhythm.streak >= 2 ? `${rhythm.streak}-day streak` : null,
+                  rhythm.daysLast7 >= 2 ? `${rhythm.daysLast7} of the last 7 days` : null,
+                  rhythm.favoriteHourLabel ? `you study most around ${rhythm.favoriteHourLabel}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+            )}
 
             {plan.hasExam && !plan.done && (
               <div style={{ marginTop: 12 }}>
