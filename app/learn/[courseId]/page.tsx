@@ -21,7 +21,7 @@ import { loadProgress, loadExamSummary, type LearnProgress } from "@/lib/learn/p
 import { loadPracticeState } from "@/lib/learn/practice";
 import { loadFlags } from "@/lib/learn/flags";
 import { loadMistakes } from "@/lib/learn/mistakes";
-import { loadCourseSignals, type TopicSignal } from "@/lib/learn/signals";
+import { loadCourseSignals, type TopicSignal, type Mastery } from "@/lib/learn/signals";
 import AddMaterial from "@/app/learn/components/AddMaterial";
 import OpeningAnimation from "@/app/learn/components/OpeningAnimation";
 import MobileTabs, { MOBILE_TABS_H } from "@/app/learn/components/MobileTabs";
@@ -106,6 +106,7 @@ export default function CourseLadderPage() {
   const [progress, setProgress] = useState<LearnProgress | null>(null);
   const [hub, setHub] = useState<{ due: number; best: number; tries: number; notes: number; redo: number } | null>(null);
   const [weak, setWeak] = useState<TopicSignal[]>([]);
+  const [masteryById, setMasteryById] = useState<Record<string, Mastery>>({});
   const [subjectList, setSubjectList] = useState<SubjectRow[]>([]);
   const [subjectOpen, setSubjectOpen] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
@@ -178,8 +179,16 @@ export default function CourseLadderPage() {
         cid,
         bundle.ladder.map((t) => ({ id: t.id, title: t.title, unit: t.unit }))
       )
-        .then((s) => setWeak(s.weak.slice(0, 3)))
-        .catch(() => setWeak([]));
+        .then((s) => {
+          setWeak(s.weak.slice(0, 3));
+          const m: Record<string, Mastery> = {};
+          for (const [id, sig] of Object.entries(s.byTopic)) m[id] = sig.mastery;
+          setMasteryById(m);
+        })
+        .catch(() => {
+          setWeak([]);
+          setMasteryById({});
+        });
     })();
   }, [user, bundle]);
 
@@ -219,6 +228,7 @@ export default function CourseLadderPage() {
   const ladder = bundle?.ladder ?? [];
   const states = progress ? nodeStates(ladder, progress) : {};
   const done = progress ? ladder.filter((t) => progress.completed[t.id]).length : 0;
+  const mastered = ladder.filter((t) => masteryById[t.id] === "mastered").length;
   const total = ladder.length;
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
   const fi = ladder.findIndex((n) => !progress?.completed[n.id]);
@@ -273,7 +283,7 @@ export default function CourseLadderPage() {
             </svg>
             <div>
               <div style={{ fontFamily: T.display, fontWeight: 600, fontSize: 22, color: T.ink }}>{done}<span style={{ color: T.faint, fontSize: 15 }}> / {total}</span></div>
-              <div style={{ fontSize: 13, color: T.inkSoft, marginTop: 2 }}>topics climbed</div>
+              <div style={{ fontSize: 13, color: T.inkSoft, marginTop: 2 }}>topics climbed{mastered > 0 && <span style={{ color: T.kube, fontWeight: 600 }}> · {mastered} mastered</span>}</div>
             </div>
           </div>
           {curTopic && (
@@ -532,6 +542,12 @@ export default function CourseLadderPage() {
                             <span style={{ display: "grid", placeItems: "center" }}>
                               {st === "completed" ? CHECK : st === "locked" ? LOCK : isReview ? <span style={{ fontSize: 20, lineHeight: 1 }}>↻</span> : <span>{num}</span>}
                             </span>
+                            {st === "completed" && masteryById[tp.id] === "mastered" && (
+                              <span title="Mastered — proven, not just finished" aria-label="Mastered" style={{ position: "absolute", top: -5, right: -5, width: 20, height: 20, borderRadius: "50%", background: "#e7b34a", color: "#3a2a06", display: "grid", placeItems: "center", fontSize: 12, lineHeight: 1, border: "2px solid #fff", boxShadow: "0 1px 3px rgba(20,32,43,.3)" }}>★</span>
+                            )}
+                            {st === "completed" && masteryById[tp.id] === "needs-reinforcement" && (
+                              <span title="Finished, but worth another look" aria-label="Needs another look" style={{ position: "absolute", top: -3, right: -3, width: 14, height: 14, borderRadius: "50%", background: T.amber, border: "2px solid #fff" }} />
+                            )}
                           </button>
                           <div style={{ marginTop: 9, maxWidth: 150, textAlign: "center", fontSize: 12.5, fontWeight: 600, lineHeight: 1.25, color: st === "locked" ? T.faint : T.ink }}>{tp.title}</div>
                         </div>

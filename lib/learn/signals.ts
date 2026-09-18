@@ -25,6 +25,16 @@ import { loadStruggleNotes } from "@/lib/learn/chat-notes";
 
 export type TopicState = "untouched" | "solid" | "shaky" | "needs-reinforcement";
 
+// Completion is not mastery. This five-level ladder distinguishes finishing a
+// topic from actually performing on it. "mastered" needs positive proof
+// (strong exam ratio or a high, settled flashcard ease), not just a checkmark.
+export type Mastery =
+  | "not-started"
+  | "started"
+  | "completed"
+  | "mastered"
+  | "needs-reinforcement";
+
 export interface TopicSignal {
   topicId: string;
   title: string;
@@ -37,6 +47,8 @@ export interface TopicSignal {
   struggles: number;
   ease: number | null;
   state: TopicState;
+  /** Completion-aware level: finishing ≠ mastering. */
+  mastery: Mastery;
   /** One warm, specific line naming why Kube flagged (or trusts) this topic. */
   reason: string;
   /** A rough 0–100 for display rails. Exam ratio when known, else a state
@@ -116,6 +128,18 @@ export function deriveTopicSignals(
     else if (mildNeg) state = "shaky";
     else state = "solid";
 
+    // Positive proof of mastery: a strong exam ratio, or a flashcard the deck
+    // has stopped resurfacing (high, settled ease). A checkmark alone is not it.
+    const strongPositive =
+      (ratio != null && ratio >= EXAM_MILD) || (ease != null && ease >= 2.5);
+
+    let mastery: Mastery;
+    if (!touched) mastery = "not-started";
+    else if (strongNeg) mastery = "needs-reinforcement";
+    else if (!completed) mastery = "started";
+    else if (state === "solid" && strongPositive) mastery = "mastered";
+    else mastery = "completed";
+
     // A concern score just for ranking the weak list — the loudest signals
     // weigh most. Not shown to the student.
     const concern =
@@ -149,6 +173,7 @@ export function deriveTopicSignals(
       struggles,
       ease,
       state,
+      mastery,
       reason: reasonFor({ ratio, reviewMisses, mistakes, flags, struggles, ease, state }),
       masteryPct,
       concern,
