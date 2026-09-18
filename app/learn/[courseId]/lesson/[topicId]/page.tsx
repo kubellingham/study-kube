@@ -582,10 +582,14 @@ export default function TopicPage() {
     const alreadyDone = !!progress!.lessons[key];
     const newLessons: Record<string, true> = { ...progress!.lessons, [key]: true };
     const allDone = lessons.every((l) => newLessons[lessonKey(topic!.id, l.id)]);
+    const nowTs = Date.now();
     setProgress({
       completed: allDone
         ? { ...progress!.completed, [topic!.id]: true }
         : progress!.completed,
+      completedAt: allDone
+        ? { ...progress!.completedAt, [topic!.id]: nowTs }
+        : progress!.completedAt,
       lessons: newLessons,
       reviewMisses: progress!.reviewMisses,
       unitUnlocks: progress!.unitUnlocks,
