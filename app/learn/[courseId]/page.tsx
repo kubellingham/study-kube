@@ -22,6 +22,7 @@ import { loadPracticeState } from "@/lib/learn/practice";
 import { loadFlags } from "@/lib/learn/flags";
 import { loadMistakes } from "@/lib/learn/mistakes";
 import { loadCourseSignals, type TopicSignal, type Mastery } from "@/lib/learn/signals";
+import { retentionDue, type RetentionItem } from "@/lib/learn/retention";
 import AddMaterial from "@/app/learn/components/AddMaterial";
 import OpeningAnimation from "@/app/learn/components/OpeningAnimation";
 import MobileTabs, { MOBILE_TABS_H } from "@/app/learn/components/MobileTabs";
@@ -107,6 +108,7 @@ export default function CourseLadderPage() {
   const [hub, setHub] = useState<{ due: number; best: number; tries: number; notes: number; redo: number } | null>(null);
   const [weak, setWeak] = useState<TopicSignal[]>([]);
   const [masteryById, setMasteryById] = useState<Record<string, Mastery>>({});
+  const [retention, setRetention] = useState<RetentionItem[]>([]);
   const [subjectList, setSubjectList] = useState<SubjectRow[]>([]);
   const [subjectOpen, setSubjectOpen] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
@@ -165,13 +167,16 @@ export default function CourseLadderPage() {
     const cid = bundle.course.id;
     const pool = buildConceptPool(bundle);
     (async () => {
-      const [practice, exam, flags, mistakes] = await Promise.all([
-        loadPracticeState(user.uid, cid), loadExamSummary(user.uid, cid), loadFlags(user.uid, cid), loadMistakes(user.uid, cid),
+      const [practice, exam, flags, mistakes, prog2] = await Promise.all([
+        loadPracticeState(user.uid, cid), loadExamSummary(user.uid, cid), loadFlags(user.uid, cid), loadMistakes(user.uid, cid), loadProgress(user.uid, cid),
       ]);
       const now = Date.now();
       const due = pool.filter((c) => (practice.cards[c.id]?.dueAt ?? 0) <= now).length;
       const redo = new Set([...Object.keys(mistakes), ...Object.keys(flags)]).size;
       setHub({ due, best: exam.best, tries: exam.tries, notes: pool.length, redo });
+      // Retention: topics learned a while ago whose spaced-repetition cards are
+      // due to come back — the "you learned this 21 days ago" nudge.
+      setRetention(retentionDue(bundle.ladder, prog2.completed, prog2.completedAt, practice.cards, now));
       // The signal layer: one honest read of where the student is wobbling,
       // surfaced as "needs a look". Read-only — never changes the ladder.
       loadCourseSignals(
@@ -323,6 +328,21 @@ export default function CourseLadderPage() {
               ))}
             </div>
             <Link href={`/learn/${params.courseId}/practice`} style={{ display: "block", textAlign: "center", marginTop: 15, background: T.kubeSoft, color: T.kube, border: `1px solid ${T.kubeLine}`, borderRadius: 12, padding: "10px 12px", fontFamily: T.mono, fontWeight: 600, fontSize: 11.5, letterSpacing: ".08em", textTransform: "uppercase" }}>Practise these</Link>
+          </div>
+        )}
+
+        {retention.length > 0 && (
+          <div style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 18, padding: 20 }}>
+            <span style={{ fontFamily: T.mono, fontWeight: 600, fontSize: 11, letterSpacing: ".14em", textTransform: "uppercase", color: T.faint }}>Still remember these?</span>
+            <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 11 }}>
+              {retention.map((r) => (
+                <div key={r.topicId}>
+                  <div style={{ fontWeight: 600, fontSize: 14, color: T.ink }}>{r.title}</div>
+                  <div style={{ fontSize: 12.5, lineHeight: 1.4, color: T.inkSoft, marginTop: 1 }}>{r.label} — let&apos;s see if it stuck.</div>
+                </div>
+              ))}
+            </div>
+            <Link href={`/learn/${params.courseId}/practice`} style={{ display: "block", textAlign: "center", marginTop: 15, background: T.card, color: T.kube, border: `1px solid ${T.kubeLine}`, borderRadius: 12, padding: "10px 12px", fontFamily: T.mono, fontWeight: 600, fontSize: 11.5, letterSpacing: ".08em", textTransform: "uppercase" }}>Refresh them</Link>
           </div>
         )}
     </>

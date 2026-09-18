@@ -24,6 +24,10 @@ import { db } from "@/lib/firebase/client";
 export interface LearnProgress {
   /** Fully completed topics (every lesson slice done). */
   completed: Record<string, true>;
+  /** When each topic was completed (ms epoch) — powers retention's "you
+   *  learned this N days ago". Stamped from the point this shipped; topics
+   *  completed earlier have no entry (retention falls back to "a while back"). */
+  completedAt: Record<string, number>;
   /** Completed lesson slices, keyed `${topicId}::${lessonId}`. */
   lessons: Record<string, true>;
   /** Review-assessment misses per topic — Kube's flags for where help is
@@ -48,10 +52,11 @@ export async function loadProgress(
       doc(db(), "learnProgress", progressDocId(uid, courseId))
     );
     if (!snap.exists())
-      return { completed: {}, lessons: {}, reviewMisses: {}, unitUnlocks: {} };
+      return { completed: {}, completedAt: {}, lessons: {}, reviewMisses: {}, unitUnlocks: {} };
     const data = snap.data();
     return {
       completed: (data.completed as Record<string, true>) ?? {},
+      completedAt: (data.completedAt as Record<string, number>) ?? {},
       lessons: (data.lessons as Record<string, true>) ?? {},
       reviewMisses: (data.reviewMisses as Record<string, number>) ?? {},
       unitUnlocks: (data.unitUnlocks as Record<string, true>) ?? {},
@@ -59,7 +64,7 @@ export async function loadProgress(
   } catch {
     // Missing doc (permission-denied under our rules) or a transient network
     // failure: start from an empty map rather than blocking the page.
-    return { completed: {}, lessons: {}, reviewMisses: {}, unitUnlocks: {} };
+    return { completed: {}, completedAt: {}, lessons: {}, reviewMisses: {}, unitUnlocks: {} };
   }
 }
 
@@ -113,14 +118,17 @@ export async function markLessonComplete(
   lessonId: string,
   topicNowComplete: boolean
 ): Promise<void> {
+  const now = Date.now();
   await setDoc(
     doc(db(), "learnProgress", progressDocId(uid, courseId)),
     {
       userId: uid,
       courseId,
       lessons: { [`${topicId}::${lessonId}`]: true },
-      ...(topicNowComplete ? { completed: { [topicId]: true } } : {}),
-      updatedAt: Date.now(),
+      ...(topicNowComplete
+        ? { completed: { [topicId]: true }, completedAt: { [topicId]: now } }
+        : {}),
+      updatedAt: now,
     },
     { merge: true }
   );
