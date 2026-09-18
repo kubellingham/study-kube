@@ -23,6 +23,8 @@ export default function ManageCoursePage() {
   const [saveMsg, setSaveMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [shareBusy, setShareBusy] = useState(false);
+  const [fcBusy, setFcBusy] = useState(false);
+  const [fcMsg, setFcMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [shareMsg, setShareMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [rechecking, setRechecking] = useState(false);
   const [recheckMsg, setRecheckMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -95,6 +97,26 @@ export default function ManageCoursePage() {
     } catch (err) {
       setSaveMsg({ ok: false, text: err instanceof Error ? err.message : "Could not save." });
     } finally { setSaving(false); }
+  }
+
+  async function sharpenCards() {
+    setFcBusy(true); setFcMsg(null);
+    try {
+      const res = await authedFetch("/api/course/flashcards", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ courseId: params.courseId, force: true }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Could not rewrite the cards.");
+      setFcMsg({
+        ok: true,
+        text: d.generated > 0 ? `Rewrote flashcards for ${d.generated} topic${d.generated === 1 ? "" : "s"}.` : "No topics had recap to build cards from.",
+      });
+      reload();
+    } catch (err) {
+      setFcMsg({ ok: false, text: err instanceof Error ? err.message : "Could not rewrite the cards." });
+    } finally { setFcBusy(false); }
   }
 
   async function recheck() {
@@ -223,6 +245,32 @@ export default function ManageCoursePage() {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Sharpen flashcards — rewrite every topic's practice cards as real
+          front↔back pairs the model authors (vs the old title↔recap fallback).
+          Runs for the whole course; crew members get the owner's result. */}
+      <div className="k-card mt-6 px-6 py-6">
+        <h2 className="text-lg font-semibold">Sharpen the flashcards</h2>
+        <p className="mt-1 text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>
+          Rewrites every topic&apos;s practice cards as proper question → answer pairs.
+          Subjects built before this feature keep their old cards until you run this once.
+          Costs a fraction of a cent and leaves your progress alone.
+        </p>
+        {fcMsg && (
+          <p className="mt-3 text-sm leading-relaxed" style={{ color: fcMsg.ok ? "var(--kube)" : "var(--red)" }}>
+            {fcMsg.text}
+          </p>
+        )}
+        <button
+          type="button"
+          onClick={sharpenCards}
+          disabled={fcBusy}
+          className="mt-4 rounded-xl px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+          style={{ background: "var(--kube)" }}
+        >
+          {fcBusy ? "Rewriting cards…" : "Sharpen flashcards"}
+        </button>
       </div>
 
       {/* Re-mark. Kube writes the question, the options and the answer key in
