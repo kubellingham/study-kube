@@ -25,6 +25,7 @@ import {
   recordReviewMiss,
   type LearnProgress,
 } from "@/lib/learn/progress";
+import { recordEvent, pingStudy } from "@/lib/learn/events";
 import {
   loadSlideVotes,
   saveSlideVote,
@@ -295,6 +296,7 @@ function CheckCard({
   step,
   mode,
   onPass,
+  onAnswer,
   onMiss,
   onAskKube,
   onBack,
@@ -307,6 +309,9 @@ function CheckCard({
    *  assess = review question (no hints; misses are flagged). */
   mode: "learn" | "assess";
   onPass: () => void;
+  /** Fired once, on the FIRST tap of a check, with whether it was correct —
+   *  the trajectory signal (first-try accuracy over time). */
+  onAnswer?: (correct: boolean) => void;
   onMiss?: () => void;
   onAskKube?: (question: string) => void;
   onBack?: () => void;
@@ -320,6 +325,7 @@ function CheckCard({
   const [missed, setMissed] = useState(false);
   const wrongTaps = useRef(0);
   const missReported = useRef(false);
+  const answerReported = useRef(false);
   const shakeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sweepTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -362,6 +368,12 @@ function CheckCard({
 
   function tap(i: number) {
     if (passed || shaking !== null) return;
+    // Trajectory: record whether the FIRST tap on this check was correct,
+    // exactly once. Later retries don't change the signal.
+    if (!answerReported.current) {
+      answerReported.current = true;
+      onAnswer?.(i === opts.answer);
+    }
     if (i === opts.answer) {
       setPassed(true);
       if (idleTimer.current) clearTimeout(idleTimer.current);
@@ -496,6 +508,7 @@ export default function TopicPage() {
   useEffect(() => {
     if (!userLoading && !user) router.replace("/");
     if (user && bundle && topic) {
+      pingStudy(user.uid, bundle.course.id);
       // Detect return from ByteLabs: ?lab=solid|shaky|stuck
       const lab = new URLSearchParams(window.location.search).get("lab");
       if (lab === "solid" || lab === "shaky" || lab === "stuck") {
@@ -765,6 +778,9 @@ export default function TopicPage() {
             step={step}
             mode={isReview ? "assess" : "learn"}
             onPass={advance}
+            onAnswer={(correct) => {
+              if (user) recordEvent(user.uid, courseId, "lesson_check", { topicId: topic!.id, correct });
+            }}
             onBack={goBack}
             canBack={!isReview}
             flagged={!!flags[flagKey(step.prompt)]}
