@@ -24,6 +24,8 @@ import { loadMistakes } from "@/lib/learn/mistakes";
 import { loadCourseSignals, type TopicSignal, type Mastery } from "@/lib/learn/signals";
 import { retentionDue, type RetentionItem } from "@/lib/learn/retention";
 import { pingStudy } from "@/lib/learn/events";
+import { loadPlan, setCourseExamDate } from "@/lib/learn/plan";
+import { dailyPlan } from "@/lib/learn/scheduler";
 import AddMaterial from "@/app/learn/components/AddMaterial";
 import OpeningAnimation from "@/app/learn/components/OpeningAnimation";
 import MobileTabs, { MOBILE_TABS_H } from "@/app/learn/components/MobileTabs";
@@ -110,6 +112,10 @@ export default function CourseLadderPage() {
   const [weak, setWeak] = useState<TopicSignal[]>([]);
   const [masteryById, setMasteryById] = useState<Record<string, Mastery>>({});
   const [retention, setRetention] = useState<RetentionItem[]>([]);
+  const [examAt, setExamAt] = useState<number | null>(null);
+  // A stable "now" for this page view — keeps the daily plan pure (no Date.now
+  // during render) and steady while the page is open.
+  const [pageNow] = useState(() => Date.now());
   const [subjectList, setSubjectList] = useState<SubjectRow[]>([]);
   const [subjectOpen, setSubjectOpen] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
@@ -143,8 +149,14 @@ export default function CourseLadderPage() {
     if (user && bundle) {
       loadProgress(user.uid, bundle.course.id).then(setProgress);
       pingStudy(user.uid, bundle.course.id);
+      loadPlan(user.uid).then((p) => setExamAt(p.examDates[bundle.course.id] ?? null)).catch(() => {});
     }
   }, [user, userLoading, router, bundle]);
+
+  async function saveExamDate(ms: number | null) {
+    setExamAt(ms);
+    if (user && bundle) await setCourseExamDate(user.uid, bundle.course.id, ms).catch(() => {});
+  }
 
   // Subject switcher list — built-ins the account can see + its own courses.
   useEffect(() => {
@@ -238,6 +250,8 @@ export default function CourseLadderPage() {
   const states = progress ? nodeStates(ladder, progress) : {};
   const done = progress ? ladder.filter((t) => progress.completed[t.id]).length : 0;
   const mastered = ladder.filter((t) => masteryById[t.id] === "mastered").length;
+  const completedIds = progress ? ladder.filter((t) => progress.completed[t.id]).map((t) => t.id) : [];
+  const plan = dailyPlan({ total: ladder.length, completedIds, completedAt: progress?.completedAt ?? {}, examAt, now: pageNow });
   const total = ladder.length;
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
   const fi = ladder.findIndex((n) => !progress?.completed[n.id]);
@@ -260,6 +274,61 @@ export default function CourseLadderPage() {
   // column on a phone.
   const rail = (
     <>
+        {/* Today — the daily plan. Focus is a Summit feature, so it shows for
+            Summit; others see their usual rail. */}
+        {summit && total > 0 && (
+          <div style={{ background: T.card, border: `1px solid ${plan.hasExam && !plan.onPace && !plan.done ? T.amber : T.kubeLine}`, borderRadius: 18, padding: 20 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+              <span style={{ fontFamily: T.mono, fontWeight: 600, fontSize: 11, letterSpacing: ".14em", textTransform: "uppercase", color: T.kube }}>Today</span>
+              {plan.hasExam && plan.daysLeft != null && plan.daysLeft >= 0 && (
+                <span style={{ fontFamily: T.mono, fontSize: 11, fontWeight: 600, color: plan.onPace || plan.done ? T.kube : T.amber }}>
+                  {plan.daysLeft === 0 ? "exam today" : `${plan.daysLeft}d to exam`}
+                </span>
+              )}
+            </div>
+            <p style={{ fontSize: 14, lineHeight: 1.5, color: T.ink, margin: "10px 0 0", fontWeight: 500 }}>{plan.message}</p>
+
+            {plan.hasExam && !plan.done && (
+              <div style={{ marginTop: 12 }}>
+                <div style={{ height: 7, borderRadius: 999, background: T.line, overflow: "hidden" }}>
+                  <div style={{ height: "100%", borderRadius: 999, width: `${Math.min(100, plan.target > 0 ? (plan.doneToday / plan.target) * 100 : 100)}%`, background: plan.onPace ? T.kube : T.amber }} />
+                </div>
+                <div style={{ fontSize: 12, color: T.faint, marginTop: 6 }}>{plan.doneToday} of {plan.target} today</div>
+              </div>
+            )}
+
+            {plan.hasExam && !plan.done && curTopic && (
+              <Link href={`/learn/${params.courseId}/lesson/${curTopic.id}`} style={{ display: "block", textAlign: "center", marginTop: 14, background: T.kube, color: "#fff", borderRadius: 12, padding: "11px 12px", fontFamily: T.mono, fontWeight: 600, fontSize: 11.5, letterSpacing: ".08em", textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Climb today&apos;s topic</Link>
+            )}
+
+            {!plan.hasExam && (
+              <label style={{ display: "block", marginTop: 12 }}>
+                <span style={{ fontSize: 12, color: T.inkSoft }}>When&apos;s the exam?</span>
+                <input
+                  type="date"
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (!v) { void saveExamDate(null); return; }
+                    const ms = new Date(v + "T09:00:00").getTime();
+                    if (!Number.isNaN(ms)) void saveExamDate(ms);
+                  }}
+                  style={{ display: "block", width: "100%", marginTop: 6, borderRadius: 10, border: `1px solid ${T.line}`, background: T.card, padding: "9px 11px", fontSize: 14, color: T.ink, fontFamily: T.body }}
+                />
+              </label>
+            )}
+
+            {plan.hasExam && (
+              <button
+                type="button"
+                onClick={() => void saveExamDate(null)}
+                style={{ marginTop: 10, background: "none", border: "none", padding: 0, cursor: "pointer", fontSize: 11, color: T.faint, textDecoration: "underline" }}
+              >
+                Change exam date
+              </button>
+            )}
+          </div>
+        )}
+
         {(!entLoaded || summit) ? (
           // Active plan — calm, no hard sell. Optimistic while entitlement
           // loads (like the rest of the page) so a Summit user never flashes

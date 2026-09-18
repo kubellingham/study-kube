@@ -24,9 +24,13 @@ export interface StudyPlan {
   currentSemester: number | null;
   /** courseId → semester. Missing means unfiled. */
   semesters: Record<string, number>;
+  /** courseId → exam/CA date (ms epoch). Per USER (kept here, not on the
+   *  course) so it works for built-in courses too and each person sets their
+   *  own date on a shared subject. Powers the daily "Today" plan. */
+  examDates: Record<string, number>;
 }
 
-export const emptyPlan = (): StudyPlan => ({ currentSemester: null, semesters: {} });
+export const emptyPlan = (): StudyPlan => ({ currentSemester: null, semesters: {}, examDates: {} });
 
 const validSem = (n: unknown): n is number =>
   typeof n === "number" && Number.isInteger(n) && n >= SEMESTER_MIN && n <= SEMESTER_MAX;
@@ -41,9 +45,15 @@ export async function loadPlan(uid: string): Promise<StudyPlan> {
     for (const [courseId, sem] of Object.entries(raw)) {
       if (validSem(sem)) semesters[courseId] = sem;
     }
+    const rawDates = (data.examDates as Record<string, unknown>) ?? {};
+    const examDates: Record<string, number> = {};
+    for (const [courseId, ms] of Object.entries(rawDates)) {
+      if (typeof ms === "number" && ms > 0) examDates[courseId] = ms;
+    }
     return {
       currentSemester: validSem(data.currentSemester) ? data.currentSemester : null,
       semesters,
+      examDates,
     };
   } catch {
     // Missing doc reads as permission-denied under our rules (see progress.ts);
@@ -62,6 +72,23 @@ export async function setCourseSemester(
   await setDoc(
     doc(db(), "studyPlan", uid),
     { userId: uid, semesters: { [courseId]: value }, updatedAt: Date.now() },
+    { merge: true }
+  );
+}
+
+/** Set (or clear, with null) a subject's exam/CA date. */
+export async function setCourseExamDate(
+  uid: string,
+  courseId: string,
+  ms: number | null
+): Promise<void> {
+  await setDoc(
+    doc(db(), "studyPlan", uid),
+    {
+      userId: uid,
+      examDates: { [courseId]: ms != null && ms > 0 ? ms : null },
+      updatedAt: Date.now(),
+    },
     { merge: true }
   );
 }
