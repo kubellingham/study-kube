@@ -49,10 +49,41 @@ export default function AccountPage() {
   const [err, setErr] = useState<string | null>(null);
   const [referral, setReferral] = useState<ReferralInfo | null>(null);
   const [refCopied, setRefCopied] = useState<"code" | "link" | null>(null);
+  const [learning, setLearning] = useState<{ trajectory: string | null; rhythm: string | null } | null>(null);
 
   useEffect(() => {
     if (!loading && !user) router.replace("/");
   }, [user, loading, router]);
+
+  useEffect(() => {
+    if (!user) return;
+    let alive = true;
+    (async () => {
+      const [{ loadTrajectory }, { loadRhythm }] = await Promise.all([
+        import("@/lib/learn/trajectory"),
+        import("@/lib/learn/rhythm"),
+      ]);
+      const [t, r] = await Promise.all([
+        loadTrajectory(user.uid).catch(() => null),
+        loadRhythm(user.uid).catch(() => null),
+      ]);
+      if (!alive) return;
+      const rhythmLine =
+        r && r.enough
+          ? [
+              r.streak >= 2 ? `${r.streak}-day streak` : null,
+              r.daysLast7 >= 2 ? `studied ${r.daysLast7} of the last 7 days` : null,
+              r.favoriteHourLabel ? `you study most around ${r.favoriteHourLabel}` : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")
+          : null;
+      setLearning({ trajectory: t?.enough ? t.line : null, rhythm: rhythmLine || null });
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [user]);
 
   useEffect(() => {
     if (!user) return;
@@ -121,6 +152,18 @@ export default function AccountPage() {
       <h1 className="text-3xl">Your account</h1>
       {user.email && (
         <p className="mt-2 text-sm" style={{ color: "var(--ink-soft)", fontFamily: "var(--font-mono)" }}>{user.email}</p>
+      )}
+
+      {learning && (learning.trajectory || learning.rhythm) && (
+        <div className="k-card mt-6 px-6 py-5">
+          <h2 className="text-lg font-semibold">Your semester so far</h2>
+          {learning.trajectory && (
+            <p className="mt-2 text-sm leading-relaxed" style={{ color: "var(--ink)" }}>{learning.trajectory}</p>
+          )}
+          {learning.rhythm && (
+            <p className="mt-2 text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>{learning.rhythm}.</p>
+          )}
+        </div>
       )}
 
       {referral && (
