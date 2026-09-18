@@ -102,9 +102,33 @@ export function buildConceptPool(bundle: CourseBundle): Concept[] {
   const out: Concept[] = [];
   for (const topic of bundle.ladder) {
     if (topic.kind === "review") continue;
+    const section = bundle.sectionOfTopic(topic.id)?.letter ?? "";
+
+    // Preferred: model-authored front↔back cards. Each becomes its own pool
+    // entry, id'd `${topicId}#i` so the signal layer can still fold its
+    // flashcard ease back onto the topic (see lib/learn/signals.ts).
+    const authored = (topic.flashcards ?? [])
+      .map((c) => ({ front: c.front.trim(), back: c.back.trim() }))
+      .filter((c) => c.front && c.back);
+    if (authored.length > 0) {
+      authored.forEach((c, i) => {
+        out.push({
+          id: `${topic.id}#${i}`,
+          term: c.front,
+          unit: topic.unit,
+          section,
+          definition: c.back,
+          brief: c.back,
+          lines: [c.back],
+          tell: toTell(c.back, c.front),
+        });
+      });
+      continue;
+    }
+
+    // Fallback (older digests / built-ins): the title↔recap heuristic.
     const lines = (topic.recap ?? []).map((l) => l.trim()).filter(Boolean);
     if (lines.length === 0) continue;
-    const section = bundle.sectionOfTopic(topic.id)?.letter ?? "";
     out.push({
       id: topic.id,
       term: topic.title,

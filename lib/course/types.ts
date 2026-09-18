@@ -57,6 +57,11 @@ export interface Topic {
   whyItMatters: string;
   /** 3–6 key lines for the quick-review view of a completed node and the glossary. */
   recap: string[];
+  /** Model-authored flashcards — real front↔back pairs the Practice deck uses.
+   *  The front is a genuine prompt (a question or a term to define), the back a
+   *  complete answer to that exact front. When absent (older digests, built-in
+   *  courses), the deck falls back to a title↔recap heuristic. */
+  flashcards?: { front: string; back: string }[];
   /** Explicit lesson slices. When absent, lessons are derived by splitting
    *  `steps` at each teach step (lib/course/lessons.ts). */
   lessons?: Lesson[];

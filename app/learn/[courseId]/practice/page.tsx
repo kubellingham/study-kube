@@ -8,7 +8,7 @@
 // components. Stats are wired to real practice data; streak/weekly activity
 // need session logging we haven't built, so they're intentionally omitted
 // rather than faked.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { collection, getDocs, query, where } from "firebase/firestore";
@@ -22,6 +22,7 @@ import { useCramLocked, CramLocked } from "@/app/learn/components/PlanGate";
 import { buildConceptPool, sprintItems } from "@/lib/course/concepts";
 import { loadPracticeState, type CardState } from "@/lib/learn/practice";
 import { loadCourseSignals, type TopicSignal } from "@/lib/learn/signals";
+import { authedFetch } from "@/lib/authed-fetch";
 import Matching from "./Matching";
 import Definitions from "./Definitions";
 import Flashcards from "./Flashcards";
@@ -66,7 +67,7 @@ interface SubjectRow { id: string; code: string; title: string; badge: string; }
 export default function PracticePage() {
   const params = useParams<{ courseId: string }>();
   const isMobile = useIsMobile();
-  const { user, userLoading, status, bundle } = useCourse(params.courseId);
+  const { user, userLoading, status, bundle, owned, reload } = useCourse(params.courseId);
   const router = useRouter();
   const cramLocked = useCramLocked();
   const { entitlement } = useEntitlement();
@@ -108,6 +109,32 @@ export default function PracticePage() {
         .catch(() => setWeakSignals([]));
     }
   }, [user, userLoading, router, bundle]);
+
+  // Lazy flashcard backfill: an owned course still on the old title↔recap
+  // fallback gets real, model-authored cards the first time its Practice hub
+  // is opened. Idempotent + rate-limited server-side; once filled it never
+  // fires again. Built-ins (not owned) keep the fallback.
+  const fcTried = useRef(false);
+  useEffect(() => {
+    if (!user || !bundle || !owned || fcTried.current) return;
+    const needs = bundle.ladder.some(
+      (t) => t.kind !== "review" && (t.recap?.length ?? 0) > 0 && !(t.flashcards?.length)
+    );
+    if (!needs) return;
+    fcTried.current = true;
+    authedFetch("/api/course/flashcards", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ courseId: bundle.course.id }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.generated) reload();
+      })
+      .catch(() => {
+        /* stays on the fallback deck — no error to the student */
+      });
+  }, [user, bundle, owned, reload]);
 
   useEffect(() => {
     if (!user) return;

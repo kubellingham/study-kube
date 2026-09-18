@@ -245,9 +245,16 @@ export async function loadCourseSignals(
     strugglesByTopic[topicId] = s.unresolved > 0 ? s.unresolved : 0;
   }
 
+  // Flashcard cards may be keyed `${topicId}#i` (one card per authored
+  // flashcard) or just `topicId` (older single-card topics). Fold the ease
+  // back onto the topic, keeping the WORST (lowest) ease — the shakiest card
+  // on a topic is the honest signal.
   const easeByTopic: Record<string, number> = {};
   for (const [id, c] of Object.entries(practice.cards)) {
-    if (c.reps > 0) easeByTopic[id] = c.ease;
+    if (c.reps <= 0) continue;
+    const topicId = id.includes("#") ? id.slice(0, id.indexOf("#")) : id;
+    const prev = easeByTopic[topicId];
+    easeByTopic[topicId] = prev == null ? c.ease : Math.min(prev, c.ease);
   }
 
   return deriveTopicSignals(topics, {
