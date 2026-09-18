@@ -23,6 +23,7 @@ import { loadFlags } from "@/lib/learn/flags";
 import { loadMistakes } from "@/lib/learn/mistakes";
 import { loadCourseSignals, type TopicSignal, type Mastery } from "@/lib/learn/signals";
 import { retentionDue, type RetentionItem } from "@/lib/learn/retention";
+import { pingStudy } from "@/lib/learn/events";
 import AddMaterial from "@/app/learn/components/AddMaterial";
 import OpeningAnimation from "@/app/learn/components/OpeningAnimation";
 import MobileTabs, { MOBILE_TABS_H } from "@/app/learn/components/MobileTabs";
@@ -139,7 +140,10 @@ export default function CourseLadderPage() {
 
   useEffect(() => {
     if (!userLoading && !user) router.replace("/");
-    if (user && bundle) loadProgress(user.uid, bundle.course.id).then(setProgress);
+    if (user && bundle) {
+      loadProgress(user.uid, bundle.course.id).then(setProgress);
+      pingStudy(user.uid, bundle.course.id);
+    }
   }, [user, userLoading, router, bundle]);
 
   // Subject switcher list — built-ins the account can see + its own courses.
