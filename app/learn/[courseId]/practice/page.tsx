@@ -23,6 +23,8 @@ import { buildConceptPool, sprintItems } from "@/lib/course/concepts";
 import { loadPracticeState, type CardState } from "@/lib/learn/practice";
 import { loadCourseSignals, type TopicSignal } from "@/lib/learn/signals";
 import { authedFetch } from "@/lib/authed-fetch";
+import { recordEvent } from "@/lib/learn/events";
+import { loadPracticeBehaviour } from "@/lib/learn/practice-insights";
 import Matching from "./Matching";
 import Definitions from "./Definitions";
 import Flashcards from "./Flashcards";
@@ -77,6 +79,7 @@ export default function PracticePage() {
   const [tool, setTool] = useState<Tool | null>(null);
   const [cards, setCards] = useState<Record<string, CardState>>({});
   const [weakSignals, setWeakSignals] = useState<TopicSignal[]>([]);
+  const [pbSuggestion, setPbSuggestion] = useState<string | null>(null);
   const [best, setBest] = useState(0);
   const [ready, setReady] = useState(false);
   const [unit, setUnit] = useState<number | "auto">("auto");
@@ -107,6 +110,10 @@ export default function PracticePage() {
       )
         .then((sig) => setWeakSignals(sig.weak))
         .catch(() => setWeakSignals([]));
+      // S6: how you drill → one gentle, recommend-only nudge.
+      loadPracticeBehaviour(user.uid, bundle.course.id)
+        .then((b) => setPbSuggestion(b.suggestion))
+        .catch(() => setPbSuggestion(null));
     }
   }, [user, userLoading, router, bundle]);
 
@@ -190,7 +197,11 @@ export default function PracticePage() {
   const { course } = bundle;
   const badge = course.code.replace(/[^A-Za-z]/g, "").slice(0, 2).toUpperCase() || "K";
 
-  const openTool = (t: Tool) => { setTool(t); };
+  const openTool = (t: Tool) => {
+    setTool(t);
+    // S6: log which practice mode was opened — the behaviour signal.
+    if (user && bundle) recordEvent(user.uid, bundle.course.id, "practice_session", { mode: t });
+  };
 
   return (
     <div style={{ display: "flex", height: "100dvh", width: "100%", background: T.bgDeep, color: T.ink, fontFamily: T.body, overflow: "hidden" }}>
@@ -302,6 +313,17 @@ export default function PracticePage() {
                     </button>
                   );
                 })}
+              </div>
+            )}
+
+            {/* Kube suggests — a single recommend-only nudge from how you drill. */}
+            {pbSuggestion && (
+              <div style={{ marginTop: 20, display: "flex", alignItems: "flex-start", gap: 11, background: T.card, border: `1px solid ${T.kubeLine}`, borderRadius: 16, padding: "14px 16px" }}>
+                <span style={{ flex: "none", display: "grid", placeItems: "center", width: 30, height: 30, borderRadius: 9, background: T.kubeSoft, color: T.kube, fontFamily: T.display, fontWeight: 600 }}>K</span>
+                <span style={{ fontSize: 13.5, lineHeight: 1.5, color: T.ink }}>
+                  <span style={{ fontFamily: T.mono, fontSize: 10, fontWeight: 600, letterSpacing: ".12em", textTransform: "uppercase", color: T.kube, display: "block", marginBottom: 2 }}>Kube suggests</span>
+                  {pbSuggestion}
+                </span>
               </div>
             )}
 
