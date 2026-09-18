@@ -164,3 +164,31 @@ export async function loadExamSummary(
     return { best: 0, tries: 0 };
   }
 }
+
+/** Per-topic exam performance, summed across EVERY attempt on this course.
+ *  The `perTopic` breakdown has been stored on each attempt all along; only
+ *  the best-overall-% was ever read. This is the signal layer's exam input. */
+export async function loadExamPerTopic(
+  uid: string,
+  courseId: string
+): Promise<Record<string, { correct: number; total: number }>> {
+  try {
+    const snap = await getDocs(
+      query(collection(db(), "examAttempts"), where("userId", "==", uid))
+    );
+    const out: Record<string, { correct: number; total: number }> = {};
+    for (const d of snap.docs) {
+      const a = d.data() as ExamAttemptRecord;
+      if (a.courseId !== courseId || !a.perTopic) continue;
+      for (const [topicId, pt] of Object.entries(a.perTopic)) {
+        const cur = out[topicId] ?? { correct: 0, total: 0 };
+        cur.correct += pt.correct ?? 0;
+        cur.total += pt.total ?? 0;
+        out[topicId] = cur;
+      }
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}

@@ -21,6 +21,7 @@ import { loadProgress, loadExamSummary, type LearnProgress } from "@/lib/learn/p
 import { loadPracticeState } from "@/lib/learn/practice";
 import { loadFlags } from "@/lib/learn/flags";
 import { loadMistakes } from "@/lib/learn/mistakes";
+import { loadCourseSignals, type TopicSignal } from "@/lib/learn/signals";
 import AddMaterial from "@/app/learn/components/AddMaterial";
 import OpeningAnimation from "@/app/learn/components/OpeningAnimation";
 import MobileTabs, { MOBILE_TABS_H } from "@/app/learn/components/MobileTabs";
@@ -104,6 +105,7 @@ export default function CourseLadderPage() {
   const router = useRouter();
   const [progress, setProgress] = useState<LearnProgress | null>(null);
   const [hub, setHub] = useState<{ due: number; best: number; tries: number; notes: number; redo: number } | null>(null);
+  const [weak, setWeak] = useState<TopicSignal[]>([]);
   const [subjectList, setSubjectList] = useState<SubjectRow[]>([]);
   const [subjectOpen, setSubjectOpen] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
@@ -169,6 +171,15 @@ export default function CourseLadderPage() {
       const due = pool.filter((c) => (practice.cards[c.id]?.dueAt ?? 0) <= now).length;
       const redo = new Set([...Object.keys(mistakes), ...Object.keys(flags)]).size;
       setHub({ due, best: exam.best, tries: exam.tries, notes: pool.length, redo });
+      // The signal layer: one honest read of where the student is wobbling,
+      // surfaced as "needs a look". Read-only — never changes the ladder.
+      loadCourseSignals(
+        user.uid,
+        cid,
+        bundle.ladder.map((t) => ({ id: t.id, title: t.title, unit: t.unit }))
+      )
+        .then((s) => setWeak(s.weak.slice(0, 3)))
+        .catch(() => setWeak([]));
     })();
   }, [user, bundle]);
 
@@ -289,6 +300,21 @@ export default function CourseLadderPage() {
             <span style={{ display: "block", fontSize: 13, lineHeight: 1.5, color: T.inkSoft, marginTop: 4 }}>Missed &amp; flagged questions from your mistakes, waiting to be cleared.</span>
           </span>
         </Link>
+
+        {weak.length > 0 && (
+          <div style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 18, padding: 20 }}>
+            <span style={{ fontFamily: T.mono, fontWeight: 600, fontSize: 11, letterSpacing: ".14em", textTransform: "uppercase", color: T.faint }}>Needs a look</span>
+            <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 11 }}>
+              {weak.map((w) => (
+                <div key={w.topicId}>
+                  <div style={{ fontWeight: 600, fontSize: 14, color: T.ink }}>{w.title}</div>
+                  <div style={{ fontSize: 12.5, lineHeight: 1.4, color: T.inkSoft, marginTop: 1 }}>{w.reason}</div>
+                </div>
+              ))}
+            </div>
+            <Link href={`/learn/${params.courseId}/practice`} style={{ display: "block", textAlign: "center", marginTop: 15, background: T.kubeSoft, color: T.kube, border: `1px solid ${T.kubeLine}`, borderRadius: 12, padding: "10px 12px", fontFamily: T.mono, fontWeight: 600, fontSize: 11.5, letterSpacing: ".08em", textTransform: "uppercase" }}>Practise these</Link>
+          </div>
+        )}
     </>
   );
 

@@ -21,6 +21,7 @@ import { hasSummit, LOCKED, TIER_LABEL } from "@/lib/entitlement";
 import { useCramLocked, CramLocked } from "@/app/learn/components/PlanGate";
 import { buildConceptPool, sprintItems } from "@/lib/course/concepts";
 import { loadPracticeState, type CardState } from "@/lib/learn/practice";
+import { loadCourseSignals, type TopicSignal } from "@/lib/learn/signals";
 import Matching from "./Matching";
 import Definitions from "./Definitions";
 import Flashcards from "./Flashcards";
@@ -74,6 +75,7 @@ export default function PracticePage() {
 
   const [tool, setTool] = useState<Tool | null>(null);
   const [cards, setCards] = useState<Record<string, CardState>>({});
+  const [weakSignals, setWeakSignals] = useState<TopicSignal[]>([]);
   const [best, setBest] = useState(0);
   const [ready, setReady] = useState(false);
   const [unit, setUnit] = useState<number | "auto">("auto");
@@ -94,6 +96,16 @@ export default function PracticePage() {
         setBest(s.sprintBest);
         setReady(true);
       });
+      // Weak spots now read the whole signal layer (exam misses, flags,
+      // review misses, struggle notes, flashcard ease) — not flashcard ease
+      // alone — so they're consistent with the ladder and the rest of Kube.
+      loadCourseSignals(
+        user.uid,
+        bundle.course.id,
+        buildConceptPool(bundle).map((c) => ({ id: c.id, title: c.term, unit: c.unit }))
+      )
+        .then((sig) => setWeakSignals(sig.weak))
+        .catch(() => setWeakSignals([]));
     }
   }, [user, userLoading, router, bundle]);
 
@@ -120,18 +132,18 @@ export default function PracticePage() {
   const now = Date.now();
   const due = fullPool.filter((c) => (cards[c.id]?.dueAt ?? 0) <= now).length;
   const learned = Object.values(cards).filter((c) => c.reps > 0).length;
-  // Weak spots: practised concepts with the lowest SM-2 ease (1.6 struggled → 2.8 solid).
+  // Weak spots: the unified signal layer's verdict, respecting the unit
+  // filter. masteryPct is higher = stronger, so it drives the bar directly.
   const weak = useMemo(() => {
-    const seen = fullPool.filter((c) => (cards[c.id]?.reps ?? 0) > 0);
-    return seen
-      .map((c) => ({ c, ease: cards[c.id].ease }))
-      .sort((a, b) => a.ease - b.ease)
+    return weakSignals
+      .filter((s) => unit === "auto" || s.unit === unit)
       .slice(0, 3)
-      .map(({ c, ease }) => ({
-        name: c.term, unit: c.unit,
-        pct: Math.max(30, Math.min(96, Math.round(30 + ((ease - 1.6) / 1.2) * 62))),
+      .map((s) => ({
+        name: s.title,
+        unit: s.unit,
+        pct: Math.max(20, Math.min(96, s.masteryPct ?? 40)),
       }));
-  }, [fullPool, cards]);
+  }, [weakSignals, unit]);
 
   if (status === "notfound") {
     return (
