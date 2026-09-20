@@ -8,6 +8,7 @@ import { cse22d } from "./cse22d";
 import { cse46d, cse46dSyllabus } from "./cse46d";
 import { meco3d, meco3dSyllabus } from "./meco3d";
 import { int42d, int42dSyllabus } from "./int42d";
+import { study101 } from "./study101";
 
 export type { CourseBundle } from "./bundle";
 export { buildCourseBundle } from "./bundle";
@@ -21,6 +22,9 @@ interface BuiltinCourse {
 }
 
 const builtinCourses: BuiltinCourse[] = [
+  // The public taster — "How to Actually Study". No visibleToEmails, so it
+  // shows on every account's shelf and anyone can climb it (see /try).
+  { bundle: study101 },
   { bundle: cse22d, visibleToEmails: ["ikube77@gmail.com"] },
   {
     bundle: cse46d,
