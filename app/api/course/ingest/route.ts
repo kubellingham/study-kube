@@ -736,10 +736,21 @@ export async function POST(req: NextRequest) {
           }
 
           // Multiple files can feed one unit (lecture decks): APPEND new
-          // topics to an existing section instead of replacing it.
+          // topics to an existing section instead of replacing it. The review
+          // node is the exception — a unit has exactly ONE, always last. The
+          // incoming one supersedes the old (same id, so progress carries),
+          // otherwise a unit fed twice grew two identical review circles and
+          // the second one led nowhere.
           const existing = sections.find((s) => s.unit === unitNumber);
           if (existing) {
-            existing.topics = [...existing.topics, ...section.topics];
+            const incomingReview = section.topics.filter((t) => t.kind === "review");
+            const incomingRest = section.topics.filter((t) => t.kind !== "review");
+            const keptOld = existing.topics.filter((t) => t.kind !== "review");
+            const carriedReview =
+              incomingReview.length > 0
+                ? incomingReview
+                : existing.topics.filter((t) => t.kind === "review");
+            existing.topics = [...keptOld, ...incomingRest, ...carriedReview];
           } else {
             sections.push(section);
           }

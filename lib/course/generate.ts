@@ -1403,13 +1403,23 @@ export function assemblePastPaperQuestions(
 export function normalizeCourse(sections: Section[]): Section[] {
   const sorted = [...sections].sort((a, b) => a.unit - b.unit);
   const seen = new Set<string>();
+  const ids = new Set<string>();
   return sorted.map((s, i) => ({
     ...s,
     letter: String.fromCharCode(65 + i),
-    topics: s.topics.map((t) => {
-      const deps = t.deps.filter((d) => seen.has(d));
-      seen.add(t.id);
-      return { ...t, deps };
-    }),
+    // A topic id appears at most ONCE across the whole course. Anything that
+    // slipped through (a unit fed twice used to grow two review nodes with the
+    // same id) is healed here, on the way to storage.
+    topics: s.topics
+      .filter((t) => {
+        if (ids.has(t.id)) return false;
+        ids.add(t.id);
+        return true;
+      })
+      .map((t) => {
+        const deps = (t.deps ?? []).filter((d) => seen.has(d));
+        seen.add(t.id);
+        return { ...t, deps };
+      }),
   }));
 }
