@@ -153,6 +153,11 @@ export interface IngestedFile {
   topics: number;
   questions: number;
   digestedAt: number;
+  /** True when the digest ran out of time and only part of this file's topics
+   *  were built. The file stays re-addable (the dedupe skip is for FINISHED
+   *  files only), and adding it again resumes where it stopped instead of
+   *  starting a second copy. */
+  partial?: boolean;
   /** What this file cost to digest — real token counts from the Claude API,
    *  plus a dollar estimate applying Sonnet's rate. Absent on files digested
    *  before cost tracking, and on non-generating kinds (notes). */

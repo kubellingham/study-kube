@@ -222,6 +222,15 @@ export default function ManageCoursePage() {
                 <span className="mr-2 rounded-full px-2 py-0.5 font-semibold" style={{ background: "var(--kube-soft)", color: "var(--kube)" }}>{KIND_LABEL[f.kind] ?? f.kind}</span>
                 <span className="font-semibold">{f.label}</span>{" · "}{f.name}
                 {f.topics > 0 && ` · ${f.topics} topics`}
+                {f.partial && (
+                  // Part-built: the digest ran out of time. Saying so here is
+                  // the only way the student knows there's more to get, and
+                  // re-adding the same file now carries on from where it
+                  // stopped instead of being skipped as "already learned".
+                  <span className="ml-2 font-semibold" style={{ color: "var(--kube)" }}>
+                    part-built — add this file again to finish it
+                  </span>
+                )}
               </li>
             ))}
           </ul>

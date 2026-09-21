@@ -64,7 +64,48 @@ function softDeadline(ms: number): Promise<"timeout"> {
 // Skeleton runs first (fast); the drills get the rest of the 300s budget. If
 // the budget runs out we KEEP whatever finished rather than discarding it — a
 // half-built ladder is worth far more than a bill for nothing.
+//
+// These two are CEILINGS, not reservations. The real budget for each phase is
+// whatever is left on the clock, because the phases used to be added up
+// independently (60s skeleton + 215s drills + 45s answer-check + the save)
+// and that sum ran PAST the 300s function limit. The function was killed
+// mid-drill, the save never ran, and the job sat on "working" forever showing
+// its last note — the "Drilling circles — 11/25 done…" freeze. Nothing is
+// allowed to be scheduled past `usableUntil` now, so the save always happens.
 const DRILL_BUDGET_MS = 215_000;
+/** The transaction that saves the unit + the final job update. Never spent on
+ *  generation — this is the reserve that guarantees the work gets written. */
+const SAVE_RESERVE_MS = 25_000;
+/** Answer-checking is a nice-to-have; keep this much for it when we can, and
+ *  skip it entirely if less than MIN_VERIFY_MS is left. */
+const VERIFY_RESERVE_MS = 30_000;
+const MIN_VERIFY_MS = 10_000;
+/** Drills always get at least this, so a slow skeleton can't leave a unit with
+ *  zero taught topics. */
+const MIN_DRILL_MS = 25_000;
+
+/** The one clock for a digest. Every phase asks it how long it may run, so the
+ *  phases can never add up past the function limit. */
+function digestClock(startedAt: number) {
+  const killAt = startedAt + maxDuration * 1000; // the platform pulls the plug
+  const usableUntil = killAt - SAVE_RESERVE_MS; // generation must stop by here
+  return {
+    /** ms until generation must stop so the save still fits. */
+    left: () => usableUntil - Date.now(),
+    /** ms until the platform kills the function. */
+    killIn: () => killAt - Date.now(),
+    /** Budget for a phase: what's left minus what the phases after it still
+     *  need, capped at the phase's own ceiling. `floor` keeps a phase viable
+     *  when an earlier one overran — it may eat into the save reserve, but
+     *  nothing is ever scheduled past the kill. */
+    budget: (ceiling: number, reserveAfter: number, floor = 0) => {
+      const room = usableUntil - Date.now();
+      const want = Math.min(ceiling, room - reserveAfter);
+      const hard = killAt - Date.now() - 10_000;
+      return Math.max(0, Math.min(Math.max(want, floor), hard));
+    },
+  };
+}
 // A syllabus-only "build from knowledge" invents its own scope, so bound it to
 // a focused first ladder that reliably finishes; more depth comes from adding
 // actual unit files (which are NOT capped).
@@ -125,7 +166,15 @@ async function checkAnswers<
     topics: { title: string; lessons: { steps: unknown[] }[] }[];
     examQuestions: { prompt: string; options: string[]; answer: number }[];
   },
->(generated: G, model: string, meter: UsageMeter): Promise<{ generated: G; report: VerifyReport }> {
+>(
+  generated: G,
+  model: string,
+  meter: UsageMeter,
+  budgetMs: number = VERIFY_BUDGET_MS
+): Promise<{ generated: G; report: VerifyReport }> {
+  // No time left on the clock → ship the unit exactly as authored. Saving it
+  // matters more than re-marking it.
+  if (budgetMs < MIN_VERIFY_MS) return { generated, report: emptyReport() };
   const work = (async () => {
     let report = emptyReport();
     const topics = await mapWithConcurrency(generated.topics, 3, async (t) => {
@@ -157,7 +206,7 @@ async function checkAnswers<
       report,
     };
   })();
-  const outcome = await Promise.race([work, softDeadline(VERIFY_BUDGET_MS)]);
+  const outcome = await Promise.race([work, softDeadline(budgetMs)]);
   return outcome === "timeout" ? { generated, report: emptyReport() } : outcome;
 }
 
@@ -192,6 +241,9 @@ function sanitizeImages(raw: unknown): IngestImage[] {
  *  ingestJobs doc the client watches. Closing the tab is safe — the job
  *  finishes on its own and the course updates when it's done. */
 export async function POST(req: NextRequest) {
+  // The function's 300s starts HERE, not when the background work starts —
+  // auth, the upload read and the course fetch all spend from the same clock.
+  const clock = digestClock(Date.now());
   // Building/digesting a subject needs at least Climb (protects digestion spend
   // and enforces the "every digested user has paid something" rule).
   const gate = await requireEntitlement(req, "climb");
@@ -317,13 +369,17 @@ export async function POST(req: NextRequest) {
   const hasher = createHash("sha256").update(rawText);
   for (const img of images) hasher.update(img.data.slice(0, 4096));
   const fileId = hasher.digest("hex").slice(0, 16);
-  const already = priorFiles.find((f) => f.id === fileId);
+  const already = priorFiles.find((f) => f.id === fileId && !f.partial);
   if (already) {
     return Response.json({
       skipped: true,
       note: `Kube already learned "${already.label}" — nothing re-processed.`,
     });
   }
+  // A file whose digest ran out of time is deliberately NOT skipped: adding it
+  // again is how a student finishes it. We remember where its first half landed
+  // so the second half joins it instead of starting a rival copy.
+  const resuming = priorFiles.find((f) => f.id === fileId && f.partial) ?? null;
 
   // Create the job doc, respond immediately, digest in the background.
   const jobRef = db.collection("ingestJobs").doc();
@@ -349,8 +405,30 @@ export async function POST(req: NextRequest) {
           ? new UsageMeter(SUMMIT_PRICE_IN, SUMMIT_PRICE_OUT)
           : new UsageMeter();
 
-    const setJob = (fields: Record<string, unknown>) =>
-      jobRef.update({ ...fields, updatedAt: Date.now() }).catch(() => {});
+    // Any status other than "working" ends the job, so it also stands the
+    // watchdog down — that's every exit path covered without a stopGuard()
+    // sprinkled through eight of them.
+    const setJob = (fields: Record<string, unknown>) => {
+      if (typeof fields.status === "string" && fields.status !== "working") stopGuard();
+      return jobRef.update({ ...fields, updatedAt: Date.now() }).catch(() => {});
+    };
+
+    // Last line of defence. The phase budgets above are built so we always
+    // reach the save, but a single model call that simply never returns would
+    // still get the function killed — and a killed function leaves the job on
+    // "working" with a half-done note, forever. This fires just before the
+    // kill and tells the student the truth instead.
+    const guard = setTimeout(
+      () => {
+        void setJob({
+          status: "error",
+          cost: meter.summary(),
+          note: "Kube ran out of time reading this one and had to stop, so nothing was saved for it. Add it again — or split it in two and add each half — and it'll get through.",
+        });
+      },
+      Math.max(1_000, clock.killIn() - 8_000)
+    );
+    const stopGuard = () => clearTimeout(guard);
 
     // Streamed calls report usage across two events: `message_start` carries
     // the input (and any cache) tokens, `message_delta` the running output
@@ -430,7 +508,8 @@ export async function POST(req: NextRequest) {
           : generateExamBank(courseTitle, unitNumber, rawText, kTopics, images, "knowledge", meter, premiumModel))
           .then((q) => { examQuestions = q; })
           .catch(() => {});
-        const { results: lessonsByTopic, complete } = await drillWithinBudget(kTopics, DRILL_BUDGET_MS, async (topic) => {
+        const kDrillMs = clock.budget(DRILL_BUDGET_MS, VERIFY_RESERVE_MS, MIN_DRILL_MS);
+        const { results: lessonsByTopic, complete } = await drillWithinBudget(kTopics, kDrillMs, async (topic) => {
           const lessons = summitBudget
             ? await generateTopicLessonsCheap(courseTitle, unitNumber, rawText, topic, titles, images, meter, { ...summitOpts, mode: "knowledge" })
             : await generateTopicLessons(courseTitle, unitNumber, rawText, topic, titles, images, "knowledge", meter, premiumModel);
@@ -441,7 +520,12 @@ export async function POST(req: NextRequest) {
         await Promise.race([examP, softDeadline(4000)]);
         const composed = composeGeneratedUnit(skeleton, lessonsByTopic, examQuestions);
         await setJob({ note: "Checking every answer key…" });
-        const { generated, report: vr } = await checkAnswers(composed, checkerModel, meter);
+        const { generated, report: vr } = await checkAnswers(
+          composed,
+          checkerModel,
+          meter,
+          clock.budget(VERIFY_BUDGET_MS, 0)
+        );
 
         let added = 0;
         let addedQ = 0;
@@ -589,11 +673,16 @@ export async function POST(req: NextRequest) {
         // the one Extras section (and it sorts last on a ladder).
         // Map: every file is a NEW theme cluster — next index, never merges.
         // Path: the file lands in its detected unit, merging into it if present.
-        const unitNumber = toExtras
-          ? EXTRAS_UNIT
-          : isMap
-            ? (fed.length ? Math.max(...fed) + 1 : 1)
-            : detectedUnit ?? (fed.length ? Math.max(...fed) + 1 : 1);
+        const unitNumber =
+          // Finishing a digest that ran out of time: back into the SAME unit or
+          // cluster it half-filled, never a new one beside it.
+          resuming?.unit != null
+            ? resuming.unit
+            : toExtras
+              ? EXTRAS_UNIT
+              : isMap
+                ? (fed.length ? Math.max(...fed) + 1 : 1)
+                : detectedUnit ?? (fed.length ? Math.max(...fed) + 1 : 1);
         // Both a Map cluster and an Extras entry are taught material, whatever
         // the file was originally classified as.
         if (isMap || toExtras) record.kind = "unit";
@@ -610,13 +699,25 @@ export async function POST(req: NextRequest) {
         // for assembleUnit's collision check) still uses the full set —
         // dedupe integrity is separate from teaching context.
         const existingTopics = standalone
-          ? []
+          ? // A standalone build leans on nothing — EXCEPT when it's finishing
+            // its own half-built cluster, where it must not rebuild what's
+            // already there.
+            resuming
+            ? preSections
+                .filter((s) => s.unit === unitNumber)
+                .flatMap((s) => s.topics)
+                .map((t) => ({ id: t.id, title: t.title }))
+            : []
           : preSections
               .filter((s) => s.unit <= unitNumber)
               .flatMap((s) => s.topics)
               .map((t) => ({ id: t.id, title: t.title }));
-        // Deep, self-contained concepts (not many tiny slivers) when standalone.
-        const skelOpts = standalone ? { standalone: true, cram: false } : undefined;
+        // Standalone only changes the TEACHING stance (self-contained topics, no
+        // dependency threading) — never how much gets built. A Map used to also
+        // drop out of cram mode here, which quietly gave the same file fewer
+        // topics on a Map than on a ladder. Choosing a shape must not cost you
+        // depth.
+        const skelOpts = standalone ? { standalone: true } : undefined;
 
         // ── CLIMB: distill only. Concept map + exams on the budget model; NO
         // drilling (the deep teaching is Summit). Feeds practice, notes, exams;
@@ -629,7 +730,7 @@ export async function POST(req: NextRequest) {
           await setJob({ note: "Checking every answer key…" });
           const climbCheck = await Promise.race([
             verifyExamQuestions(rawQuestions, { model: checkerModel, meter }).catch(() => null),
-            softDeadline(VERIFY_BUDGET_MS),
+            softDeadline(clock.budget(VERIFY_BUDGET_MS, 0, MIN_VERIFY_MS)),
           ]);
           const questionsRaw =
             climbCheck && climbCheck !== "timeout" ? climbCheck.questions : rawQuestions;
@@ -682,6 +783,9 @@ export async function POST(req: NextRequest) {
         // bank generated concurrently. If the whole thing can't finish inside
         // the function limit we KEEP the topics that did (drillWithinBudget)
         // rather than throwing away a heavy file's worth of tokens.
+        // cram:false here is the SUMMIT decision (deep four-quarter concepts
+        // rather than many slivers) and is applied identically to a ladder and
+        // a map — the shape of the subject never changes how much gets built.
         const skeleton = summitBudget
           ? await generateUnitSkeletonCheap(courseTitle, unitNumber, rawText, existingTopics, images, meter, { ...summitOpts, cram: false, mode: genMode, standalone })
           : await generateUnitSkeleton(courseTitle, unitNumber, rawText, existingTopics, images, genMode, meter, premiumModel, standalone);
@@ -698,7 +802,8 @@ export async function POST(req: NextRequest) {
           : generateExamBank(courseTitle, unitNumber, rawText, skeleton.topics, images, genMode, meter, premiumModel))
           .then((q) => { examQuestions = q; })
           .catch(() => {});
-        const { results: lessonsByTopic, complete } = await drillWithinBudget(skeleton.topics, DRILL_BUDGET_MS, async (topic) => {
+        const drillMs = clock.budget(DRILL_BUDGET_MS, VERIFY_RESERVE_MS, MIN_DRILL_MS);
+        const { results: lessonsByTopic } = await drillWithinBudget(skeleton.topics, drillMs, async (topic) => {
           const lessons = summitBudget
             ? await generateTopicLessonsCheap(courseTitle, unitNumber, rawText, topic, titles, images, meter, { ...summitOpts, mode: genMode, standalone })
             : await generateTopicLessons(courseTitle, unitNumber, rawText, topic, titles, images, genMode, meter, premiumModel, standalone);
@@ -709,8 +814,19 @@ export async function POST(req: NextRequest) {
         await Promise.race([examP, softDeadline(4000)]);
         const composed = composeGeneratedUnit(skeleton, lessonsByTopic, examQuestions);
         await setJob({ note: "Checking every answer key…" });
-        const { generated, report: vr } = await checkAnswers(composed, checkerModel, meter);
+        const { generated, report: vr } = await checkAnswers(
+          composed,
+          checkerModel,
+          meter,
+          clock.budget(VERIFY_BUDGET_MS, 0)
+        );
 
+        // A part-built file stays re-addable, and says so in the note below.
+        // "Part-built" is measured in topics that actually came back, not just
+        // in whether the clock ran out: a topic whose drill call failed leaves
+        // the same hole, and the file must stay re-addable either way.
+        const drilled = lessonsByTopic.filter(Boolean).length;
+        record.partial = drilled < skeleton.topics.length;
         record.cost = meter.summary();
         let added = 0;
         let addedQ = 0;
@@ -757,8 +873,10 @@ export async function POST(req: NextRequest) {
           added = section.topics.length;
           addedQ = questions.length;
           record.unit = unitNumber;
-          record.topics = added;
-          record.questions = addedQ;
+          // On a resume these are the topics added THIS run; the file's own
+          // count is everything it has produced across both runs.
+          record.topics = added + (resuming?.topics ?? 0);
+          record.questions = addedQ + (resuming?.questions ?? 0);
 
           tx.update(courseRef, {
             sections: normalizeCourse(sections),
@@ -771,9 +889,9 @@ export async function POST(req: NextRequest) {
           status: "done",
           cost: meter.summary(),
           note:
-            (complete
+            (!record.partial
               ? `${toExtras ? "Added to Extras" : isMap ? "New cluster added" : `Unit ${unitNumber} digested`} — ${added} new topic${added === 1 ? "" : "s"}, ${addedQ} exam question${addedQ === 1 ? "" : "s"}.`
-              : `${toExtras ? "Extras" : isMap ? "Cluster added" : `Unit ${unitNumber}`}: saved the ${added} topic${added === 1 ? "" : "s"} that finished before time ran out (add this file again to build the rest${isMap ? "" : " onto the same unit"}).`) +
+              : `${toExtras ? "Extras" : isMap ? "Cluster added" : `Unit ${unitNumber}`}: saved the ${added} topic${added === 1 ? "" : "s"} Kube got through${drilled < skeleton.topics.length ? ` of ${skeleton.topics.length}` : ""} — add the same file again and it carries on from where it stopped, into this same ${toExtras || isMap ? "cluster" : "unit"}.`) +
             (reportLine(vr) ? ` (Answer check: ${reportLine(vr)}.)` : ""),
         });
         return;
@@ -846,6 +964,7 @@ export async function POST(req: NextRequest) {
         note: "Filed as notes and remembered. Kube doesn't teach from notes yet — units and past papers drive the ladder.",
       });
     } catch (err) {
+      stopGuard();
       const message = err instanceof Error ? err.message : "Digestion failed.";
       // Always record what was spent, even on failure — otherwise the back
       // office shows 0 for a job that really did burn tokens (the bug that hid
