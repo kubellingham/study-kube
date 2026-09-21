@@ -13,7 +13,6 @@ import {
   query,
   where,
 } from "firebase/firestore";
-import Link from "next/link";
 import { db } from "@/lib/firebase/client";
 import { authedFetch } from "@/lib/authed-fetch";
 import { extractFileInBrowser, type ExtractedMaterial } from "@/lib/ingest/client-extract";
@@ -30,8 +29,10 @@ const MAX_FILES_PER_UPLOAD = 5;
 interface JobLine {
   key: string;
   name: string;
-  state: "extracting" | "working" | "done" | "skipped" | "error";
+  state: "extracting" | "working" | "done" | "skipped" | "error" | "needs-unit";
   note: string;
+  /** Present only in the "needs-unit" state: what Kube offers for the picker. */
+  ask?: { suggested: number | null; units: { unit: number; title: string }[] };
 }
 
 const KIND_LABEL: Record<IngestedFile["kind"], string> = {
@@ -71,6 +72,11 @@ export default function AddMaterial({
   const [digestHidden, setDigestHidden] = useState(false);
   const unsubs = useRef<(() => void)[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Remember each submission by line key, so a "which unit?" answer can
+  // re-send the very same file with the chosen unit — no re-upload needed.
+  const pending = useRef<
+    Record<string, { name: string; extracted: ExtractedMaterial; mode: IngestMode }>
+  >({});
 
   useEffect(() => {
     const subs = unsubs.current;
@@ -88,6 +94,18 @@ export default function AddMaterial({
         if (!snap.exists()) return;
         const status = snap.get("status") as JobLine["state"];
         const note = (snap.get("note") as string) ?? "";
+        if (status === "needs-unit") {
+          updateLine(key, {
+            state: "needs-unit",
+            note,
+            ask: {
+              suggested: (snap.get("suggestedUnit") as number) ?? null,
+              units: (snap.get("knownUnits") as { unit: number; title: string }[]) ?? [],
+            },
+          });
+          unsub();
+          return;
+        }
         updateLine(key, { state: status === "working" ? "working" : status, note });
         if (status === "done") {
           onDone();
@@ -149,7 +167,15 @@ export default function AddMaterial({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [courseId, uid]);
 
-  async function submitOne(key: string, name: string, extracted: ExtractedMaterial, mode: IngestMode) {
+  async function submitOne(
+    key: string,
+    name: string,
+    extracted: ExtractedMaterial,
+    mode: IngestMode,
+    unit?: number
+  ) {
+    // Keep the payload so a "which unit?" answer can re-send it as-is.
+    pending.current[key] = { name, extracted, mode };
     try {
       const res = await authedFetch("/api/course/ingest", {
         method: "POST",
@@ -160,6 +186,7 @@ export default function AddMaterial({
           text: extracted.text,
           images: extracted.images,
           mode,
+          ...(unit ? { unit } : {}),
         }),
       });
       const data = await res.json();
@@ -168,7 +195,7 @@ export default function AddMaterial({
         updateLine(key, { state: "skipped", note: data.note });
         return;
       }
-      updateLine(key, { state: "working", note: mode === "fromKnowledge" ? "Building your ladder from the outline…" : "Kube is reading it…" });
+      updateLine(key, { state: "working", note: mode === "fromKnowledge" ? "Building your ladder from the outline…" : "Kube is reading it…", ask: undefined });
       watchJob(data.jobId as string, key);
     } catch (err) {
       updateLine(key, {
@@ -176,6 +203,14 @@ export default function AddMaterial({
         note: err instanceof Error ? err.message : "Digestion failed.",
       });
     }
+  }
+
+  /** The student answered "which unit?": re-send the same file with it set. */
+  function resubmitWithUnit(key: string, unit: number) {
+    const p = pending.current[key];
+    if (!p) return;
+    updateLine(key, { state: "working", note: `Filing as Unit ${unit}…`, ask: undefined });
+    void submitOne(key, p.name, p.extracted, p.mode, unit);
   }
 
   // Take in a whole batch: extract every file on-device, then have Kube read
@@ -284,10 +319,12 @@ export default function AddMaterial({
   // The full-screen digesting animation is only for the real (server) build —
   // not the on-device extract or the read/choose conversation.
   const anyWorking = lines.some((l) => l.state === "working");
+  // A pending "which unit?" question must never sit behind the digest overlay.
+  const anyNeedsUnit = lines.some((l) => l.state === "needs-unit");
 
   return (
     <>
-    {anyWorking && !digestHidden && (
+    {anyWorking && !digestHidden && !anyNeedsUnit && (
       <div
         style={{
           position: "fixed",
@@ -452,16 +489,26 @@ export default function AddMaterial({
 
       {lines.length > 0 && (
         <div className="mt-4 space-y-3">
-          {lines.map((l) => (
-            <div key={l.key} className="flex items-start gap-2 text-sm">
-              <span aria-hidden>
-                {l.state === "done" ? "✓" : l.state === "error" ? "✕" : l.state === "skipped" ? "▸" : "…"}
-              </span>
-              <span style={{ color: l.state === "error" ? "var(--red)" : l.state === "done" ? "var(--kube)" : "var(--ink-soft)" }}>
-                <span className="font-semibold">{l.name}:</span> {l.note}
-              </span>
-            </div>
-          ))}
+          {lines.map((l) =>
+            l.state === "needs-unit" ? (
+              <UnitPicker
+                key={l.key}
+                name={l.name}
+                note={l.note}
+                ask={l.ask}
+                onPick={(u) => resubmitWithUnit(l.key, u)}
+              />
+            ) : (
+              <div key={l.key} className="flex items-start gap-2 text-sm">
+                <span aria-hidden>
+                  {l.state === "done" ? "✓" : l.state === "error" ? "✕" : l.state === "skipped" ? "▸" : "…"}
+                </span>
+                <span style={{ color: l.state === "error" ? "var(--red)" : l.state === "done" ? "var(--kube)" : "var(--ink-soft)" }}>
+                  <span className="font-semibold">{l.name}:</span> {l.note}
+                </span>
+              </div>
+            )
+          )}
         </div>
       )}
       {anyWorking && (
@@ -508,6 +555,72 @@ export default function AddMaterial({
       )}
     </div>
     </>
+  );
+}
+
+// The one question Kube asks only when it genuinely can't tell which unit a
+// file is: pick it, and the same file re-files itself under that unit.
+function UnitPicker({
+  name,
+  note,
+  ask,
+  onPick,
+}: {
+  name: string;
+  note: string;
+  ask?: { suggested: number | null; units: { unit: number; title: string }[] };
+  onPick: (unit: number) => void;
+}) {
+  const titleByUnit = new Map((ask?.units ?? []).map((u) => [u.unit, u.title]));
+  const nums = new Set<number>();
+  for (let i = 1; i <= 6; i++) nums.add(i);
+  for (const u of ask?.units ?? []) nums.add(u.unit);
+  if (ask?.suggested) nums.add(ask.suggested);
+  const options = [...nums].sort((a, b) => a - b);
+
+  return (
+    <div
+      className="rounded-2xl border p-4"
+      style={{ borderColor: "var(--amber-line)", background: "var(--amber-soft)" }}
+    >
+      <div className="text-sm font-semibold" style={{ color: "var(--ink)" }}>
+        Which unit is this?
+      </div>
+      <div className="mt-0.5 text-[11px]" style={{ color: "var(--faint)", fontFamily: "var(--font-mono)" }}>
+        {name}
+      </div>
+      <p className="mt-2 text-xs" style={{ color: "var(--ink-soft)", lineHeight: 1.5 }}>
+        {note}
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {options.map((u) => {
+          const isSuggested = u === ask?.suggested;
+          const title = titleByUnit.get(u);
+          return (
+            <button
+              key={u}
+              type="button"
+              onClick={() => onPick(u)}
+              title={title || `Unit ${u}`}
+              className="rounded-xl border px-3 py-1.5 text-sm font-semibold"
+              style={{
+                borderColor: isSuggested ? "var(--kube)" : "var(--line)",
+                background: isSuggested ? "var(--kube-soft)" : "var(--card)",
+                color: isSuggested ? "var(--kube)" : "var(--ink)",
+              }}
+            >
+              {u}
+              {isSuggested ? " ·" : ""}
+            </button>
+          );
+        })}
+      </div>
+      {ask?.units && ask.units.length > 0 && (
+        <p className="mt-2 text-[11px]" style={{ color: "var(--faint)" }}>
+          Known units: {ask.units.map((u) => `${u.unit} ${u.title}`).join(" · ")}
+        </p>
+      )}
+    </div>
   );
 }
 
