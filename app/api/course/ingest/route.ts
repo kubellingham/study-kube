@@ -518,15 +518,19 @@ export async function POST(req: NextRequest) {
       // earlier read, or the student's manual switch).
       const existingMode = snap.get("mode") as CourseMode | undefined;
       const hadContent = ((snap.get("sections") as Section[]) ?? []).length > 0;
+      let courseMode: CourseMode = existingMode ?? "path";
       if (!existingMode && !hadContent) {
         const structured =
           detectedKind === "syllabus" ||
           (detectedKind === "unit" && detectedUnit != null) ||
           !!snap.get("syllabus");
-        await courseRef
-          .set({ mode: structured ? "path" : "map" }, { merge: true })
-          .catch(() => {});
+        courseMode = structured ? "path" : "map";
+        await courseRef.set({ mode: courseMode }, { merge: true }).catch(() => {});
       }
+      // In a Map, teaching material — including plain notes — becomes standalone,
+      // theme-clustered topics (not units). The ladder's ordering/dependencies
+      // are switched off; each file becomes its own cluster.
+      const isMap = courseMode === "map";
 
       await setJob({ note: `Filed as: ${classification.label}. Digesting…`, label: classification.label, kind: detectedKind });
 
@@ -568,11 +572,17 @@ export async function POST(req: NextRequest) {
         return;
       }
 
-      if (detectedKind === "unit") {
+      if (detectedKind === "unit" || (isMap && detectedKind === "notes")) {
         const preSections = (snap.get("sections") as Section[]) ?? [];
         const fed = preSections.map((s) => s.unit);
-        const unitNumber =
-          detectedUnit ?? (fed.length ? Math.max(...fed) + 1 : 1);
+        // Path: file lands in its detected unit (merging into it if it exists).
+        // Map: every file is a NEW theme cluster, so it takes the next index and
+        // never merges — and it gets no prior topics as "already known".
+        const unitNumber = isMap
+          ? (fed.length ? Math.max(...fed) + 1 : 1)
+          : detectedUnit ?? (fed.length ? Math.max(...fed) + 1 : 1);
+        // A Map cluster is taught material, whatever the file was classified as.
+        if (isMap) record.kind = "unit";
         // Prior context for the generator = topics from units that come
         // earlier in the LADDER order, or the same unit (a follow-up
         // upload extending it), NOT units uploaded earlier that will
@@ -583,16 +593,21 @@ export async function POST(req: NextRequest) {
         // the AI's teach steps should reflect that. `allIds` (below,
         // for assembleUnit's collision check) still uses the full set —
         // dedupe integrity is separate from teaching context.
-        const existingTopics = preSections
-          .filter((s) => s.unit <= unitNumber)
-          .flatMap((s) => s.topics)
-          .map((t) => ({ id: t.id, title: t.title }));
+        const existingTopics = isMap
+          ? []
+          : preSections
+              .filter((s) => s.unit <= unitNumber)
+              .flatMap((s) => s.topics)
+              .map((t) => ({ id: t.id, title: t.title }));
+        // Deep, self-contained concepts for a Map (not many tiny slivers).
+        const skelOpts = isMap ? { standalone: true, cram: false } : undefined;
 
         // ── CLIMB: distill only. Concept map + exams on the budget model; NO
         // drilling (the deep teaching is Summit). Feeds practice, notes, exams;
         // the tree shows those topics locked-behind-glass. Cheap and fast. ──
         if (isClimbOnly) {
-          const skeleton = await generateUnitSkeletonCheap(courseTitle, unitNumber, rawText, existingTopics, images, meter);
+          const skeleton = await generateUnitSkeletonCheap(courseTitle, unitNumber, rawText, existingTopics, images, meter, skelOpts);
+          if (isMap) skeleton.topics = skeleton.topics.map((t) => ({ ...t, deps: [] }));
           await setJob({ note: `Mapped ${skeleton.topics.length} concept${skeleton.topics.length === 1 ? "" : "s"} — writing your practice & exams…` });
           const rawQuestions = await generateExamBankCheap(courseTitle, unitNumber, rawText, skeleton.topics, images, meter).catch(() => []);
           await setJob({ note: "Checking every answer key…" });
@@ -635,7 +650,7 @@ export async function POST(req: NextRequest) {
             status: "done",
             cost: meter.summary(),
             note:
-              `Unit ${unitNumber} distilled — ${addedC} concept${addedC === 1 ? "" : "s"} with recap, flashcards & ${addedCQ} exam question${addedCQ === 1 ? "" : "s"}. Practice and notes are ready.` +
+              `${isMap ? "New cluster added" : `Unit ${unitNumber} distilled`} — ${addedC} concept${addedC === 1 ? "" : "s"} with recap, flashcards & ${addedCQ} exam question${addedCQ === 1 ? "" : "s"}. Practice and notes are ready.` +
               (reportLine(climbReport) ? ` (Answer check: ${reportLine(climbReport)}.)` : ""),
           });
           return;
@@ -647,8 +662,9 @@ export async function POST(req: NextRequest) {
         // the function limit we KEEP the topics that did (drillWithinBudget)
         // rather than throwing away a heavy file's worth of tokens.
         const skeleton = summitBudget
-          ? await generateUnitSkeletonCheap(courseTitle, unitNumber, rawText, existingTopics, images, meter, { ...summitOpts, cram: false, mode: genMode })
-          : await generateUnitSkeleton(courseTitle, unitNumber, rawText, existingTopics, images, genMode, meter, premiumModel);
+          ? await generateUnitSkeletonCheap(courseTitle, unitNumber, rawText, existingTopics, images, meter, { ...summitOpts, cram: false, mode: genMode, standalone: isMap })
+          : await generateUnitSkeleton(courseTitle, unitNumber, rawText, existingTopics, images, genMode, meter, premiumModel, isMap);
+        if (isMap) skeleton.topics = skeleton.topics.map((t) => ({ ...t, deps: [] }));
         await setJob({
           note: `Mapped ${skeleton.topics.length} concept${skeleton.topics.length === 1 ? "" : "s"} — drilling each into a full circle…`,
         });
@@ -663,8 +679,8 @@ export async function POST(req: NextRequest) {
           .catch(() => {});
         const { results: lessonsByTopic, complete } = await drillWithinBudget(skeleton.topics, DRILL_BUDGET_MS, async (topic) => {
           const lessons = summitBudget
-            ? await generateTopicLessonsCheap(courseTitle, unitNumber, rawText, topic, titles, images, meter, { ...summitOpts, mode: genMode })
-            : await generateTopicLessons(courseTitle, unitNumber, rawText, topic, titles, images, genMode, meter, premiumModel);
+            ? await generateTopicLessonsCheap(courseTitle, unitNumber, rawText, topic, titles, images, meter, { ...summitOpts, mode: genMode, standalone: isMap })
+            : await generateTopicLessons(courseTitle, unitNumber, rawText, topic, titles, images, genMode, meter, premiumModel, isMap);
           done += 1;
           await setJob({ note: `Drilling circles — ${done}/${skeleton.topics.length} done…` });
           return lessons;
@@ -719,8 +735,8 @@ export async function POST(req: NextRequest) {
           cost: meter.summary(),
           note:
             (complete
-              ? `Unit ${unitNumber} digested — ${added} new topic${added === 1 ? "" : "s"}, ${addedQ} exam question${addedQ === 1 ? "" : "s"}.`
-              : `Unit ${unitNumber}: saved the ${added} topic${added === 1 ? "" : "s"} that finished before time ran out (add this file again to build the rest onto the same unit).`) +
+              ? `${isMap ? "New cluster added" : `Unit ${unitNumber} digested`} — ${added} new topic${added === 1 ? "" : "s"}, ${addedQ} exam question${addedQ === 1 ? "" : "s"}.`
+              : `${isMap ? "Cluster added" : `Unit ${unitNumber}`}: saved the ${added} topic${added === 1 ? "" : "s"} that finished before time ran out (add this file again to build the rest${isMap ? "" : " onto the same unit"}).`) +
             (reportLine(vr) ? ` (Answer check: ${reportLine(vr)}.)` : ""),
         });
         return;
