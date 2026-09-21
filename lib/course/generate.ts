@@ -231,9 +231,11 @@ export function parseGeneratedUnit(jsonText: string): GeneratedUnit {
 
 const CONCEPT_RULES = `You are Kube, a calm, warm tutor mapping a lecturer's unit material into a learning ladder.
 - ONE CONCEPT PER TOPIC, never cram. If a slide presents three codes together, that is three topics. The source's density is not the lesson's density (BCD, Excess-3 and Gray code are three topics, never one).
-- 4-10 topics per document, in dependency order. Weight inherits upward: a foundation a heavy topic depends on is itself heavy.
+- COVER THE DOCUMENT END TO END. Walk it from the first slide/page to the last and account for ALL of it. Stopping halfway, or thinning out after the opening sections, is the single worst failure here — the back half of a deck is usually where the examinable detail lives.
+- EVERY NAMED THING IS ITS OWN TOPIC. Where the source names and defines a family of siblings — each software licence, each sorting algorithm, each protocol, each normal form — each one gets its OWN topic. Never fold seven named licences into a single "Licensing" topic; a student is examined on GPL vs LGPL vs MIT, and that difference cannot be drilled if they are one bullet list.
+- Topic count follows the material, not a habit (the instruction below gives the range). Weight inherits upward: a foundation a heavy topic depends on is itself heavy.
 - MERGE THE REPEATS. Lecture decks routinely teach one idea twice — a light introduction early, then a fuller treatment later (or a summary table at the end). Fold every repeat into ONE topic built from the fullest treatment. Never emit two topics for the same idea because the deck said it twice.
-- COMPARISON TABLES ARE GOLD. Wherever the source contrasts two things side by side (structure vs union, GET vs POST, class vs ID, margin vs padding, block vs inline), that contrast is a classic exam question — give it its own topic (or a dedicated quarter) and drill the DISCRIMINATION, not two isolated definitions.
+- COMPARISON TABLES ARE GOLD. Wherever the source contrasts two things side by side (structure vs union, GET vs POST, class vs ID, margin vs padding, block vs inline), that contrast is a classic exam question — give it its OWN topic and drill the DISCRIMINATION, not two isolated definitions. A summary/comparison table near the end of a deck always earns its own topic.
 - SUMMARY TABLES are a checklist of what the lecturer thinks matters — mine them for coverage, but teach each row properly rather than reprinting the table.
 - whyItMatters should name the EXAM SHAPE where you can see it ("a guaranteed write-the-code question", "the predict-the-output trace"), not just say the topic is important.
 - Recap lines are crisp, exam-night facts.
@@ -302,6 +304,22 @@ const AUGMENT_CLAUSE = `AUGMENTED MODE — the student asked for their material 
 - Where the material is thin — it names a concept without explaining it, shows a result with no derivation, or has an obvious prerequisite gap — fill that gap from your solid knowledge of the standard curriculum so the ladder actually teaches.
 - You MAY add a foundational concept the material assumes but never states, when a student would be stuck without it.
 - Do NOT wander outside the course's scope, and do NOT pad: every addition must earn its place by removing a real gap.`;
+
+/**
+ * How many concepts a document should yield. A flat "4-10" let a 45-slide deck
+ * collapse into 10 topics — it returned exactly the ceiling, and half the deck
+ * (every individual licence, copyright, copyleft, patents) went untaught. The
+ * range now follows the volume of material, roughly one concept per ~700
+ * characters of source, bounded so a one-pager stays small and a huge deck
+ * stays buildable inside the function budget.
+ */
+export function topicTarget(chars: number): { min: number; max: number } {
+  const est = Math.round(chars / 700);
+  return {
+    min: Math.max(4, Math.min(22, est - 3)),
+    max: Math.max(8, Math.min(28, est + 3)),
+  };
+}
 
 /** How a build treats the uploaded text: as the content itself, as scope only
  *  (teach from knowledge), or as the spine that Kube's knowledge supplements. */
@@ -579,7 +597,7 @@ export async function generateUnitSkeleton(
           ...cachedMaterial(rawText, images, materialLabel(know)),
           {
             type: "text",
-            text: `${rulesFor(mode, CONCEPT_RULES, CONCEPT_RULES_KNOWLEDGE, CONCEPT_RULES_AUGMENTED)}${mapClause}\n\nCourse: ${courseTitle}\nUnit number: ${unitNumber}\nPrefix all topic ids with "u${unitNumber}-".\n\n${existing}\n\nProduce ONLY the concept map for this unit: the section title, a one-line tagline, and the ${standalone ? "list" : "ordered list"} of topics (id, title, weight, deps, whyItMatters, recap). Do NOT write any lessons — those come next.`,
+            text: `${rulesFor(mode, CONCEPT_RULES, CONCEPT_RULES_KNOWLEDGE, CONCEPT_RULES_AUGMENTED)}${mapClause}\n\nThis material should yield roughly ${topicTarget(rawText.length).min}-${topicTarget(rawText.length).max} concepts — map them ALL, end to end.\n\nCourse: ${courseTitle}\nUnit number: ${unitNumber}\nPrefix all topic ids with "u${unitNumber}-".\n\n${existing}\n\nProduce ONLY the concept map for this unit: the section title, a one-line tagline, and the ${standalone ? "list" : "ordered list"} of topics (id, title, weight, deps, whyItMatters, recap). Do NOT write any lessons — those come next.`,
           },
         ],
       },
@@ -589,6 +607,14 @@ export async function generateUnitSkeleton(
   if (!res.parsed_output) throw new Error("Kube couldn't map this unit's concepts.");
   return res.parsed_output;
 }
+
+/** A real circle is four quarters (three for a light topic). Anything less is
+ *  a single card wearing a lesson's name, so it is worth one more attempt. */
+export function requiredQuarters(weight: string): number {
+  return weight === "light" ? 2 : 3;
+}
+
+const INSIST_QUARTERS = `YOUR LAST ATTEMPT RETURNED TOO FEW QUARTERS. Return the COMPLETE circle this time: q1 "Meet it, slowly", q2 "Question it", q3 "Again, differently", q4 "Stretch & compare", each with its own steps. Do not return a single quarter.`;
 
 /** Step 2: one topic's four-quarter drill. Called once per topic, in parallel. */
 export async function generateTopicLessons(
@@ -703,11 +729,17 @@ const EXAM_JSON_SHAPE = `Return ONLY a JSON object (no prose, no markdown fences
 - Spread the questions across the topics; answer is the 0-based index of the correct option; exactly 4 options each.`;
 
 const LESSON_JSON_SHAPE = `Return ONLY a JSON object (no prose, no markdown fences) of exactly this shape:
-{"lessons":[{"id":"q1","title":"1 · Meet it, slowly","steps":[
-  {"kind":"teach","title":"short heading (optional)","body":"1-3 short paragraphs; use **bold** for key terms and [[term|one-line definition]] to gloss jargon","code":"optional short code block"},
-  {"kind":"check","prompt":"the question","options":["a","b","c","d"],"answer":0,"praise":"warm, specific praise tied to the idea"}
-]}]}
-- Build the four quarters as lessons q1..q4 (a light topic may use q1..q3). Each step is EITHER a teach beat OR a check. "answer" is the 0-based index; give 3-4 options per check.`;
+{"lessons":[
+  {"id":"q1","title":"1 · Meet it, slowly","steps":[
+    {"kind":"teach","title":"short heading (optional)","body":"1-3 short paragraphs; use **bold** for key terms and [[term|one-line definition]] to gloss jargon","code":"optional short code block"},
+    {"kind":"check","prompt":"the question","options":["a","b","c","d"],"answer":0,"praise":"warm, specific praise tied to the idea"}
+  ]},
+  {"id":"q2","title":"2 · Question it","steps":[ ... ]},
+  {"id":"q3","title":"3 · Again, differently","steps":[ ... ]},
+  {"id":"q4","title":"4 · Stretch & compare","steps":[ ... ]}
+]}
+- HARD RULE — RETURN ALL FOUR QUARTERS. The "lessons" array must hold q1, q2, q3 and q4 (a LIGHT topic may stop at q3, never fewer than 2). A single-quarter answer is a failed answer: it leaves the student with one card instead of a lesson. The shape above is an abbreviation — write every quarter out in full.
+- Each step is EITHER a teach beat OR a check. "answer" is the 0-based index; give 3-4 options per check.`;
 
 interface CheapOpts {
   model?: string;
@@ -737,9 +769,10 @@ export async function generateUnitSkeletonCheap(
     existingTopics.length > 0
       ? `Existing topics (do NOT recreate; you may list their ids as deps): ${existingTopics.map((t) => t.id).join(", ")}`
       : "This is the first material — the ladder is empty.";
+  const span = topicTarget(rawText.length);
   const count = cram
-    ? `CLIMB CRAM MODE: break the unit into MANY small, drillable concepts — aim for 16-22, more granular than a deep course. Every distinct term, formula, circuit or rule is its own concept.`
-    : `Map the 4-10 CORE concepts a student must master, in dependency order, each weighted by how examinable it is. These become deep four-quarter lessons, so pick real, teachable concepts — not slivers.`;
+    ? `CLIMB CRAM MODE: break the unit into MANY small, drillable concepts — aim for ${span.min + 4}-${span.max + 6}, more granular than a deep course. Every distinct term, formula, circuit or rule is its own concept.`
+    : `This material should yield roughly ${span.min}-${span.max} concepts. Map them all, each weighted by how examinable it is. These become deep four-quarter lessons, so pick real, teachable concepts — not slivers — but do NOT stop early: covering only the first half of the document is a failure.`;
   const label = know ? "SYLLABUS / OUTLINE (scope only — teach from your knowledge)" : "COURSE MATERIAL";
   const mapClause = opts.standalone ? `\n\n${MAP_CONCEPT_CLAUSE}` : "";
   const prompt = `${rulesFor(opts.mode ?? "file", CONCEPT_RULES, CONCEPT_RULES_KNOWLEDGE, CONCEPT_RULES_AUGMENTED)}${mapClause}
@@ -801,15 +834,24 @@ ${know ? "Teach ONLY this concept from your own solid knowledge (the text below 
 ${rawText.slice(0, MAX_UNIT_CHARS)}
 
 ${LESSON_JSON_SHAPE}`;
-  const content = useVision ? [{ type: "text" as const, text: prompt }, ...orImageBlocks(images)] : prompt;
-  const { data, usage } = await chatJSON({
-    model: useVision ? opts.vision ?? SUMMIT_VISION_MODEL : opts.model ?? SUMMIT_MODEL,
-    system: UNIT_SYSTEM,
-    content,
-    maxTokens: 12000,
-  });
-  meter?.add(usage);
-  return topicLessonsSchema.parse(data).lessons;
+  const model = useVision ? opts.vision ?? SUMMIT_VISION_MODEL : opts.model ?? SUMMIT_MODEL;
+  const run = async (text: string) => {
+    const content = useVision ? [{ type: "text" as const, text }, ...orImageBlocks(images)] : text;
+    const { data, usage } = await chatJSON({ model, system: UNIT_SYSTEM, content, maxTokens: 12000 });
+    meter?.add(usage);
+    return topicLessonsSchema.parse(data).lessons;
+  };
+
+  let lessons = await run(prompt);
+  // Budget models often copy the SHAPE of the example instead of the
+  // instruction and hand back a single quarter — which reaches the student as
+  // one lonely card where a four-quarter circle was promised. Insist once.
+  const need = requiredQuarters(topic.weight);
+  if (lessons.length < need) {
+    const retried = await run(`${prompt}\n\n${INSIST_QUARTERS}`).catch(() => null);
+    if (retried && retried.length > lessons.length) lessons = retried;
+  }
+  return lessons;
 }
 
 /** Exam bank on a budget model. Same shape as the Sonnet path. */
@@ -961,7 +1003,8 @@ export function composeGeneratedUnit(
 export function assembleUnit(
   generated: GeneratedUnit,
   unitNumber: number,
-  existingTopicIds: string[]
+  existingTopicIds: string[],
+  addReview = true
 ): { section: Section; questions: ExamQuestion[] } {
   const known = new Set(existingTopicIds);
   const topics: Topic[] = [];
@@ -1028,9 +1071,11 @@ export function assembleUnit(
     known.add(id);
   }
 
-  // Spaced review, Duolingo-style: every generated unit ends with a
-  // compulsory 5-question review node over its heaviest circles.
-  if (topics.length >= 2) {
+  // Spaced review, Duolingo-style: every generated UNIT ends with a compulsory
+  // 5-question review node over its heaviest circles. A Map cluster (or the
+  // Extras bay) has no unit and no order, so "Unit 1 quick review" is both the
+  // wrong idea and the wrong name there — skip it.
+  if (addReview && topics.length >= 2) {
     const reviewed = topics
       .filter((t) => t.weight !== "light")
       .slice(-4)

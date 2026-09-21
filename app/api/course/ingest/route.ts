@@ -723,7 +723,7 @@ export async function POST(req: NextRequest) {
           );
 
           const allIds = sections.flatMap((s) => s.topics).map((t) => t.id);
-          const { section, questions } = assembleUnit(generated, unitNumber, allIds);
+          const { section, questions } = assembleUnit(generated, unitNumber, allIds, !standalone);
           if (toExtras) {
             section.extras = true;
             section.title = EXTRAS_TITLE;
