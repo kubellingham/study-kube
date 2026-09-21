@@ -127,6 +127,21 @@ You do NOT summarize, and you never build "show a card + Got it button" lessons.
 
 const MAX_UNIT_CHARS = 60_000;
 
+// How many source images each KIND of call may carry.
+//
+// Images are the single most expensive thing in a digest: their presence also
+// routes the call to a vision model (gpt-4o-mini) instead of the cheap text
+// model, and the whole set used to be re-sent with EVERY per-topic drill. A
+// 45-slide deck with 18 pictures and 24 topics meant ~450 image payloads for
+// one unit — which is how a digest that should cost cents cost $2.60.
+//
+// The concept map genuinely benefits from seeing the deck (it is one call).
+// A per-topic drill already has the full text and needs a picture only to
+// redraw the odd diagram, so it gets a handful. The exam bank needs almost none.
+const MAX_SKELETON_IMAGES = 12;
+const MAX_DRILL_IMAGES = 3;
+const MAX_EXAM_IMAGES = 2;
+
 export interface ExistingTopicRef {
   id: string;
   title: string;
@@ -314,10 +329,10 @@ const AUGMENT_CLAUSE = `AUGMENTED MODE — the student asked for their material 
  * stays buildable inside the function budget.
  */
 export function topicTarget(chars: number): { min: number; max: number } {
-  const est = Math.round(chars / 700);
+  const est = Math.round(chars / 500);
   return {
-    min: Math.max(4, Math.min(22, est - 3)),
-    max: Math.max(8, Math.min(28, est + 3)),
+    min: Math.max(4, Math.min(30, est - 4)),
+    max: Math.max(8, Math.min(38, est + 6)),
   };
 }
 
@@ -594,7 +609,7 @@ export async function generateUnitSkeleton(
       {
         role: "user",
         content: [
-          ...cachedMaterial(rawText, images, materialLabel(know)),
+          ...cachedMaterial(rawText, (images ?? []).slice(0, MAX_SKELETON_IMAGES), materialLabel(know)),
           {
             type: "text",
             text: `${rulesFor(mode, CONCEPT_RULES, CONCEPT_RULES_KNOWLEDGE, CONCEPT_RULES_AUGMENTED)}${mapClause}\n\nThis material should yield roughly ${topicTarget(rawText.length).min}-${topicTarget(rawText.length).max} concepts — map them ALL, end to end.\n\nCourse: ${courseTitle}\nUnit number: ${unitNumber}\nPrefix all topic ids with "u${unitNumber}-".\n\n${existing}\n\nProduce ONLY the concept map for this unit: the section title, a one-line tagline, and the ${standalone ? "list" : "ordered list"} of topics (id, title, weight, deps, whyItMatters, recap). Do NOT write any lessons — those come next.`,
@@ -646,7 +661,7 @@ export async function generateTopicLessons(
       {
         role: "user",
         content: [
-          ...cachedMaterial(rawText, images, materialLabel(know)),
+          ...cachedMaterial(rawText, (images ?? []).slice(0, MAX_DRILL_IMAGES), materialLabel(know)),
           {
             type: "text",
             text: `${rulesFor(mode, DRILL_RULES, DRILL_RULES_KNOWLEDGE, DRILL_RULES_AUGMENTED)}${mapClause}\n\nCourse: ${courseTitle} · Unit ${unitNumber}\n\n${standalone ? "Other topics in this theme (for your awareness only — do NOT assume the student has studied them):" : "This unit's topics (for context — teach forward toward later ones where natural):"}\n${allTopicTitles
@@ -691,7 +706,7 @@ export async function generateExamBank(
       {
         role: "user",
         content: [
-          ...cachedMaterial(rawText, images, materialLabel(know)),
+          ...cachedMaterial(rawText, (images ?? []).slice(0, MAX_EXAM_IMAGES), materialLabel(know)),
           {
             type: "text",
             text: `${rulesFor(mode, EXAM_RULES, EXAM_RULES_KNOWLEDGE, EXAM_RULES_AUGMENTED)}\n\nCourse: ${courseTitle} · Unit ${unitNumber}\n\nTopics in this unit (tag every question with one of these ids):\n${topics
@@ -758,11 +773,12 @@ export async function generateUnitSkeletonCheap(
   unitNumber: number,
   rawText: string,
   existingTopics: ExistingTopicRef[],
-  images?: SourceImage[],
+  rawImages?: SourceImage[],
   meter?: UsageMeter,
   opts: CheapOpts = {}
 ): Promise<UnitSkeleton> {
-  const useVision = (images?.length ?? 0) > 0;
+  const images = (rawImages ?? []).slice(0, MAX_SKELETON_IMAGES);
+  const useVision = images.length > 0;
   const cram = opts.cram !== false;
   const know = opts.mode === "knowledge";
   const existing =
@@ -808,11 +824,12 @@ export async function generateTopicLessonsCheap(
   rawText: string,
   topic: SkeletonTopic,
   allTopicTitles: string[],
-  images?: SourceImage[],
+  rawImages?: SourceImage[],
   meter?: UsageMeter,
   opts: CheapOpts = {}
 ): Promise<z.infer<typeof lessonSchema>[]> {
-  const useVision = (images?.length ?? 0) > 0;
+  const images = (rawImages ?? []).slice(0, MAX_DRILL_IMAGES);
+  const useVision = images.length > 0;
   const know = opts.mode === "knowledge";
   const label = know ? "SYLLABUS / OUTLINE (scope only — teach from your knowledge)" : "COURSE MATERIAL";
   const mapClause = opts.standalone ? `\n\n${MAP_DRILL_CLAUSE}` : "";
@@ -860,11 +877,12 @@ export async function generateExamBankCheap(
   unitNumber: number,
   rawText: string,
   topics: SkeletonTopic[],
-  images?: SourceImage[],
+  rawImages?: SourceImage[],
   meter?: UsageMeter,
   opts: CheapOpts = {}
 ): Promise<z.infer<typeof examBankSchema>["examQuestions"]> {
-  const useVision = (images?.length ?? 0) > 0;
+  const images = (rawImages ?? []).slice(0, MAX_EXAM_IMAGES);
+  const useVision = images.length > 0;
   const know = opts.mode === "knowledge";
   const label = know ? "SYLLABUS / OUTLINE (scope only)" : "COURSE MATERIAL";
   const list = topics.map((t) => `- ${t.id}: ${t.title} — ${t.whyItMatters}`).join("\n");

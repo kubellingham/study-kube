@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation";
 import { useUser } from "@/lib/use-user";
 import type { CourseBundle } from "@/lib/course";
 import { loadProgress, type LearnProgress } from "@/lib/learn/progress";
+import { topicLessons, lessonKey } from "@/lib/course/lessons";
 import { RichInline } from "@/app/learn/components/Rich";
 import AddMaterial from "@/app/learn/components/AddMaterial";
 import type { IngestedFile } from "@/lib/course/types";
@@ -40,7 +41,19 @@ export default function MapBoard({
   const course = bundle.course;
   const clusters = course.sections;
   const ladder = bundle.ladder;
+  // How much of a topic is done, counted in lesson slices — a topic you are
+  // two quarters into must not look identical to one you have never opened.
+  function sliceProgress(topicId: string) {
+    const topic = ladder.find((t) => t.id === topicId);
+    if (!topic) return { done: 0, total: 0 };
+    const slices = topicLessons(topic);
+    const doneSlices = slices.filter((l) => progress?.lessons?.[lessonKey(topic.id, l.id)]).length;
+    return { done: doneSlices, total: slices.length };
+  }
   const done = progress ? ladder.filter((t) => progress.completed[t.id]).length : 0;
+  const started = progress
+    ? ladder.filter((t) => !progress.completed[t.id] && sliceProgress(t.id).done > 0).length
+    : 0;
   const total = ladder.length;
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
   const empty = total === 0;
@@ -87,7 +100,8 @@ export default function MapBoard({
             <div className="fillbar" style={{ width: `${pct}%` }} />
           </div>
           <span className="text-xs" style={{ color: "var(--faint)" }}>
-            {done} / {total} topics studied · {clusters.length} cluster{clusters.length === 1 ? "" : "s"}
+            {done} / {total} topics studied{started > 0 ? ` · ${started} in progress` : ""} ·{" "}
+            {clusters.length} {clusters.length === 1 ? "group" : "groups"}
           </span>
         </div>
       )}
@@ -112,9 +126,14 @@ export default function MapBoard({
         <>
           <div className="mt-7 grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill,minmax(300px,1fr))" }}>
             {clusters.map((cluster) => {
+              const wide = clusters.length === 1 || cluster.topics.length > 8;
               const cdone = progress ? cluster.topics.filter((t) => progress.completed[t.id]).length : 0;
               return (
-                <div key={cluster.id} className="k-card" style={{ padding: "16px 18px", minWidth: 0 }}>
+                <div
+                  key={cluster.id}
+                  className="k-card"
+                  style={{ padding: "16px 18px", minWidth: 0, gridColumn: wide ? "1 / -1" : undefined }}
+                >
                   <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
                     <h2 style={{ fontSize: 18, lineHeight: 1.2 }}>{cluster.title}</h2>
                     <span className="text-xs" style={{ color: "var(--faint)", whiteSpace: "nowrap" }}>
@@ -126,7 +145,10 @@ export default function MapBoard({
                       {cluster.tagline}
                     </p>
                   )}
-                  <div className="mt-3 flex flex-col gap-1.5">
+                  <div
+                    className="mt-3 grid gap-1.5"
+                    style={{ gridTemplateColumns: "repeat(auto-fill,minmax(230px,1fr))" }}
+                  >
                     {cluster.topics.map((t) => {
                       const isDone = !!progress?.completed[t.id];
                       return (
@@ -161,6 +183,14 @@ export default function MapBoard({
                           <span className="min-w-0 flex-1">
                             <RichInline text={t.title} />
                           </span>
+                          {!isDone && sliceProgress(t.id).done > 0 && (
+                            <span
+                              className="flex-none text-[11px] font-semibold"
+                              style={{ color: "var(--kube)" }}
+                            >
+                              {sliceProgress(t.id).done}/{sliceProgress(t.id).total}
+                            </span>
+                          )}
                         </button>
                       );
                     })}
