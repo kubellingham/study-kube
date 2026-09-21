@@ -26,12 +26,23 @@ export interface Course {
   };
 }
 
+/** The catch-all bay. Material that belongs to no unit and no theme — a stray
+ *  link, a one-off handout, a loose note — lands here instead of being forced
+ *  into the wrong place or dropped. It is still fully taught (lessons, cards,
+ *  tutor); it just sits outside the ordered flow, at the end of a ladder.
+ *  The sentinel unit number sorts it last (normalizeCourse sorts by unit). */
+export const EXTRAS_UNIT = 999;
+export const EXTRAS_TITLE = "Extras";
+
 export interface Section {
   id: string;
   letter: string; // "A", "B", ...
   title: string;
   tagline: string; // one calm line under the section header
   unit: number; // source unit number
+  /** True for the Extras bay — label it "Extras", never "Unit 999", and keep
+   *  it out of unit-scoped features (challenge exams, unit unlocks). */
+  extras?: boolean;
   topics: Topic[];
 }
 

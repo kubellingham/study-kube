@@ -172,7 +172,7 @@ export default function AddMaterial({
     name: string,
     extracted: ExtractedMaterial,
     mode: IngestMode,
-    unit?: number
+    unit?: number | "extras"
   ) {
     // Keep the payload so a "which unit?" answer can re-send it as-is.
     pending.current[key] = { name, extracted, mode };
@@ -206,10 +206,14 @@ export default function AddMaterial({
   }
 
   /** The student answered "which unit?": re-send the same file with it set. */
-  function resubmitWithUnit(key: string, unit: number) {
+  function resubmitWithUnit(key: string, unit: number | "extras") {
     const p = pending.current[key];
     if (!p) return;
-    updateLine(key, { state: "working", note: `Filing as Unit ${unit}…`, ask: undefined });
+    updateLine(key, {
+      state: "working",
+      note: unit === "extras" ? "Filing into Extras…" : `Filing as Unit ${unit}…`,
+      ask: undefined,
+    });
     void submitOne(key, p.name, p.extracted, p.mode, unit);
   }
 
@@ -569,7 +573,7 @@ function UnitPicker({
   name: string;
   note: string;
   ask?: { suggested: number | null; units: { unit: number; title: string }[] };
-  onPick: (unit: number) => void;
+  onPick: (unit: number | "extras") => void;
 }) {
   const titleByUnit = new Map((ask?.units ?? []).map((u) => [u.unit, u.title]));
   const nums = new Set<number>();
@@ -614,6 +618,15 @@ function UnitPicker({
             </button>
           );
         })}
+        <button
+          type="button"
+          onClick={() => onPick("extras")}
+          title="Park it in Extras — taught, but outside the ordered units"
+          className="rounded-xl border px-3 py-1.5 text-sm font-semibold"
+          style={{ borderColor: "var(--line)", background: "var(--card)", color: "var(--ink-soft)" }}
+        >
+          Not a unit — Extras
+        </button>
       </div>
       {ask?.units && ask.units.length > 0 && (
         <p className="mt-2 text-[11px]" style={{ color: "var(--faint)" }}>
