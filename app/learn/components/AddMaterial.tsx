@@ -122,8 +122,11 @@ export default function AddMaterial({
     unsubs.current.push(unsub);
   }
 
-  // Reattach to any job still running for this course (e.g. after the user
-  // closed the tab mid-digestion — the job kept going without them).
+  // Reattach to this course's UNFINISHED digests — not just the ones still
+  // running. A job that ended in "error" used to be filtered out entirely, so
+  // a failed unit left no trace anywhere: the subject simply came back with
+  // one cluster and no explanation. Anything unresolved in the last day is
+  // shown, so a digest can never fail silently again.
   useEffect(() => {
     (async () => {
       try {
@@ -131,37 +134,64 @@ export default function AddMaterial({
           query(
             collection(db(), "ingestJobs"),
             where("userId", "==", uid),
-            where("courseId", "==", courseId),
-            where("status", "==", "working")
+            where("courseId", "==", courseId)
           )
         );
         if (snap.empty) return;
-        // A digest that fits the 300s function limit finishes (or errors) within
-        // ~5 min. Anything still "working" long after that was hard-killed
-        // mid-flight and will never resolve — show it as stalled, not eternal.
+        // A digest that fits the 300s function limit finishes (or errors)
+        // within ~5 min. Anything still "working" long after that was
+        // hard-killed mid-flight and will never resolve — show it as stalled.
         const STALE_MS = 15 * 60 * 1000;
+        const RECENT_MS = 24 * 60 * 60 * 1000;
         const now = Date.now();
+        const unresolved = snap.docs
+          .map((d) => {
+            const status = (d.get("status") as string) ?? "";
+            const createdAt = (d.get("createdAt") as number) ?? now;
+            const updatedAt = (d.get("updatedAt") as number) ?? createdAt;
+            return { d, status, createdAt, updatedAt };
+          })
+          .filter(
+            (j) =>
+              now - j.updatedAt < RECENT_MS &&
+              (j.status === "working" || j.status === "error" || j.status === "needs-unit")
+          )
+          .sort((a, b2) => a.createdAt - b2.createdAt);
+        if (unresolved.length === 0) return;
+
         setLines((prev) => [
           ...prev,
-          ...snap.docs.map((d) => {
-            const updatedAt = (d.get("updatedAt") as number) ?? (d.get("createdAt") as number) ?? now;
+          ...unresolved.map(({ d, status, updatedAt }) => {
+            const name = (d.get("fileName") as string) ?? "file";
+            const note = (d.get("note") as string) ?? "";
+            if (status === "error") {
+              return { key: d.id, name, state: "error" as JobLine["state"], note: note || "This one didn't finish." };
+            }
+            if (status === "needs-unit") {
+              return {
+                key: d.id,
+                name,
+                state: "error" as JobLine["state"],
+                note: `${note || "Kube couldn't tell which unit this was."} Add the file again to choose its unit.`,
+              };
+            }
             const stale = now - updatedAt > STALE_MS;
             return {
               key: d.id,
-              name: (d.get("fileName") as string) ?? "file",
+              name,
               state: (stale ? "error" : "working") as JobLine["state"],
               note: stale
-                ? "This one got stuck and stopped — delete the subject (or make a fresh one) and try a smaller file."
-                : (d.get("note") as string) ?? "Kube is working…",
+                ? "This one got stuck and stopped — add the file again, or try a smaller one."
+                : note || "Kube is working…",
             };
           }),
         ]);
-        snap.docs.forEach((d) => {
-          const updatedAt = (d.get("updatedAt") as number) ?? (d.get("createdAt") as number) ?? now;
-          if (now - updatedAt <= STALE_MS) watchJob(d.id, d.id);
+
+        unresolved.forEach(({ d, status, updatedAt }) => {
+          if (status === "working" && now - updatedAt <= STALE_MS) watchJob(d.id, d.id);
         });
       } catch {
-        // No running jobs visible — fine.
+        // No visible jobs — fine.
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
