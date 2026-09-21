@@ -1086,6 +1086,36 @@ const classifySchema = z.object({
 
 export type Classification = z.infer<typeof classifySchema>;
 
+/** Extra signals that make unit detection much more reliable: the file's own
+ *  name (often states the unit — "Unit 4", "U3", "Module 2"), and the course's
+ *  already-known units (from its syllabus or existing ladder) so a file can be
+ *  matched to a unit by its topics even when it never prints a number. */
+export interface ClassifyHints {
+  fileName?: string;
+  knownUnits?: { unit: number; title: string }[];
+}
+
+function classifyHintBlock(hints?: ClassifyHints): string {
+  if (!hints) return "";
+  const parts: string[] = [];
+  if (hints.fileName && hints.fileName !== "pasted text") {
+    parts.push(
+      `File name: "${hints.fileName}". The name very often states the unit (e.g. "Unit 4", "U3", "Module 2", "Ch 5"). If it clearly names a unit, trust it.`
+    );
+  }
+  if (hints.knownUnits && hints.knownUnits.length > 0) {
+    const list = hints.knownUnits
+      .slice()
+      .sort((a, b) => a.unit - b.unit)
+      .map((u) => `  Unit ${u.unit}: ${u.title}`)
+      .join("\n");
+    parts.push(
+      `This course already knows these units (from its syllabus / existing ladder):\n${list}\nIf this file's content matches one of them by topic, use THAT unit number rather than inventing a new one.`
+    );
+  }
+  return parts.length ? `\n\n${parts.join("\n\n")}` : "";
+}
+
 /* ---- Budget versions of the cheap, mechanical intake steps ----------------
  * The read / classify / syllabus-parse are small jobs, but they used to run on
  * Anthropic no matter the tier — so a budget-tier digest still needed Anthropic
@@ -1141,12 +1171,13 @@ export async function classifyCheap(
   rawText: string,
   images?: SourceImage[],
   meter?: UsageMeter,
-  opts: CheapOpts = {}
+  opts: CheapOpts = {},
+  hints?: ClassifyHints
 ): Promise<Classification> {
   const useVision = (images?.length ?? 0) > 0;
-  const prompt = `Classify what role a file plays in a university course. A syllabus/course outline is the driving file (defines units + Course Outcomes, usually with little teaching content). Past papers are exam/question papers. Lecture slide decks and teaching documents are "unit" — even when they cover only PART of a unit; infer the unit number from the title or content. Reserve "notes" for supplementary handouts that clearly aren't the main teaching material.
+  const prompt = `Classify what role a file plays in a university course. A syllabus/course outline is the driving file (defines units + Course Outcomes, usually with little teaching content). Past papers are exam/question papers. Lecture slide decks and teaching documents are "unit" — even when they cover only PART of a unit; infer the unit number from the file name, title, or content. Reserve "notes" for supplementary handouts that clearly aren't the main teaching material.
 
-Course: ${courseTitle}
+Course: ${courseTitle}${classifyHintBlock(hints)}
 
 --- FILE CONTENT (start) ---
 ${rawText.slice(0, 10_000)}
@@ -1200,19 +1231,24 @@ Return ONLY a JSON object (no prose, no fences) of exactly this shape:
   return syllabusSchema.parse(data);
 }
 
-export function classifyStream(courseTitle: string, rawText: string, images?: SourceImage[]) {
+export function classifyStream(
+  courseTitle: string,
+  rawText: string,
+  images?: SourceImage[],
+  hints?: ClassifyHints
+) {
   const client = getAnthropic();
   return client.messages.stream({
     model: MODEL,
     max_tokens: 2000,
     output_config: { effort: "low", format: zodOutputFormat(classifySchema) },
     system:
-      "Classify what role a file plays in a university course. A syllabus/course outline is the driving file (defines units + Course Outcomes, usually with little teaching content). Past papers are exam/question papers. Lecture slide decks and teaching documents are 'unit' — even when they cover only PART of a unit (e.g. a single lecture); infer the unit number from the title or content. Reserve 'notes' for supplementary handouts that clearly aren't the main teaching material. Some files arrive as images (scanned pages, photographed notes, slide pictures) — classify from what the images show.",
+      "Classify what role a file plays in a university course. A syllabus/course outline is the driving file (defines units + Course Outcomes, usually with little teaching content). Past papers are exam/question papers. Lecture slide decks and teaching documents are 'unit' — even when they cover only PART of a unit (e.g. a single lecture); infer the unit number from the file name, title, or content. Reserve 'notes' for supplementary handouts that clearly aren't the main teaching material. Some files arrive as images (scanned pages, photographed notes, slide pictures) — classify from what the images show.",
     messages: [
       {
         role: "user",
         content: withImages(
-          `Course: ${courseTitle}\n\n--- FILE CONTENT (start) ---\n${rawText.slice(0, 10_000)}`,
+          `Course: ${courseTitle}${classifyHintBlock(hints)}\n\n--- FILE CONTENT (start) ---\n${rawText.slice(0, 10_000)}`,
           images
         ),
       },

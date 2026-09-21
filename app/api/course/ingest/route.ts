@@ -36,7 +36,7 @@ import {
   reportLine,
   type VerifyReport,
 } from "@/lib/course/verify";
-import type { Section, ExamQuestion, IngestedFile } from "@/lib/course/types";
+import type { Section, ExamQuestion, IngestedFile, SyllabusInfo } from "@/lib/course/types";
 import { UsageMeter, formatCost } from "@/lib/usage";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { CLIMB_PRICE_IN, CLIMB_PRICE_OUT, SUMMIT_PRICE_IN, SUMMIT_PRICE_OUT, SUMMIT_MODEL, SUMMIT_VISION_MODEL, CHAT_BUDGET_MODEL } from "@/lib/openrouter";
@@ -68,6 +68,25 @@ const DRILL_BUDGET_MS = 215_000;
 // a focused first ladder that reliably finishes; more depth comes from adding
 // actual unit files (which are NOT capped).
 const KNOWLEDGE_TOPIC_CAP = 8;
+
+/** Read an explicit unit choice from the request (JSON number or form string).
+ *  Accepts 1..99; anything else (absent, junk, out of range) means "auto". */
+function parseUnitOverride(raw: unknown): number | null {
+  const n = typeof raw === "number" ? raw : parseInt(String(raw ?? ""), 10);
+  return Number.isInteger(n) && n >= 1 && n <= 99 ? n : null;
+}
+
+/** Merge the units Kube already knows — from the ladder it's built and from a
+ *  parsed syllabus — into one deduped, titled list to hand the classifier. */
+function knownUnitsFor(
+  sections: Section[],
+  syllabus: SyllabusInfo | undefined
+): { unit: number; title: string }[] {
+  const byUnit = new Map<number, string>();
+  for (const s of sections) if (!byUnit.has(s.unit)) byUnit.set(s.unit, s.title);
+  for (const u of syllabus?.units ?? []) if (!byUnit.has(u.unit)) byUnit.set(u.unit, u.title);
+  return [...byUnit.entries()].map(([unit, title]) => ({ unit, title })).sort((a, b) => a.unit - b.unit);
+}
 
 /** Drill topics concurrently, but stop waiting at the soft budget and return
  *  whatever completed (nulls for the rest). Never throws on timeout, so the
@@ -223,6 +242,9 @@ export async function POST(req: NextRequest) {
   let fileName = "pasted text";
   let rawText = "";
   let images: IngestImage[] = [];
+  // Optional explicit unit chosen by the student (when Kube couldn't tell which
+  // unit a file was, or they picked one up front). Overrides auto-detection.
+  let unitOverride: number | null = null;
   // "fromFile" = digest the upload as teaching content (default). "fromKnowledge"
   // = treat the upload as a syllabus/outline and build the ladder from Kube's own
   // knowledge (the intake-read path).
@@ -238,6 +260,7 @@ export async function POST(req: NextRequest) {
       images = sanitizeImages(body.images);
       if (body.mode === "fromKnowledge") mode = "fromKnowledge";
       else if (body.mode === "augmented") { mode = "augmented"; genMode = "augmented"; }
+      unitOverride = parseUnitOverride(body.unit);
     } else {
       // Fallback for clients that couldn't extract locally (small files only).
       const form = await req.formData();
@@ -257,6 +280,7 @@ export async function POST(req: NextRequest) {
       } else {
         rawText = pasted;
       }
+      unitOverride = parseUnitOverride(form.get("unit"));
     }
     if (!courseId) {
       return Response.json({ error: "Missing course." }, { status: 400 });
@@ -446,26 +470,56 @@ export async function POST(req: NextRequest) {
       // Classification is a cheap mechanical step — run it on the budget engine
       // when one is configured so a budget digest needs no Anthropic credit.
       // (A few images are enough to classify; generation gets them all.)
+      // We hand it two extra signals so it rarely has to guess the unit: the
+      // file's own name, and the units this course already knows (syllabus +
+      // ladder), so a file can be matched to a unit by its topics.
+      const knownUnits = knownUnitsFor(
+        (snap.get("sections") as Section[]) ?? [],
+        snap.get("syllabus") as SyllabusInfo | undefined
+      );
+      const hints = { fileName, knownUnits };
       const classification = useBudgetSteps
-        ? await classifyCheap(courseTitle, rawText, images.slice(0, 4), meter, summitOpts)
+        ? await classifyCheap(courseTitle, rawText, images.slice(0, 4), meter, summitOpts, hints)
         : parseClassification(
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            await runToText(classifyStream(courseTitle, rawText, images.slice(0, 4)) as AsyncIterable<any>)
+            await runToText(classifyStream(courseTitle, rawText, images.slice(0, 4), hints) as AsyncIterable<any>)
           );
-      await setJob({ note: `Filed as: ${classification.label}. Digesting…`, label: classification.label, kind: classification.kind });
+
+      // The student's explicit choice always wins over the guess. Choosing a
+      // unit also means "treat this as teaching material for that unit".
+      const detectedKind = unitOverride != null ? "unit" : classification.kind;
+      const detectedUnit = unitOverride ?? classification.unit;
+
+      // The one honest move when Kube genuinely can't tell which unit a piece of
+      // teaching material is: ASK, rather than silently parking it at the end.
+      // (Syllabus / past paper / notes don't need a unit, so they never ask.)
+      if (detectedKind === "unit" && detectedUnit == null) {
+        const fed = ((snap.get("sections") as Section[]) ?? []).map((s) => s.unit);
+        const suggestedUnit = fed.length ? Math.max(...fed) + 1 : 1;
+        await setJob({
+          status: "needs-unit",
+          note: `Kube couldn't tell which unit “${fileName}” belongs to. Which unit is it?`,
+          label: classification.label,
+          suggestedUnit,
+          knownUnits,
+        });
+        return;
+      }
+
+      await setJob({ note: `Filed as: ${classification.label}. Digesting…`, label: classification.label, kind: detectedKind });
 
       const record: IngestedFile = {
         id: fileId,
         name: fileName,
-        kind: classification.kind,
-        unit: classification.unit ?? null,
+        kind: detectedKind,
+        unit: detectedUnit ?? null,
         label: classification.label,
         topics: 0,
         questions: 0,
         digestedAt: Date.now(),
       };
 
-      if (classification.kind === "syllabus") {
+      if (detectedKind === "syllabus") {
         const parsed = useBudgetSteps
           ? await syllabusCheap(courseTitle, rawText, images, meter, summitOpts)
           : parseSyllabus(
@@ -492,11 +546,11 @@ export async function POST(req: NextRequest) {
         return;
       }
 
-      if (classification.kind === "unit") {
+      if (detectedKind === "unit") {
         const preSections = (snap.get("sections") as Section[]) ?? [];
         const fed = preSections.map((s) => s.unit);
         const unitNumber =
-          classification.unit ?? (fed.length ? Math.max(...fed) + 1 : 1);
+          detectedUnit ?? (fed.length ? Math.max(...fed) + 1 : 1);
         // Prior context for the generator = topics from units that come
         // earlier in the LADDER order, or the same unit (a follow-up
         // upload extending it), NOT units uploaded earlier that will
@@ -650,7 +704,7 @@ export async function POST(req: NextRequest) {
         return;
       }
 
-      if (classification.kind === "pastpaper") {
+      if (detectedKind === "pastpaper") {
         const topics = ((snap.get("sections") as Section[]) ?? []).flatMap(
           (s) => s.topics
         );
