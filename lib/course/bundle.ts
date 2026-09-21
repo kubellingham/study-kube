@@ -1,6 +1,7 @@
 // Builds a validated CourseBundle from authored course data. Each course
 // (CSE22D today, more later) gets its own bundle with the single merged
 // ladder and all lookup helpers scoped to that course.
+import { EXTRAS_UNIT } from "./types";
 import type { Course, Topic, ExamQuestion, Section } from "./types";
 
 export interface CourseBundle {
@@ -53,7 +54,10 @@ export function buildCourseBundle(
     course,
     ladder,
     examBank,
-    availableUnits: [...new Set(ladder.map((t) => t.unit))].sort((a, b) => a - b),
+    // Extras isn't a unit — you can't "test out" of a bay of stray material.
+    availableUnits: [...new Set(ladder.map((t) => t.unit))]
+      .filter((u) => u !== EXTRAS_UNIT)
+      .sort((a, b) => a - b),
     getTopic: (id) => ladder[topicIndex.get(id) ?? -1],
     topicPosition: (id) => topicIndex.get(id) ?? -1,
     sectionOfTopic: (id) =>

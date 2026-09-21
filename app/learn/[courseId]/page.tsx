@@ -12,6 +12,7 @@ import { useParams, useRouter } from "next/navigation";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { signOut } from "firebase/auth";
 import { db, auth } from "@/lib/firebase/client";
+import { EXTRAS_UNIT, EXTRAS_TITLE } from "@/lib/course/types";
 import type { Topic } from "@/lib/course/types";
 import { topicLessons, lessonKey } from "@/lib/course/lessons";
 import { buildConceptPool } from "@/lib/course/concepts";
@@ -535,7 +536,7 @@ export default function CourseLadderPage() {
           <div style={{ display: "flex", flexDirection: "column", gap: 12, background: secColor, borderRadius: 18, padding: "18px 22px", boxShadow: "0 6px 0 rgba(20,32,43,.16)", transition: "background .4s ease" }}>
             <div style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>
               <div style={{ fontFamily: T.mono, fontSize: 11, fontWeight: 600, letterSpacing: ".16em", textTransform: "uppercase", color: "rgba(255,255,255,.72)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                {vs ? `Section ${vs.letter} · Unit ${vs.unit}` : course?.title}
+                {vs ? (vs.extras ? EXTRAS_TITLE : `Section ${vs.letter} · Unit ${vs.unit}`) : course?.title}
               </div>
               <div style={{ fontFamily: T.display, fontWeight: 600, fontSize: "clamp(18px,2.1vw,26px)", lineHeight: 1.12, letterSpacing: "-.02em", color: "#fff", marginTop: 3, overflowWrap: "anywhere", wordBreak: "break-word" }}>
                 {vs ? vs.title : course?.title}
@@ -582,7 +583,7 @@ export default function CourseLadderPage() {
                   <div style={{ display: "flex", alignItems: "center", gap: 16, margin: "0 0 6px" }}>
                     <span style={{ flex: 1, height: 1, background: secLine }} />
                     <span style={{ textAlign: "center" }}>
-                      <span style={{ display: "block", fontFamily: T.mono, fontSize: 10, fontWeight: 600, letterSpacing: ".14em", textTransform: "uppercase", color: secMain }}>Section {s.letter} · Unit {s.unit} · {secDone}/{s.topics.length}</span>
+                      <span style={{ display: "block", fontFamily: T.mono, fontSize: 10, fontWeight: 600, letterSpacing: ".14em", textTransform: "uppercase", color: secMain }}>{s.extras ? EXTRAS_TITLE : `Section ${s.letter} · Unit ${s.unit}`} · {secDone}/{s.topics.length}</span>
                       <span style={{ display: "block", fontFamily: T.display, fontWeight: 600, fontSize: 18, color: T.ink, marginTop: 2 }}>{s.title}</span>
                     </span>
                     <span style={{ flex: 1, height: 1, background: secLine }} />
@@ -626,7 +627,7 @@ export default function CourseLadderPage() {
                               {st === "locked" ? (
                                 <div style={{ marginTop: 12 }}>
                                   <div style={{ width: "100%", borderRadius: 12, padding: 11, fontFamily: T.mono, fontWeight: 600, fontSize: 11.5, letterSpacing: ".08em", textTransform: "uppercase", textAlign: "center", background: T.line, color: T.faint }}>Locked</div>
-                                  {summit && tp.unit > 1 && (
+                                  {summit && tp.unit > 1 && tp.unit !== EXTRAS_UNIT && (
                                     <>
                                       <div style={{ fontSize: 11.5, lineHeight: 1.4, color: T.inkSoft, marginTop: 10 }}>Already know the run-up? Pass a short exam on the earlier units and this opens now.</div>
                                       <Link href={`/learn/${params.courseId}/challenge?unit=${tp.unit}`} style={{ display: "block", width: "100%", marginTop: 8, borderRadius: 12, padding: 11, fontFamily: T.mono, fontWeight: 600, fontSize: 11.5, letterSpacing: ".08em", textTransform: "uppercase", textAlign: "center", background: T.amber, color: "#fff", boxShadow: "0 3px 0 rgba(150,92,16,.4)" }}>Test out</Link>
