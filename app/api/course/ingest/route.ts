@@ -36,7 +36,7 @@ import {
   reportLine,
   type VerifyReport,
 } from "@/lib/course/verify";
-import type { Section, ExamQuestion, IngestedFile, SyllabusInfo } from "@/lib/course/types";
+import type { Section, ExamQuestion, IngestedFile, SyllabusInfo, CourseMode } from "@/lib/course/types";
 import { UsageMeter, formatCost } from "@/lib/usage";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { CLIMB_PRICE_IN, CLIMB_PRICE_OUT, SUMMIT_PRICE_IN, SUMMIT_PRICE_OUT, SUMMIT_MODEL, SUMMIT_VISION_MODEL, CHAT_BUDGET_MODEL } from "@/lib/openrouter";
@@ -395,6 +395,10 @@ export async function POST(req: NextRequest) {
         const preSections = (snap.get("sections") as Section[]) ?? [];
         const fed = preSections.map((s) => s.unit);
         const unitNumber = fed.length ? Math.max(...fed) + 1 : 1;
+        // Building from an outline is inherently a structured course → a Path.
+        if (!snap.get("mode") && preSections.length === 0) {
+          await courseRef.set({ mode: "path" as CourseMode }, { merge: true }).catch(() => {});
+        }
         // Prior context for the generator = topics from units that come
         // earlier in the LADDER order (not upload order). fromKnowledge
         // always creates a new unit at Max+1, so every existing topic
@@ -504,6 +508,24 @@ export async function POST(req: NextRequest) {
           knownUnits,
         });
         return;
+      }
+
+      // Decide the subject's SHAPE from its very first material, once. A
+      // syllabus or a clearly-numbered unit means the course has a known
+      // order → a Path (the ladder). A loose first file (unnumbered notes, a
+      // past paper, scattered material) means there's no true order yet → a
+      // Map (topic clusters). Never overwrites a mode already set (Kube's
+      // earlier read, or the student's manual switch).
+      const existingMode = snap.get("mode") as CourseMode | undefined;
+      const hadContent = ((snap.get("sections") as Section[]) ?? []).length > 0;
+      if (!existingMode && !hadContent) {
+        const structured =
+          detectedKind === "syllabus" ||
+          (detectedKind === "unit" && detectedUnit != null) ||
+          !!snap.get("syllabus");
+        await courseRef
+          .set({ mode: structured ? "path" : "map" }, { merge: true })
+          .catch(() => {});
       }
 
       await setJob({ note: `Filed as: ${classification.label}. Digesting…`, label: classification.label, kind: detectedKind });

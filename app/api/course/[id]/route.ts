@@ -37,6 +37,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // this handler (ownCourse), and share:true is only honoured when the owner
   // is still in a crew. Passing share:false always unshares.
   const patch: Record<string, unknown> = { code, title };
+  // Optional: switch how Kube organizes this subject (the ladder vs topic
+  // clusters). Only "path" or "map" are accepted; anything else is ignored.
+  if (body.mode === "path" || body.mode === "map") {
+    patch.mode = body.mode;
+  }
   if (typeof body.share === "boolean") {
     if (body.share) {
       const crew = await getMyCrew(gate.uid);

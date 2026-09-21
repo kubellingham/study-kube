@@ -17,6 +17,7 @@ import type {
   ExamQuestion,
   SyllabusInfo,
   IngestedFile,
+  CourseMode,
 } from "@/lib/course/types";
 
 export interface FirestoreCourseDoc {
@@ -30,6 +31,9 @@ export interface FirestoreCourseDoc {
   /** When set, every member of the crew (leader = crewId) can read this
    *  course. Only the userId owner can write. See firestore.rules. */
   crewId?: string | null;
+  /** How the subject is laid out — the ladder ("path") or topic clusters
+   *  ("map"). Missing = "path" (every course predates this field). */
+  mode?: CourseMode;
   createdAt: number;
 }
 
@@ -66,6 +70,7 @@ export function useCourse(courseId: string) {
   const [bundle, setBundle] = useState<CourseBundle | null>(null);
   const [owned, setOwned] = useState(false);
   const [crewShared, setCrewShared] = useState(false);
+  const [mode, setMode] = useState<CourseMode>("path");
   const [syllabus, setSyllabus] = useState<SyllabusInfo | null>(null);
   const [files, setFiles] = useState<IngestedFile[]>([]);
   const [reloadKey, setReloadKey] = useState(0);
@@ -77,6 +82,7 @@ export function useCourse(courseId: string) {
       setBundle(builtin);
       setSyllabus(getBuiltinSyllabus(courseId));
       setOwned(false);
+      setMode("path"); // built-in courses are always ordered ladders
       setStatus("ready");
       return;
     }
@@ -93,6 +99,7 @@ export function useCourse(courseId: string) {
           setFiles(data.files ?? []);
           setOwned(data.userId === user.uid);
           setCrewShared(!!data.crewId);
+          setMode(data.mode === "map" ? "map" : "path");
           setStatus("ready");
         } else {
           setStatus("notfound");
@@ -112,6 +119,7 @@ export function useCourse(courseId: string) {
     bundle,
     owned,
     crewShared,
+    mode,
     syllabus,
     files,
     reload: () => setReloadKey((k) => k + 1),
