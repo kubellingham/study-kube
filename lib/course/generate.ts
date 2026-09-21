@@ -324,6 +324,20 @@ const EXAM_RULES_AUGMENTED = `${EXAM_RULES}
 
 ${AUGMENT_CLAUSE}`;
 
+// ── Map (standalone) clauses ──────────────────────────────────────────────
+// A Map subject is a loose pile of material with no true order, so its topics
+// are INDEPENDENT: grouped by theme, taught self-contained, no dependency
+// threading. These clauses flip the ladder's "connected story" stance off.
+const MAP_CONCEPT_CLAUSE = `MAP MODE — this material is a set of INDEPENDENT topics, NOT an ordered course:
+- Give the section a THEME title naming what these topics are about (e.g. "Search algorithms", "Probability & inference"), never "Unit N".
+- Treat every topic as independent: do NOT arrange them in a dependency order and do NOT make one a prerequisite of another. Leave every topic's deps EMPTY.
+- Each topic must stand on its own — a student may study it alone, or before any of the others.`;
+
+const MAP_DRILL_CLAUSE = `MAP MODE — teach this topic STANDALONE:
+- Assume the student has NOT studied the other topics and may only ever study this one. Never say "as we saw earlier", "you already climbed this", or "we'll cover this later".
+- Define every term this topic needs right here; never lean on another topic for setup.
+- Drill it thoroughly and self-contained, as if it were the only thing they study.`;
+
 // ── The read (intake observation) ─────────────────────────────────────────
 // One read for the WHOLE batch a student just dropped in — they uploaded a set,
 // so Kube reacts to the set, then asks one question before touching anything.
@@ -540,10 +554,12 @@ export async function generateUnitSkeleton(
   images?: SourceImage[],
   mode: GenMode = "file",
   meter?: UsageMeter,
-  model?: string
+  model?: string,
+  standalone = false
 ): Promise<UnitSkeleton> {
   const client = getAnthropic();
   const know = mode === "knowledge";
+  const mapClause = standalone ? `\n\n${MAP_CONCEPT_CLAUSE}` : "";
   const existing =
     existingTopics.length > 0
       ? `Topics already on this course's ladder (you may list their ids as dependencies — and do NOT recreate any of them; produce only topics genuinely new here):\n${existingTopics
@@ -563,7 +579,7 @@ export async function generateUnitSkeleton(
           ...cachedMaterial(rawText, images, materialLabel(know)),
           {
             type: "text",
-            text: `${rulesFor(mode, CONCEPT_RULES, CONCEPT_RULES_KNOWLEDGE, CONCEPT_RULES_AUGMENTED)}\n\nCourse: ${courseTitle}\nUnit number: ${unitNumber}\nPrefix all topic ids with "u${unitNumber}-".\n\n${existing}\n\nProduce ONLY the concept map for this unit: the section title, a one-line tagline, and the ordered list of topics (id, title, weight, deps, whyItMatters, recap). Do NOT write any lessons — those come next.`,
+            text: `${rulesFor(mode, CONCEPT_RULES, CONCEPT_RULES_KNOWLEDGE, CONCEPT_RULES_AUGMENTED)}${mapClause}\n\nCourse: ${courseTitle}\nUnit number: ${unitNumber}\nPrefix all topic ids with "u${unitNumber}-".\n\n${existing}\n\nProduce ONLY the concept map for this unit: the section title, a one-line tagline, and the ${standalone ? "list" : "ordered list"} of topics (id, title, weight, deps, whyItMatters, recap). Do NOT write any lessons — those come next.`,
           },
         ],
       },
@@ -584,10 +600,12 @@ export async function generateTopicLessons(
   images?: SourceImage[],
   mode: GenMode = "file",
   meter?: UsageMeter,
-  model?: string
+  model?: string,
+  standalone = false
 ): Promise<z.infer<typeof lessonSchema>[]> {
   const client = getAnthropic();
   const know = mode === "knowledge";
+  const mapClause = standalone ? `\n\n${MAP_DRILL_CLAUSE}` : "";
   // A knowledge build teaches EVERY topic from scratch in one function budget,
   // so each drill must be lean enough that the whole ladder finishes (a full
   // ladder of good lessons beats one perfect lesson and nine that timed out).
@@ -605,7 +623,7 @@ export async function generateTopicLessons(
           ...cachedMaterial(rawText, images, materialLabel(know)),
           {
             type: "text",
-            text: `${rulesFor(mode, DRILL_RULES, DRILL_RULES_KNOWLEDGE, DRILL_RULES_AUGMENTED)}\n\nCourse: ${courseTitle} · Unit ${unitNumber}\n\nThis unit's topics (for context — teach forward toward later ones where natural):\n${allTopicTitles
+            text: `${rulesFor(mode, DRILL_RULES, DRILL_RULES_KNOWLEDGE, DRILL_RULES_AUGMENTED)}${mapClause}\n\nCourse: ${courseTitle} · Unit ${unitNumber}\n\n${standalone ? "Other topics in this theme (for your awareness only — do NOT assume the student has studied them):" : "This unit's topics (for context — teach forward toward later ones where natural):"}\n${allTopicTitles
               .map((t, i) => `${i + 1}. ${t}`)
               .join(
                 "\n"
@@ -696,6 +714,8 @@ interface CheapOpts {
   vision?: string;
   cram?: boolean; // Climb = many small concepts; false = 4-10 deep concepts
   mode?: GenMode;
+  /** Map subject: independent, self-contained topics (no dependency threading). */
+  standalone?: boolean;
 }
 
 /** Concept map on a budget model. Same UnitSkeleton shape as the Sonnet path
@@ -721,7 +741,8 @@ export async function generateUnitSkeletonCheap(
     ? `CLIMB CRAM MODE: break the unit into MANY small, drillable concepts — aim for 16-22, more granular than a deep course. Every distinct term, formula, circuit or rule is its own concept.`
     : `Map the 4-10 CORE concepts a student must master, in dependency order, each weighted by how examinable it is. These become deep four-quarter lessons, so pick real, teachable concepts — not slivers.`;
   const label = know ? "SYLLABUS / OUTLINE (scope only — teach from your knowledge)" : "COURSE MATERIAL";
-  const prompt = `${rulesFor(opts.mode ?? "file", CONCEPT_RULES, CONCEPT_RULES_KNOWLEDGE, CONCEPT_RULES_AUGMENTED)}
+  const mapClause = opts.standalone ? `\n\n${MAP_CONCEPT_CLAUSE}` : "";
+  const prompt = `${rulesFor(opts.mode ?? "file", CONCEPT_RULES, CONCEPT_RULES_KNOWLEDGE, CONCEPT_RULES_AUGMENTED)}${mapClause}
 
 ${count}
 
@@ -729,7 +750,7 @@ Course: ${courseTitle}
 Unit ${unitNumber}. Prefix every topic id with "u${unitNumber}-".
 ${existing}
 
-Produce ONLY the concept map: sectionTitle, tagline, and the ordered topics (id, title, weight, deps, whyItMatters, recap). No lessons.
+Produce ONLY the concept map: sectionTitle, tagline, and the ${opts.standalone ? "topics" : "ordered topics"} (id, title, weight, deps, whyItMatters, recap). No lessons.
 
 --- ${label} ---
 ${rawText.slice(0, MAX_UNIT_CHARS)}
@@ -761,10 +782,11 @@ export async function generateTopicLessonsCheap(
   const useVision = (images?.length ?? 0) > 0;
   const know = opts.mode === "knowledge";
   const label = know ? "SYLLABUS / OUTLINE (scope only — teach from your knowledge)" : "COURSE MATERIAL";
-  const prompt = `${rulesFor(opts.mode ?? "file", DRILL_RULES, DRILL_RULES_KNOWLEDGE, DRILL_RULES_AUGMENTED)}
+  const mapClause = opts.standalone ? `\n\n${MAP_DRILL_CLAUSE}` : "";
+  const prompt = `${rulesFor(opts.mode ?? "file", DRILL_RULES, DRILL_RULES_KNOWLEDGE, DRILL_RULES_AUGMENTED)}${mapClause}
 
 Course: ${courseTitle} · Unit ${unitNumber}
-This unit's topics (context — teach forward where natural): ${allTopicTitles.map((t, i) => `${i + 1}. ${t}`).join(" · ")}
+${opts.standalone ? "Other topics in this theme (awareness only — do NOT assume the student studied them)" : "This unit's topics (context — teach forward where natural)"}: ${allTopicTitles.map((t, i) => `${i + 1}. ${t}`).join(" · ")}
 
 DRILL EXACTLY ONE TOPIC into its four-quarter circle:
 - id: ${topic.id}
