@@ -22,6 +22,10 @@ export async function POST(req: NextRequest) {
   const code = (body.code || "").toString().trim().toUpperCase();
   const title = (body.title || "").toString().trim();
   const share = body.share === true;
+  // The layout the student picked at creation: "path" or "map". Anything else
+  // (including "auto"/absent) leaves it unset, so Kube decides from the first
+  // file. Once material is added the mode is locked (see /api/course/[id]).
+  const mode = body.mode === "path" || body.mode === "map" ? body.mode : null;
 
   if (!code || code.length > 12 || !/^[A-Z0-9]+$/.test(code)) {
     return Response.json(
@@ -53,6 +57,7 @@ export async function POST(req: NextRequest) {
       sections: [],
       examBank: [],
       crewId,
+      ...(mode ? { mode } : {}),
       createdAt: Date.now(),
     });
     return Response.json({ id: ref.id });
