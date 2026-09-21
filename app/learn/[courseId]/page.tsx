@@ -28,6 +28,7 @@ import { loadPlan, setCourseExamDate } from "@/lib/learn/plan";
 import { dailyPlan } from "@/lib/learn/scheduler";
 import { loadRhythm, type Rhythm } from "@/lib/learn/rhythm";
 import AddMaterial from "@/app/learn/components/AddMaterial";
+import MapBoard from "@/app/learn/[courseId]/MapBoard";
 import OpeningAnimation from "@/app/learn/components/OpeningAnimation";
 import MobileTabs, { MOBILE_TABS_H } from "@/app/learn/components/MobileTabs";
 import { useIsMobile } from "@/lib/use-media";
@@ -106,7 +107,7 @@ interface SubjectRow { id: string; code: string; title: string; badge: string; }
 export default function CourseLadderPage() {
   const params = useParams<{ courseId: string }>();
   const isMobile = useIsMobile();
-  const { user, userLoading, status, bundle, owned, syllabus, files, reload } = useCourse(params.courseId);
+  const { user, userLoading, status, bundle, owned, mode, syllabus, files, reload } = useCourse(params.courseId);
   const router = useRouter();
   const [progress, setProgress] = useState<LearnProgress | null>(null);
   const [hub, setHub] = useState<{ due: number; best: number; tries: number; notes: number; redo: number } | null>(null);
@@ -247,6 +248,12 @@ export default function CourseLadderPage() {
   }
 
   const loading = userLoading || !user || status === "loading" || !bundle || !progress;
+
+  // A Map subject is a board of theme clusters, not the ladder — hand it off to
+  // its own view once everything's loaded. (Path subjects fall through.)
+  if (!loading && mode === "map" && bundle) {
+    return <MapBoard courseId={params.courseId} bundle={bundle} owned={owned} files={files} onReload={reload} />;
+  }
 
   const course = bundle?.course;
   const ladder = bundle?.ladder ?? [];
