@@ -14,7 +14,7 @@ const KIND_LABEL: Record<string, string> = { syllabus: "syllabus", unit: "unit",
 
 export default function ManageCoursePage() {
   const params = useParams<{ courseId: string }>();
-  const { user, userLoading, status, bundle, owned, crewShared, files, reload } = useCourse(params.courseId);
+  const { user, userLoading, status, bundle, owned, crewShared, mode, files, reload } = useCourse(params.courseId);
   const router = useRouter();
 
   const [code, setCode] = useState("");
@@ -28,6 +28,8 @@ export default function ManageCoursePage() {
   const [shareMsg, setShareMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [rechecking, setRechecking] = useState(false);
   const [recheckMsg, setRecheckMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [modeBusy, setModeBusy] = useState(false);
+  const [modeMsg, setModeMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [semester, setSemester] = useState<number | null>(null);
   const [confirm, setConfirm] = useState("");
   const [deleting, setDeleting] = useState(false);
@@ -97,6 +99,26 @@ export default function ManageCoursePage() {
     } catch (err) {
       setSaveMsg({ ok: false, text: err instanceof Error ? err.message : "Could not save." });
     } finally { setSaving(false); }
+  }
+
+  /** Switch how Kube lays this subject out: the ladder (path) or topic
+   *  clusters (map). Kube picks one from your first file; this corrects it. */
+  async function switchMode(next: "path" | "map") {
+    if (next === mode || modeBusy) return;
+    setModeBusy(true); setModeMsg(null);
+    try {
+      const res = await authedFetch(`/api/course/${params.courseId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: savedBase.code, title: savedBase.title, mode: next }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Could not switch.");
+      setModeMsg({ ok: true, text: next === "map" ? "Now a Map — study by topic." : "Now a Path — climb in order." });
+      reload();
+    } catch (err) {
+      setModeMsg({ ok: false, text: err instanceof Error ? err.message : "Could not switch." });
+    } finally { setModeBusy(false); }
   }
 
   async function sharpenCards() {
@@ -245,6 +267,47 @@ export default function ManageCoursePage() {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* How Kube lays this subject out. Kube picks one from your first file;
+          this is where you correct it. */}
+      <div className="k-card mt-6 px-6 py-6">
+        <h2 className="text-lg font-semibold">How Kube organizes this</h2>
+        <p className="mt-1 text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>
+          A <b>Path</b> is one ladder you climb in order — best when the course has a
+          clear shape (a syllabus, numbered units). A <b>Map</b> sorts your material into
+          topic clusters you study in any order — best for a loose pile of notes, slides
+          and links. Kube chose from your first file; switch it any time.
+        </p>
+        <div className="mt-4 grid gap-2.5" style={{ gridTemplateColumns: "1fr 1fr" }}>
+          {(["path", "map"] as const).map((m) => {
+            const on = mode === m;
+            return (
+              <button
+                key={m}
+                type="button"
+                onClick={() => switchMode(m)}
+                disabled={modeBusy}
+                className="rounded-xl border px-4 py-3 text-left disabled:opacity-60"
+                style={{
+                  borderColor: on ? "var(--kube)" : "var(--line)",
+                  background: on ? "var(--kube-soft)" : "var(--card)",
+                }}
+              >
+                <span className="block text-sm font-semibold" style={{ color: on ? "var(--kube)" : "var(--ink)" }}>
+                  {m === "path" ? "Path — the ladder" : "Map — topic clusters"}
+                  {on ? " ·" : ""}
+                </span>
+                <span className="mt-0.5 block text-xs" style={{ color: "var(--faint)" }}>
+                  {m === "path" ? "Climb in order, unit by unit." : "Study by topic, in any order."}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        {modeMsg && (
+          <p className="mt-3 text-sm" style={{ color: modeMsg.ok ? "var(--kube)" : "var(--red)" }}>{modeMsg.text}</p>
+        )}
       </div>
 
       {/* Sharpen flashcards — rewrite every topic's practice cards as real

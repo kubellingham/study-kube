@@ -22,6 +22,8 @@ export interface HomeCourse {
   topics: number;
   climbed: number;
   crew?: boolean;
+  /** How the subject is laid out — "path" (ladder) or "map" (topic clusters). */
+  mode?: "path" | "map";
   semester: number | null;
   /** Exam/CA date for this course (ms epoch), or null if unset. */
   examAt: number | null;

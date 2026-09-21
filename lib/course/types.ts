@@ -4,6 +4,14 @@
 
 export type Weight = "heavy" | "medium" | "light";
 
+/** How a subject is organized:
+ *  - "path" = the ladder: ordered units you climb in sequence. For courses
+ *    with a real shape (a syllabus, numbered units, known outcomes).
+ *  - "map"  = topic clusters you study in any order. For a loose pile of
+ *    material (scattered files, links, references) with no true order.
+ *  Both run the SAME digestion underneath — only the layout differs. */
+export type CourseMode = "path" | "map";
+
 export interface Course {
   id: string;
   code: string; // e.g. "CSE22D"

@@ -244,6 +244,11 @@ function SubjectGridCard({
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
         <span className="k-eyebrow">{c.code}</span>
         <span style={{ display: "flex", gap: 6 }}>
+          {c.mode === "map" && (
+            <span className="k-chip" style={{ padding: "3px 9px" }} title="Organized as topic clusters, not an ordered ladder">
+              Map
+            </span>
+          )}
           {c.crew && (
             <span className="k-chip tl" style={{ padding: "3px 9px" }} title="Shared with your crew">
               Crew
@@ -342,7 +347,8 @@ export default function LearnHomePage() {
     if (!user) return;
     (async () => {
       const builtin = listBuiltinBundles(user.email);
-      type Fetched = { id: string; code: string; title: string; sections: number; topics: number; topicIds: string[] | null; crew: boolean };
+      type Mode = "path" | "map";
+      type Fetched = { id: string; code: string; title: string; sections: number; topics: number; topicIds: string[] | null; crew: boolean; mode: Mode };
       let mine: Fetched[] = [];
       let shared: Fetched[] = [];
       try {
@@ -357,6 +363,7 @@ export default function LearnHomePage() {
             topics: sections.reduce((n, s) => n + s.topics.length, 0),
             topicIds: null,
             crew: false,
+            mode: (d.get("mode") === "map" ? "map" : "path") as Mode,
           };
         });
       } catch {
@@ -385,6 +392,7 @@ export default function LearnHomePage() {
                   topics: sections.reduce((n, s) => n + s.topics.length, 0),
                   topicIds: null,
                   crew: true,
+                  mode: (d.get("mode") === "map" ? "map" : "path") as Mode,
                 };
               });
           }
@@ -404,6 +412,7 @@ export default function LearnHomePage() {
           topics: b.ladder.length,
           topicIds: b.ladder.map((t) => t.id),
           crew: false,
+          mode: "path" as Mode,
         })),
         ...mine,
         ...shared,
@@ -430,6 +439,7 @@ export default function LearnHomePage() {
             topics: c.topics,
             climbed,
             crew: c.crew,
+            mode: c.mode,
             semester: studyPlan.semesters[c.id] ?? null,
             examAt: studyPlan.examDates[c.id] ?? null,
             completedAt: p.completedAt,
