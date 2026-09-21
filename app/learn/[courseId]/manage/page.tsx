@@ -83,6 +83,8 @@ export default function ManageCoursePage() {
   }
 
   const dirty = code !== savedBase.code || title !== savedBase.title;
+  // The layout is locked the moment there's any material to reorganize.
+  const modeLocked = files.length > 0 || (bundle?.ladder.length ?? 0) > 0;
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -279,34 +281,55 @@ export default function ManageCoursePage() {
           topic clusters you study in any order — best for a loose pile of notes, slides
           and links. Kube chose from your first file; switch it any time.
         </p>
-        <div className="mt-4 grid gap-2.5" style={{ gridTemplateColumns: "1fr 1fr" }}>
-          {(["path", "map"] as const).map((m) => {
-            const on = mode === m;
-            return (
-              <button
-                key={m}
-                type="button"
-                onClick={() => switchMode(m)}
-                disabled={modeBusy}
-                className="rounded-xl border px-4 py-3 text-left disabled:opacity-60"
-                style={{
-                  borderColor: on ? "var(--kube)" : "var(--line)",
-                  background: on ? "var(--kube-soft)" : "var(--card)",
-                }}
-              >
-                <span className="block text-sm font-semibold" style={{ color: on ? "var(--kube)" : "var(--ink)" }}>
-                  {m === "path" ? "Path — the ladder" : "Map — topic clusters"}
-                  {on ? " ·" : ""}
-                </span>
-                <span className="mt-0.5 block text-xs" style={{ color: "var(--faint)" }}>
-                  {m === "path" ? "Climb in order, unit by unit." : "Study by topic, in any order."}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-        {modeMsg && (
-          <p className="mt-3 text-sm" style={{ color: modeMsg.ok ? "var(--kube)" : "var(--red)" }}>{modeMsg.text}</p>
+        {modeLocked ? (
+          <div
+            className="mt-4 rounded-xl border px-4 py-3"
+            style={{ borderColor: "var(--kube-line)", background: "var(--kube-soft)" }}
+          >
+            <span className="block text-sm font-semibold" style={{ color: "var(--kube)" }}>
+              {mode === "map" ? "Map — topic clusters" : "Path — the ladder"} · locked
+            </span>
+            <span className="mt-0.5 block text-xs" style={{ color: "var(--ink-soft)" }}>
+              Set when you added your first material. It can&apos;t change now — reorganizing a
+              built subject would scramble it.
+            </span>
+          </div>
+        ) : (
+          <>
+            <div className="mt-4 grid gap-2.5" style={{ gridTemplateColumns: "1fr 1fr" }}>
+              {(["path", "map"] as const).map((m) => {
+                const on = mode === m;
+                return (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => switchMode(m)}
+                    disabled={modeBusy}
+                    className="rounded-xl border px-4 py-3 text-left disabled:opacity-60"
+                    style={{
+                      borderColor: on ? "var(--kube)" : "var(--line)",
+                      background: on ? "var(--kube-soft)" : "var(--card)",
+                    }}
+                  >
+                    <span className="block text-sm font-semibold" style={{ color: on ? "var(--kube)" : "var(--ink)" }}>
+                      {m === "path" ? "Path — the ladder" : "Map — topic clusters"}
+                      {on ? " ·" : ""}
+                    </span>
+                    <span className="mt-0.5 block text-xs" style={{ color: "var(--faint)" }}>
+                      {m === "path" ? "Climb in order, unit by unit." : "Study by topic, in any order."}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-2 text-xs" style={{ color: "var(--faint)" }}>
+              You can still change this because nothing&apos;s been added yet. Once you add your
+              first file it locks.
+            </p>
+            {modeMsg && (
+              <p className="mt-3 text-sm" style={{ color: modeMsg.ok ? "var(--kube)" : "var(--red)" }}>{modeMsg.text}</p>
+            )}
+          </>
         )}
       </div>
 

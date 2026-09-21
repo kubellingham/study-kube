@@ -13,7 +13,7 @@ async function ownCourse(req: NextRequest, id: string) {
   if (!snap.exists || snap.get("userId") !== uid) {
     return { ok: false as const, response: Response.json({ error: "Course not found." }, { status: 404 }) };
   }
-  return { ok: true as const, uid, ref };
+  return { ok: true as const, uid, ref, snap };
 }
 
 // Rename a course (code + title). Built-in courses live in code and can't be
@@ -38,8 +38,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // is still in a crew. Passing share:false always unshares.
   const patch: Record<string, unknown> = { code, title };
   // Optional: switch how Kube organizes this subject (the ladder vs topic
-  // clusters). Only "path" or "map" are accepted; anything else is ignored.
+  // clusters). HARD LOCK: the mode can only be set while the subject is still
+  // empty. Once any material has been digested, the choice is permanent —
+  // reorganizing a built subject would scramble everything.
   if (body.mode === "path" || body.mode === "map") {
+    const sections = (gate.snap.get("sections") as unknown[]) ?? [];
+    const files = (gate.snap.get("files") as unknown[]) ?? [];
+    if (sections.length > 0 || files.length > 0) {
+      return Response.json(
+        { error: "This subject's layout is locked — it was set when you added your first material and can't be changed now." },
+        { status: 409 }
+      );
+    }
     patch.mode = body.mode;
   }
   if (typeof body.share === "boolean") {

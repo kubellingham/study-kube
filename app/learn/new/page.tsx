@@ -19,6 +19,11 @@ export default function NewCoursePage() {
   // rather than tempt them into a state they can't reach.
   const [inCrew, setInCrew] = useState(false);
   const [share, setShare] = useState(true);
+  // Do they have the syllabus? Guidance only — nudges the layout choice.
+  const [hasSyllabus, setHasSyllabus] = useState<"yes" | "no" | null>(null);
+  // How Kube lays this subject out. "auto" = let Kube decide from the first
+  // file. Map is the recommended default (most students have mixed material).
+  const [modeChoice, setModeChoice] = useState<"map" | "path" | "auto">("map");
 
   useEffect(() => {
     if (!loading && !user) router.replace("/");
@@ -46,7 +51,12 @@ export default function NewCoursePage() {
       const res = await authedFetch("/api/course", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, title, share: inCrew && share }),
+        body: JSON.stringify({
+          code,
+          title,
+          share: inCrew && share,
+          ...(modeChoice === "auto" ? {} : { mode: modeChoice }),
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not create the course.");
@@ -110,6 +120,84 @@ export default function NewCoursePage() {
           className="mt-2 w-full rounded-xl border px-4 py-3 text-sm outline-none"
           style={{ borderColor: "var(--line)", background: "var(--card)", color: "var(--ink)" }}
         />
+
+        {/* Do you have the syllabus? Guidance that helps Kube (and you) pick
+            the right layout. */}
+        <div className="mt-6">
+          <label className="k-eyebrow block">do you have the syllabus / course-outline sheet?</label>
+          <p className="mt-1 text-xs leading-relaxed" style={{ color: "var(--faint)" }}>
+            The syllabus lists every unit and outcome — with it, Kube can lay the whole course
+            out as a Ladder. Without it, a Map is usually the better fit.
+          </p>
+          <div className="mt-2 flex gap-2">
+            {([["yes", "Yes, I have it"], ["no", "No / not sure"]] as const).map(([v, label]) => {
+              const on = hasSyllabus === v;
+              return (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => { setHasSyllabus(v); setModeChoice(v === "yes" ? "path" : "map"); }}
+                  className="rounded-full border px-4 py-1.5 text-xs font-semibold"
+                  style={{
+                    borderColor: on ? "var(--kube)" : "var(--line)",
+                    background: on ? "var(--kube-soft)" : "var(--card)",
+                    color: on ? "var(--kube)" : "var(--ink-soft)",
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* How Kube organizes the subject. This is LOCKED once the first file
+            is added, so it's chosen here, deliberately. */}
+        <div className="mt-6">
+          <label className="k-eyebrow block">how should Kube organize this subject?</label>
+          <p className="mt-1 text-xs leading-relaxed" style={{ color: "var(--faint)" }}>
+            You choose this once — after your first file it&apos;s locked in, because
+            re-organizing a built subject would scramble it.
+          </p>
+          <div className="mt-3 grid gap-2.5">
+            {([
+              ["map", "Map — study by topic", "Kube sorts your material into topic clusters you study in any order. Best for mixed notes, slides and links.", "Recommended"],
+              ["path", "Ladder — climb in order", "One ordered path, unit by unit. Best when your course has a clear shape (a syllabus, numbered units).", hasSyllabus === "yes" ? "Fits a syllabus" : ""],
+              ["auto", "Let Kube decide", "Kube picks Map or Ladder from your first file.", ""],
+            ] as const).map(([v, title2, desc, tag]) => {
+              const on = modeChoice === v;
+              return (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setModeChoice(v)}
+                  className="rounded-xl border px-4 py-3 text-left"
+                  style={{
+                    borderColor: on ? "var(--kube)" : "var(--line)",
+                    background: on ? "var(--kube-soft)" : "var(--card)",
+                  }}
+                >
+                  <span className="flex items-center gap-2">
+                    <span className="text-sm font-semibold" style={{ color: on ? "var(--kube)" : "var(--ink)" }}>
+                      {title2}
+                    </span>
+                    {tag && (
+                      <span
+                        className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                        style={{ background: "var(--kube-soft)", color: "var(--kube)", border: "1px solid var(--kube-line)" }}
+                      >
+                        {tag}
+                      </span>
+                    )}
+                  </span>
+                  <span className="mt-0.5 block text-xs leading-relaxed" style={{ color: "var(--faint)" }}>
+                    {desc}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
         {inCrew && (
           <label
