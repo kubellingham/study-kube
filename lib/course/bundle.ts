@@ -70,3 +70,66 @@ export function buildCourseBundle(
     },
   };
 }
+
+/**
+ * Make a STORED course safe to build, whatever state it got into.
+ *
+ * buildCourseBundle is deliberately strict: it throws so an authoring mistake
+ * in a built-in course fails the build instead of shipping. Stored courses are
+ * different — they are assembled incrementally by the digester, across many
+ * files and versions, and a single structural flaw must never cost a student
+ * their whole subject (it used to surface as "That course isn't in Kube yet",
+ * which is both wrong and unrecoverable).
+ *
+ * So: repair rather than reject. Drops duplicate topic ids (a unit fed twice
+ * used to produce two identical review nodes), dependencies that point at an
+ * unknown or later topic, and exam questions orphaned from their topic. Never
+ * throws.
+ */
+export function sanitizeCourse(
+  rawSections: unknown,
+  rawExamBank: unknown
+): { sections: Section[]; examBank: ExamQuestion[] } {
+  const sections = Array.isArray(rawSections) ? (rawSections as Section[]) : [];
+  const examBank = Array.isArray(rawExamBank) ? (rawExamBank as ExamQuestion[]) : [];
+
+  // Pass 1 — keep the first topic under each id, in ladder order.
+  const seen = new Set<string>();
+  const cleaned: Section[] = [];
+  for (const s of sections) {
+    if (!s || typeof s !== "object") continue;
+    const topics = (Array.isArray(s.topics) ? s.topics : []).filter((t) => {
+      if (!t || typeof t.id !== "string" || seen.has(t.id)) return false;
+      seen.add(t.id);
+      return true;
+    });
+    cleaned.push({ ...s, topics });
+  }
+
+  // Pass 2 — a dependency may only point at a topic EARLIER in the ladder.
+  const position = new Map<string, number>();
+  cleaned.flatMap((s) => s.topics).forEach((t, i) => position.set(t.id, i));
+  let i = 0;
+  for (const s of cleaned) {
+    s.topics = s.topics.map((t) => {
+      const here = i++;
+      const deps = (Array.isArray(t.deps) ? t.deps : []).filter((d) => {
+        const at = position.get(d);
+        return at !== undefined && at < here;
+      });
+      return { ...t, deps };
+    });
+  }
+
+  // Pass 3 — drop questions whose topic is gone, and duplicate question ids.
+  const usedQuestionIds = new Set<string>();
+  const questions = examBank.filter((q) => {
+    if (!q || typeof q.topicId !== "string" || !position.has(q.topicId)) return false;
+    const id = typeof q.id === "string" ? q.id : "";
+    if (id && usedQuestionIds.has(id)) return false;
+    if (id) usedQuestionIds.add(id);
+    return true;
+  });
+
+  return { sections: cleaned, examBank: questions };
+}

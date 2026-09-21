@@ -11,7 +11,7 @@ import { int42d, int42dSyllabus } from "./int42d";
 import { study101 } from "./study101";
 
 export type { CourseBundle } from "./bundle";
-export { buildCourseBundle } from "./bundle";
+export { buildCourseBundle, sanitizeCourse } from "./bundle";
 
 interface BuiltinCourse {
   bundle: CourseBundle;

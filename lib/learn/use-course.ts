@@ -8,6 +8,7 @@ import { db } from "@/lib/firebase/client";
 import { useUser } from "@/lib/use-user";
 import {
   buildCourseBundle,
+  sanitizeCourse,
   getBuiltinBundle,
   getBuiltinSyllabus,
   type CourseBundle,
@@ -38,28 +39,10 @@ export interface FirestoreCourseDoc {
 }
 
 export function bundleFromDoc(id: string, data: FirestoreCourseDoc): CourseBundle {
-  const course = {
-    id,
-    code: data.code,
-    title: data.title,
-    sections: data.sections ?? [],
-  };
-  try {
-    return buildCourseBundle(course, data.examBank ?? []);
-  } catch {
-    // Defensive: stored data should be pre-sanitized, but never let a bad dep
-    // brick the page — rebuild with dependencies stripped.
-    return buildCourseBundle(
-      {
-        ...course,
-        sections: course.sections.map((s) => ({
-          ...s,
-          topics: s.topics.map((t) => ({ ...t, deps: [] })),
-        })),
-      },
-      data.examBank ?? []
-    );
-  }
+  // A stored course is assembled incrementally over many files, so repair it
+  // on the way in rather than letting one flaw brick the subject.
+  const { sections, examBank } = sanitizeCourse(data.sections, data.examBank);
+  return buildCourseBundle({ id, code: data.code, title: data.title, sections }, examBank);
 }
 
 export type CourseStatus = "loading" | "ready" | "notfound";
