@@ -4,7 +4,7 @@
 // Drag in any files, any number of batches. Text is extracted ON THIS DEVICE
 // (so big files are fine), then Kube classifies and digests each one as a
 // BACKGROUND job — closing the tab is safe; progress reattaches on return.
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   collection,
   doc,
@@ -18,6 +18,14 @@ import { authedFetch } from "@/lib/authed-fetch";
 import { extractFileInBrowser, type ExtractedMaterial } from "@/lib/ingest/client-extract";
 import type { IngestedFile } from "@/lib/course/types";
 import type { Observation } from "@/lib/course/generate";
+import {
+  shelveBatch,
+  listShelf,
+  loadShelfContent,
+  removeShelfItem,
+  shelfSizeLabel,
+  type ShelfItem,
+} from "@/lib/learn/shelf";
 import DigestingAnimation from "./DigestingAnimation";
 
 type IngestMode = "fromFile" | "fromKnowledge" | "augmented";
@@ -65,8 +73,15 @@ export default function AddMaterial({
   const [batch, setBatch] = useState<{
     items: { name: string; extracted: ExtractedMaterial }[];
     read: Observation | null;
+    /** Set when this batch was pulled back off the shelf, so the held records
+     *  are cleared once their build is safely under way. */
+    fromShelf?: ShelfItem[];
   } | null>(null);
   const [reading, setReading] = useState(false);
+  // What Kube is holding, unbuilt, for this subject.
+  const [shelf, setShelf] = useState<ShelfItem[]>([]);
+  const [shelfBusy, setShelfBusy] = useState<string | null>(null);
+  const [shelfError, setShelfError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [digestHidden, setDigestHidden] = useState(false);
@@ -82,6 +97,32 @@ export default function AddMaterial({
     const subs = unsubs.current;
     return () => subs.forEach((u) => u());
   }, []);
+
+  // The shelf is durable, so it's fetched like any other saved state — this is
+  // what makes "hold this, unit 2 comes Friday" survive closing the app.
+  const refreshShelf = useCallback(async () => {
+    if (!uid || !courseId) return;
+    try {
+      setShelf(await listShelf(uid, courseId));
+    } catch {
+      // A shelf we can't read just shows as empty; nothing is lost.
+    }
+  }, [uid, courseId]);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const items = await listShelf(uid, courseId);
+        if (alive) setShelf(items);
+      } catch {
+        // Same as above: an unreadable shelf shows as empty.
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [uid, courseId]);
 
   function updateLine(key: string, patch: Partial<JobLine>) {
     setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
@@ -197,13 +238,16 @@ export default function AddMaterial({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [courseId, uid]);
 
+  /** Send one file to be built. Returns true when the build is under way (or
+   *  the file was already known) — the shelf only lets go of material once one
+   *  of those is true. */
   async function submitOne(
     key: string,
     name: string,
     extracted: ExtractedMaterial,
     mode: IngestMode,
     unit?: number | "extras"
-  ) {
+  ): Promise<boolean> {
     // Keep the payload so a "which unit?" answer can re-send it as-is.
     pending.current[key] = { name, extracted, mode };
     try {
@@ -223,15 +267,17 @@ export default function AddMaterial({
       if (!res.ok) throw new Error(data.error || "Digestion failed.");
       if (data.skipped) {
         updateLine(key, { state: "skipped", note: data.note });
-        return;
+        return true;
       }
       updateLine(key, { state: "working", note: mode === "fromKnowledge" ? "Building your ladder from the outline…" : "Kube is reading it…", ask: undefined });
       watchJob(data.jobId as string, key);
+      return true;
     } catch (err) {
       updateLine(key, {
         state: "error",
         note: err instanceof Error ? err.message : "Digestion failed.",
       });
+      return false;
     }
   }
 
@@ -283,6 +329,7 @@ export default function AddMaterial({
   async function proceed(useKnowledge: boolean) {
     if (!batch) return;
     const items = batch.items;
+    const held = batch.fromShelf ?? [];
     setBatch(null);
     setDigestHidden(false);
     const lines: JobLine[] = items.map((it, i) => ({
@@ -293,12 +340,66 @@ export default function AddMaterial({
     }));
     setLines((prev) => [...prev, ...lines]);
     for (let i = 0; i < items.length; i++) {
-      await submitOne(
+      const ok = await submitOne(
         lines[i].key,
         items[i].name,
         items[i].extracted,
         useKnowledge ? "augmented" : "fromFile"
       );
+      // Only material whose build actually started leaves the shelf. If the
+      // send failed, it stays held — losing someone's file because a request
+      // didn't go through is not an option.
+      const source = held[i];
+      if (ok && source) await removeShelfItem(source).catch(() => {});
+    }
+    if (held.length > 0) await refreshShelf();
+  }
+
+  /** Hold this upload instead of building it — Kube keeps it until you say go. */
+  async function holdBatch() {
+    if (!batch) return;
+    setShelfBusy("hold");
+    setShelfError(null);
+    try {
+      await shelveBatch(uid, courseId, batch.items, batch.read);
+      setBatch(null);
+      await refreshShelf();
+    } catch {
+      setShelfError("Couldn't put that on the shelf — check your connection and try again.");
+    } finally {
+      setShelfBusy(null);
+    }
+  }
+
+  /** Take held material back off the shelf and ask the build question about it,
+   *  exactly as if it had just been dropped in. */
+  async function buildFromShelf(items: ShelfItem[]) {
+    if (items.length === 0) return;
+    setShelfBusy(items.length === 1 ? items[0].id : "all");
+    setShelfError(null);
+    try {
+      const loaded = await Promise.all(
+        items.map(async (it) => ({ name: it.name, extracted: await loadShelfContent(it) }))
+      );
+      setBatch({ items: loaded, read: items[0].read ?? null, fromShelf: items });
+    } catch (err) {
+      setShelfError(err instanceof Error ? err.message : "Couldn't load that from your shelf.");
+    } finally {
+      setShelfBusy(null);
+    }
+  }
+
+  /** Take something off the shelf for good. */
+  async function dropFromShelf(item: ShelfItem) {
+    setShelfBusy(item.id);
+    setShelfError(null);
+    try {
+      await removeShelfItem(item);
+      await refreshShelf();
+    } catch {
+      setShelfError(`Couldn't remove "${item.name}" — try again.`);
+    } finally {
+      setShelfBusy(null);
     }
   }
 
@@ -512,11 +613,29 @@ export default function AddMaterial({
         </div>
       )}
 
+      {shelf.length > 0 && (
+        <Shelf
+          items={shelf}
+          busy={shelfBusy}
+          onBuild={buildFromShelf}
+          onDrop={dropFromShelf}
+        />
+      )}
+
+      {shelfError && (
+        <p className="mt-3 text-xs font-semibold" style={{ color: "var(--red)" }}>
+          {shelfError}
+        </p>
+      )}
+
       {batch && (
         <BatchCard
           names={batch.items.map((i) => i.name)}
           read={batch.read}
+          fromShelf={!!batch.fromShelf}
+          holding={shelfBusy === "hold"}
           onChoose={proceed}
+          onHold={holdBatch}
           onCancel={() => setBatch(null)}
         />
       )}
@@ -589,6 +708,105 @@ export default function AddMaterial({
       )}
     </div>
     </>
+  );
+}
+
+// THE SHELF — what Kube is holding, unbuilt. It exists so a student whose
+// lecturer hands out one unit at a time isn't forced to build each one the
+// moment it arrives: hold unit 1, add unit 2 on Friday, build them together.
+// Files that arrived in the same upload stay grouped under Kube's read of it.
+function Shelf({
+  items,
+  busy,
+  onBuild,
+  onDrop,
+}: {
+  items: ShelfItem[];
+  busy: string | null;
+  onBuild: (items: ShelfItem[]) => void;
+  onDrop: (item: ShelfItem) => void;
+}) {
+  // One row of "Kube's read" per upload, not per file.
+  const groups: { batchId: string; read: Observation | null; items: ShelfItem[] }[] = [];
+  for (const it of items) {
+    const last = groups[groups.length - 1];
+    if (last && last.batchId === it.batchId) last.items.push(it);
+    else groups.push({ batchId: it.batchId, read: it.read ?? null, items: [it] });
+  }
+
+  return (
+    <div
+      className="mt-4 rounded-2xl border p-4"
+      style={{ borderColor: "var(--line)", background: "var(--bg-deep)" }}
+    >
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <span className="k-eyebrow" style={{ color: "var(--kube)" }}>
+          on the shelf · {items.length}
+        </span>
+        {items.length > 1 && (
+          <button
+            type="button"
+            onClick={() => onBuild(items)}
+            disabled={busy !== null}
+            className="rounded-full px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+            style={{ background: "var(--kube)" }}
+          >
+            {busy === "all" ? "Loading…" : `Build all ${items.length}`}
+          </button>
+        )}
+      </div>
+      <p className="mt-2 text-xs leading-relaxed" style={{ color: "var(--ink-soft)" }}>
+        Kube is holding this material and hasn&apos;t built it yet. It stays here
+        until you say go — add the rest of your units whenever they come, and
+        nothing is read twice.
+      </p>
+
+      <div className="mt-3 space-y-3">
+        {groups.map((g) => (
+          <div key={g.batchId}>
+            {g.read?.whatItIs && (
+              <p className="text-xs italic" style={{ color: "var(--faint)", lineHeight: 1.5 }}>
+                {g.read.whatItIs}
+              </p>
+            )}
+            <div className="mt-1.5 space-y-1.5">
+              {g.items.map((it) => (
+                <div
+                  key={it.id}
+                  className="flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2"
+                  style={{ borderColor: "var(--line)", background: "var(--card)" }}
+                >
+                  <span className="min-w-0 flex-1 text-sm" style={{ color: "var(--ink)" }}>
+                    <span className="font-semibold">{it.name}</span>
+                    <span className="ml-2 text-[11px]" style={{ color: "var(--faint)" }}>
+                      {shelfSizeLabel(it)}
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onBuild([it])}
+                    disabled={busy !== null}
+                    className="rounded-lg border px-3 py-1 text-xs font-semibold disabled:opacity-60"
+                    style={{ borderColor: "var(--kube-line)", color: "var(--kube)", background: "var(--kube-soft)" }}
+                  >
+                    {busy === it.id ? "…" : "Build this"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onDrop(it)}
+                    disabled={busy !== null}
+                    className="text-xs font-semibold disabled:opacity-60"
+                    style={{ color: "var(--faint)" }}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -673,12 +891,19 @@ function UnitPicker({
 function BatchCard({
   names,
   read,
+  fromShelf,
+  holding,
   onChoose,
+  onHold,
   onCancel,
 }: {
   names: string[];
   read: Observation | null;
+  /** This batch came back off the shelf, so there's nothing left to hold. */
+  fromShelf: boolean;
+  holding: boolean;
   onChoose: (useKnowledge: boolean) => void;
+  onHold: () => void;
   onCancel: () => void;
 }) {
   const augmentedFirst = read?.recommend === "augmented";
@@ -777,13 +1002,34 @@ function BatchCard({
       <div className="mt-3.5 space-y-2.5">
         {augmentedFirst ? [augmented, asIs] : [asIs, augmented]}
       </div>
+
+      {/* The third answer, and the reason the shelf exists: the rest of the
+          course hasn't been handed out yet. Kube holds this until it has. */}
+      {!fromShelf && (
+        <button
+          type="button"
+          onClick={onHold}
+          disabled={holding}
+          className="mt-2.5 block w-full rounded-xl px-4 py-2.5 text-left disabled:opacity-60"
+          style={{ border: "1px dashed var(--kube-line)", background: "transparent" }}
+        >
+          <span className="block text-sm font-semibold" style={{ color: "var(--kube)" }}>
+            {holding ? "Putting it on the shelf…" : "Hold it — more is coming"}
+          </span>
+          <span className="mt-0.5 block text-xs" style={{ color: "var(--faint)" }}>
+            Kube keeps this unbuilt until you say go. Add the next unit whenever
+            you get it, then build them together.
+          </span>
+        </button>
+      )}
+
       <button
         type="button"
         onClick={onCancel}
         className="mt-2.5 text-xs font-semibold"
         style={{ color: "var(--faint)" }}
       >
-        Not now — remove
+        {fromShelf ? "Leave it on the shelf" : "Not now — remove"}
       </button>
     </div>
   );

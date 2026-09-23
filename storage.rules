@@ -7,5 +7,12 @@ service firebase.storage {
     match /materials/{uid}/{file=**} {
       allow read, write: if request.auth != null && request.auth.uid == uid;
     }
+
+    // The shelf: material Kube is holding but hasn't built yet, at
+    // shelf/<uid>/<courseId>/<itemId>.json. Private to the owner, same as
+    // everything else they upload.
+    match /shelf/{uid}/{file=**} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
   }
 }
