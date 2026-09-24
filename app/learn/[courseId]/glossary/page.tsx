@@ -6,12 +6,13 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCourse } from "@/lib/learn/use-course";
 import { collectVocab } from "@/lib/learn/glossary";
+import { EXTRAS_UNIT } from "@/lib/course/types";
 import { useCramLocked, CramLocked } from "@/app/learn/components/PlanGate";
 import { RichInline } from "@/app/learn/components/Rich";
 
 export default function GlossaryPage() {
   const params = useParams<{ courseId: string }>();
-  const { status, bundle } = useCourse(params.courseId);
+  const { status, bundle, mode } = useCourse(params.courseId);
   const cramLocked = useCramLocked();
 
   if (status === "notfound") {
@@ -82,8 +83,16 @@ export default function GlossaryPage() {
 
       {course.sections.map((section) => (
         <section key={section.id} className="mt-10">
+          {/* "Unit 3" is only true on a ladder. A map has theme clusters and no
+              unit numbers, and the Extras bay's internal number (999) was being
+              printed at people as "Unit 999". */}
           <span className="k-eyebrow">
-            Section {section.letter} · Unit {section.unit}
+            Section {section.letter}
+            {section.extras || section.unit === EXTRAS_UNIT
+              ? " · Extras"
+              : mode === "map"
+                ? ""
+                : ` · Unit ${section.unit}`}
           </span>
           <h2 className="mt-1 text-2xl">{section.title}</h2>
           <div className="mt-4 flex flex-col gap-4">

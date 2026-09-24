@@ -116,7 +116,7 @@ export default function ExamPage() {
 function ExamInner() {
   const params = useParams<{ courseId: string }>();
   const searchParams = useSearchParams();
-  const { user, userLoading: loading, status, bundle } = useCourse(params.courseId);
+  const { user, userLoading: loading, status, bundle, mode: courseMode } = useCourse(params.courseId);
   const router = useRouter();
   const cramLocked = useCramLocked();
 
@@ -282,7 +282,18 @@ function ExamInner() {
         <div className="k-card mt-6 px-5 py-5">
           <span className="k-eyebrow">coverage</span>
           <div className="mt-3 flex flex-wrap gap-2">
-            {[...bundle.availableUnits.map((u) => ({ v: u as number | "all", label: `Unit ${u}` })), { v: "all" as const, label: "Whole course" }].map(
+            {/* A map has no unit numbers — its sections are themes, so they're
+                named by their theme rather than labelled "Unit 2". */}
+            {[
+              ...bundle.availableUnits.map((u) => ({
+                v: u as number | "all",
+                label:
+                  courseMode === "map"
+                    ? bundle.course.sections.find((sec) => sec.unit === u)?.title ?? `Part ${u}`
+                    : `Unit ${u}`,
+              })),
+              { v: "all" as const, label: "Whole course" },
+            ].map(
               ({ v, label }) => (
                 <button
                   key={label}

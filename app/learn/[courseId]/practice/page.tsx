@@ -21,6 +21,7 @@ import { hasSummit, LOCKED, TIER_LABEL } from "@/lib/entitlement";
 import { useCramLocked, CramLocked } from "@/app/learn/components/PlanGate";
 import { buildConceptPool, sprintItems } from "@/lib/course/concepts";
 import { loadPracticeState, type CardState } from "@/lib/learn/practice";
+import { EXTRAS_UNIT } from "@/lib/course/types";
 import { loadCourseSignals, type TopicSignal } from "@/lib/learn/signals";
 import { authedFetch } from "@/lib/authed-fetch";
 import { recordEvent } from "@/lib/learn/events";
@@ -69,7 +70,7 @@ interface SubjectRow { id: string; code: string; title: string; badge: string; }
 export default function PracticePage() {
   const params = useParams<{ courseId: string }>();
   const isMobile = useIsMobile();
-  const { user, userLoading, status, bundle, owned, reload } = useCourse(params.courseId);
+  const { user, userLoading, status, bundle, owned, mode, reload } = useCourse(params.courseId);
   const router = useRouter();
   const cramLocked = useCramLocked();
   const { entitlement } = useEntitlement();
@@ -420,7 +421,12 @@ export default function PracticePage() {
                   <div key={w.name} style={{ display: "flex", alignItems: "center", gap: 11 }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 600, fontSize: 13, color: T.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{w.name}</div>
-                      <div style={{ fontFamily: T.mono, fontSize: 10, letterSpacing: ".06em", color: T.faint, marginTop: 1 }}>Unit {w.unit}</div>
+                      {/* Unit numbers belong to a ladder. On a map (and for the
+                          Extras bay, whose number is an internal 999) they're
+                          meaningless, so the line is simply left off. */}
+                      {mode !== "map" && w.unit !== EXTRAS_UNIT && (
+                        <div style={{ fontFamily: T.mono, fontSize: 10, letterSpacing: ".06em", color: T.faint, marginTop: 1 }}>Unit {w.unit}</div>
+                      )}
                     </div>
                     <div style={{ flex: "none", width: 58, height: 7, borderRadius: 999, background: T.line, overflow: "hidden" }}>
                       <div style={{ height: "100%", width: `${w.pct}%`, borderRadius: 999, background: w.pct < 50 ? T.red : T.amber }} />
