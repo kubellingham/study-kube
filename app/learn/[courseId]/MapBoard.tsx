@@ -8,6 +8,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useUser } from "@/lib/use-user";
+import { useEntitlement } from "@/lib/use-entitlement";
+import { hasSummit, LOCKED } from "@/lib/entitlement";
 import type { CourseBundle } from "@/lib/course";
 import { loadProgress, type LearnProgress } from "@/lib/learn/progress";
 import { topicLessons, lessonKey } from "@/lib/course/lessons";
@@ -30,6 +32,12 @@ export default function MapBoard({
 }) {
   const { user } = useUser();
   const router = useRouter();
+  // The climb is Summit on a map exactly as it is on a ladder. The board used
+  // to show every topic as freely openable and only reveal the lock after the
+  // tap — the ladder shows it on the circle itself, and so should this.
+  const { entitlement } = useEntitlement();
+  const entLoaded = entitlement !== null;
+  const summit = !entLoaded || hasSummit(entitlement ?? LOCKED);
   const [progress, setProgress] = useState<LearnProgress | null>(null);
   const [adding, setAdding] = useState(false);
 
@@ -68,11 +76,20 @@ export default function MapBoard({
         <div className="flex items-center gap-2">
           {total > 0 && (
             <>
+              {/* Every room the ladder opens, a map opens too — practice, mock
+                  exam, the glossary and the mistakes book all work off the same
+                  topics. They were simply never linked here. */}
               <Link href={`/learn/${courseId}/practice`} className="k-btn gho" style={{ padding: "8px 14px", textDecoration: "none" }}>
                 Practice
               </Link>
               <Link href={`/learn/${courseId}/exam`} className="k-btn gho" style={{ padding: "8px 14px", textDecoration: "none" }}>
                 Mock exam
+              </Link>
+              <Link href={`/learn/${courseId}/mistakes`} className="k-btn gho" style={{ padding: "8px 14px", textDecoration: "none" }}>
+                Mistakes
+              </Link>
+              <Link href={`/learn/${courseId}/glossary`} className="k-btn gho" style={{ padding: "8px 14px", textDecoration: "none" }}>
+                Glossary
               </Link>
             </>
           )}
@@ -93,6 +110,25 @@ export default function MapBoard({
       <p className="mt-2 text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>
         A board of topics grouped by theme — study any of them, in any order. Each one stands on its own.
       </p>
+
+      {total > 0 && !summit && (
+        <div
+          className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-4 py-3"
+          style={{ borderColor: "var(--amber-line)", background: "var(--amber-soft)" }}
+        >
+          <span className="text-sm" style={{ color: "var(--ink-soft)" }}>
+            Your board is built. Summit opens every topic on it into the full
+            walk-through — practice, notes and mock exams are yours already.
+          </span>
+          <Link
+            href="/learn/upgrade"
+            className="rounded-xl px-4 py-2 text-xs font-semibold text-white"
+            style={{ background: "var(--amber)", textDecoration: "none", whiteSpace: "nowrap" }}
+          >
+            Unlock with Summit
+          </Link>
+        </div>
+      )}
 
       {total > 0 && (
         <div className="mt-4 flex items-center gap-3">
@@ -155,7 +191,10 @@ export default function MapBoard({
                         <button
                           key={t.id}
                           type="button"
-                          onClick={() => router.push(`/learn/${courseId}/lesson/${t.id}`)}
+                          title={summit ? undefined : "Unlock your climb with Summit"}
+                          onClick={() =>
+                            router.push(summit ? `/learn/${courseId}/lesson/${t.id}` : "/learn/upgrade")
+                          }
                           className="flex items-center gap-2.5 rounded-xl border px-3 py-2 text-left text-sm"
                           style={{
                             borderColor: "var(--line)",
@@ -183,7 +222,19 @@ export default function MapBoard({
                           <span className="min-w-0 flex-1">
                             <RichInline text={t.title} />
                           </span>
-                          {!isDone && sliceProgress(t.id).done > 0 && (
+                          {!summit && (
+                            <span
+                              aria-label="Locked — Summit opens this"
+                              className="flex-none"
+                              style={{ color: "var(--faint)", lineHeight: 1 }}
+                            >
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinejoin="round">
+                                <rect x="5" y="11" width="14" height="9" rx="2" />
+                                <path d="M8 11V8a4 4 0 0 1 8 0" strokeLinecap="round" />
+                              </svg>
+                            </span>
+                          )}
+                          {summit && !isDone && sliceProgress(t.id).done > 0 && (
                             <span
                               className="flex-none text-[11px] font-semibold"
                               style={{ color: "var(--kube)" }}
