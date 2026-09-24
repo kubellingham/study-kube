@@ -11,6 +11,16 @@ import { signOut, deleteUser } from "firebase/auth";
 import { auth } from "@/lib/firebase/client";
 import { useUser } from "@/lib/use-user";
 import { authedFetch } from "@/lib/authed-fetch";
+import { useEntitlement } from "@/lib/use-entitlement";
+import { TIER_LABEL, hasSummit } from "@/lib/entitlement";
+import ManageBilling from "@/app/learn/components/ManageBilling";
+
+/** Where an account's access came from, said plainly rather than as a code. */
+const SOURCE_LINE: Record<string, string> = {
+  stripe: "Billed to your card.",
+  promo: "Unlocked with a code.",
+  crew: "Through your crew.",
+};
 
 interface ReferralJoin {
   uid: string;
@@ -43,6 +53,7 @@ function relativeJoined(ts: number): string {
 
 export default function AccountPage() {
   const { user, loading } = useUser();
+  const { entitlement } = useEntitlement();
   const router = useRouter();
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
@@ -153,6 +164,45 @@ export default function AccountPage() {
       {user.email && (
         <p className="mt-2 text-sm" style={{ color: "var(--ink-soft)", fontFamily: "var(--font-mono)" }}>{user.email}</p>
       )}
+
+      {/* "Your account" has to answer "what am I on, and how do I change it?".
+          It didn't say a word about the plan — that lived only in the profile
+          menu on the subjects page, which is not where anyone looks for it. */}
+      <div className="k-card mt-6 px-6 py-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold">Your plan</h2>
+          <span className="k-chip" style={{ padding: "3px 9px" }}>
+            {entitlement === null
+              ? "…"
+              : entitlement.tier
+                ? TIER_LABEL[entitlement.tier]
+                : "No plan yet"}
+          </span>
+        </div>
+        {entitlement && (
+          <p className="mt-2 text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>
+            {!entitlement.tier
+              ? "Pick a plan whenever you're ready — your subjects and progress stay exactly as they are."
+              : `${SOURCE_LINE[entitlement.source ?? "stripe"]}${
+                  entitlement.expiresAt
+                    ? ` Runs until ${new Date(entitlement.expiresAt).toLocaleDateString()}.`
+                    : ""
+                }`}
+          </p>
+        )}
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <ManageBilling />
+          {entitlement !== null && !hasSummit(entitlement) && (
+            <Link
+              href="/learn/upgrade"
+              className="rounded-full px-3.5 py-1.5 text-xs font-semibold text-white"
+              style={{ background: "var(--kube)", textDecoration: "none" }}
+            >
+              {entitlement.tier ? "See plans" : "Pick a plan"}
+            </Link>
+          )}
+        </div>
+      </div>
 
       {learning && (learning.trajectory || learning.rhythm) && (
         <div className="k-card mt-6 px-6 py-5">
