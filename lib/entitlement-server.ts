@@ -49,12 +49,26 @@ export async function getEntitlement(uid: string): Promise<Entitlement> {
   const grants: Grant[] = [];
   if (d.promoTier)
     grants.push({ tier: d.promoTier as Tier, source: "promo", expiresAt: d.promoExpiresAt ?? null });
-  if (d.stripeTier && d.stripeStatus === "active")
-    // While the subscription's status is "active", access never lapses on the
-    // period end — Stripe flips the status (via webhook) on cancel/past_due, so
-    // a slow renewal webhook can't lock out a paying subscriber. (expiresAt is
-    // null; the period end is only for display, read separately if needed.)
+  // While a subscription's status is "active", access never lapses on the
+  // period end — Stripe flips the status (via webhook) on cancel/past_due, so a
+  // slow renewal webhook can't lock out a paying subscriber. (expiresAt is
+  // null; the period end is only for display, read separately if needed.)
+  //
+  // An account may hold several subscriptions at once (Climb bought outright
+  // alongside Summit, a crew leader who also subscribes for themselves), so
+  // each one is a grant of its own and the best active one wins below. Accounts
+  // written before that are read from the flat fields exactly as before.
+  const subs = d.stripeSubs as
+    | Record<string, { tier?: Tier | null; status?: string } | null>
+    | undefined;
+  if (subs && Object.keys(subs).length > 0) {
+    for (const sub of Object.values(subs)) {
+      if (sub?.tier && sub.status === "active")
+        grants.push({ tier: sub.tier, source: "stripe", expiresAt: null });
+    }
+  } else if (d.stripeTier && d.stripeStatus === "active") {
     grants.push({ tier: d.stripeTier as Tier, source: "stripe", expiresAt: null });
+  }
   if (d.crewTier)
     grants.push({ tier: d.crewTier as Tier, source: "crew", expiresAt: d.crewExpiresAt ?? null });
   return resolveEntitlement(grants, now);
