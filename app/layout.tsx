@@ -6,6 +6,13 @@ const OG_TITLE = "Studying Kube — climb your course, one concept at a time";
 const OG_DESCRIPTION =
   "Upload your notes, PDFs and past papers. Kube turns them into a ladder of concepts, lessons, practice and mock exams.";
 
+// Kube's public address, in ONE place. This is what link previews, the
+// canonical URL and every absolute link in the page metadata are built from —
+// point it at a domain you don't own and every shared link previews the wrong
+// site. NEXT_PUBLIC_APP_URL overrides it the day the domain changes; it's the
+// same variable the ByteLabs handoff reads.
+const SITE_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://studying-kube.vercel.app";
+
 export const metadata: Metadata = {
   title: {
     default: "Studying Kube",
@@ -25,10 +32,10 @@ export const metadata: Metadata = {
   authors: [{ name: "Studying Kube" }],
   manifest: "/manifest.webmanifest",
   appleWebApp: { capable: true, title: "Kube", statusBarStyle: "default" },
-  metadataBase: new URL("https://kube.study"),
+  metadataBase: new URL(SITE_URL),
   openGraph: {
     type: "website",
-    url: "https://kube.study",
+    url: SITE_URL,
     title: OG_TITLE,
     description: OG_DESCRIPTION,
     siteName: "Studying Kube",
