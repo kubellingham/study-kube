@@ -52,6 +52,16 @@ export interface ShelfItem {
 
 const COLLECTION = "shelfItems";
 
+/** Is there anywhere to put held material? The shelf keeps file content in
+ *  Firebase Storage, which needs a billing account — a project running without
+ *  one has no bucket at all. Rather than let someone press "hold it" and eat an
+ *  error, the surfaces ask this first and simply don't offer what isn't there.
+ *  (NEXT_PUBLIC_ values are baked in at build time, so this is safe in the
+ *  browser.) */
+export function shelfAvailable(): boolean {
+  return !!process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
+}
+
 const contentPath = (uid: string, courseId: string, itemId: string) =>
   `shelf/${uid}/${courseId}/${itemId}.json`;
 
