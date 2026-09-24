@@ -23,6 +23,7 @@ import {
   listShelf,
   loadShelfContent,
   removeShelfItem,
+  shelfAvailable,
   shelfSizeLabel,
   type ShelfItem,
 } from "@/lib/learn/shelf";
@@ -110,6 +111,7 @@ export default function AddMaterial({
   }, [uid, courseId]);
 
   useEffect(() => {
+    if (!shelfAvailable()) return;
     let alive = true;
     (async () => {
       try {
@@ -633,6 +635,7 @@ export default function AddMaterial({
           names={batch.items.map((i) => i.name)}
           read={batch.read}
           fromShelf={!!batch.fromShelf}
+          canHold={shelfAvailable()}
           holding={shelfBusy === "hold"}
           onChoose={proceed}
           onHold={holdBatch}
@@ -892,6 +895,7 @@ function BatchCard({
   names,
   read,
   fromShelf,
+  canHold,
   holding,
   onChoose,
   onHold,
@@ -901,6 +905,9 @@ function BatchCard({
   read: Observation | null;
   /** This batch came back off the shelf, so there's nothing left to hold. */
   fromShelf: boolean;
+  /** False when this deployment has no shelf at all — then the offer is hidden
+   *  rather than shown and failed. */
+  canHold: boolean;
   holding: boolean;
   onChoose: (useKnowledge: boolean) => void;
   onHold: () => void;
@@ -1005,7 +1012,7 @@ function BatchCard({
 
       {/* The third answer, and the reason the shelf exists: the rest of the
           course hasn't been handed out yet. Kube holds this until it has. */}
-      {!fromShelf && (
+      {!fromShelf && canHold && (
         <button
           type="button"
           onClick={onHold}
