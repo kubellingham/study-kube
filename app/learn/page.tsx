@@ -168,6 +168,16 @@ function ProfileMenu({
             >
               Account &amp; settings
             </Link>
+            {/* The crew page holds the "have an invite code?" box, and its only
+                link was hidden unless you were ALREADY in a crew — so the one
+                person who needs it, someone handed a code, could never find it. */}
+            <Link
+              href="/learn/crew"
+              onClick={() => setOpen(false)}
+              style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 10, textDecoration: "none", color: "var(--ink-soft)", font: "600 13px var(--font-body)" }}
+            >
+              Crew &amp; invite codes
+            </Link>
             <div style={{ padding: "6px 10px" }}>
               <RedeemCode />
             </div>
