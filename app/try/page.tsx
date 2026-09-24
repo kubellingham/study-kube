@@ -458,8 +458,16 @@ export default function TryPage() {
                 <button type="button" onClick={() => doAuth(true)} disabled={busy} className="k-btn gho w-full" style={{ padding: "12px 18px" }}>
                   Continue with Google
                 </button>
+                {/* This wall creates a real account, so it owes the same line
+                    the landing page gives — and a way to actually read them. */}
                 <p className="mt-4 text-center text-xs leading-relaxed" style={{ color: "var(--faint)" }}>
                   Free to start. No card needed. Your taster progress comes with you.
+                  <br />
+                  By continuing you agree to our{" "}
+                  <a href="/legal" target="_blank" rel="noopener" style={{ color: "var(--ink-soft)", textDecoration: "underline" }}>
+                    Terms &amp; Privacy Policy
+                  </a>
+                  .
                 </p>
               </div>
             )}
