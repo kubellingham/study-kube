@@ -1,14 +1,24 @@
 rules_version = '2';
 
-// Studying Kube — every document carries a `userId`. A user may only read or
-// write documents they own. Applies uniformly to all top-level collections:
-// materials, summaries, decks, cards, quizzes, attempts, messages.
+// Studying Kube — what the BROWSER may touch.
 //
-// Exception: a course marked with a `crewId` is readable by every member of
-// that crew, not just its owner. Writes stay owner-only — a crew member
-// browsing a shared course cannot mutate someone else's material. Crew
-// membership is verified against the reader's own entitlements doc, where
-// crewLeaderUid is written by lib/crew.ts (joinCrew).
+// Everything the server does runs through the Admin SDK, which bypasses these
+// rules entirely, so locking a collection down here never breaks a server flow.
+//
+// The model is DENY BY DEFAULT: one named list of the collections the app
+// legitimately reads and writes from the browser, each scoped to its owner by
+// the `userId` field every one of those documents carries. A collection that
+// isn't named is unreachable from the browser.
+//
+// This replaces a catch-all `match /{collection}/{docId}` that let a signed-in
+// user CREATE a document in ANY top-level collection as long as they stamped
+// their own uid on it — including the collections that decide who has paid. A
+// user with no entitlement document could write their own
+// `entitlements/<uid>` with `promoTier: "summit"` from the browser console,
+// and the server, which trusts that document, would hand them the top tier for
+// free. Forging a promo code, a crew or a referral worked the same way. The
+// browser never touches any of those collections in this app, so none of them
+// is on the list.
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() {
@@ -17,6 +27,21 @@ service cloud.firestore {
     function owns(data) {
       return signedIn() && data.userId == request.auth.uid;
     }
+
+    // The collections the browser owns: a student's own learning record, the
+    // shelf of material Kube is holding, and the pre-Kube material pages that
+    // are still present but no longer linked. Anything not here is server-only.
+    function browserOwned() {
+      return [
+        'learnProgress', 'practiceState', 'studyPlan', 'mistakes',
+        'questionFlags', 'slideFeedback', 'learningEvents', 'examAttempts',
+        'chatNotes', 'shelfItems',
+        // Pre-Kube /dashboard + /materials pages, unchanged until they go.
+        'materials', 'summaries', 'cards', 'decks', 'quizzes', 'attempts',
+        'messages'
+      ];
+    }
+
     // Returns the caller's crew leader uid, or null if they aren't in a crew.
     // The entitlements doc is written by the Stripe webhook / joinCrew flow.
     function myCrewLeaderUid() {
@@ -32,6 +57,7 @@ service cloud.firestore {
         && data.crewId == myCrewLeaderUid();
     }
 
+    // ── Subjects ─────────────────────────────────────────────────────────
     match /courses/{docId} {
       allow read, delete: if owns(resource.data);
       allow create: if owns(request.resource.data);
@@ -40,10 +66,20 @@ service cloud.firestore {
       allow read: if inCrewFor(resource.data);
     }
 
-    match /{collection}/{docId} {
-      allow read, delete: if owns(resource.data);
-      allow create: if owns(request.resource.data);
-      allow update: if owns(resource.data) && owns(request.resource.data);
+    // ── Digest jobs — written by the server, watched by the browser ──────
+    // The app follows a digest's progress live. It has no business writing
+    // one: a forged job would let someone fake a finished build.
+    match /ingestJobs/{docId} {
+      allow read: if owns(resource.data);
+    }
+
+    // ── Everything else the browser owns ─────────────────────────────────
+    match /{col}/{docId} {
+      allow read, delete: if col in browserOwned() && owns(resource.data);
+      allow create: if col in browserOwned() && owns(request.resource.data);
+      allow update: if col in browserOwned()
+        && owns(resource.data)
+        && owns(request.resource.data);
     }
   }
 }
