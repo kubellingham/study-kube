@@ -67,6 +67,10 @@ than a locked view of everything.
 | "Manage billing" failed silently | The one control that cancels a subscription | #39 |
 | The taster's sign-up had no terms line at all | /try keep-it wall | #40 |
 | Nobody handed a crew code could find where to enter it | Crew link hidden unless already in a crew | #40 |
+| Anyone could write their own paid access from the browser | Firestore rules let a user create any document | #41 |
+| Redeeming a code and joining a crew had no rate limit | Both endpoints, unlimited tries | #41 |
+| Link previews pointed at a domain we don't own | Page metadata said kube.study | #43 |
+| A second subscription erased the first | Buy Summit while leading a crew, cancel it, lose the crew | #44 |
 
 ---
 
@@ -80,7 +84,13 @@ than a locked view of everything.
   verified unreachable. The sandbox blocked the deletion as irreversible; it
   needs permission.
 - **OpenRouter credit.** Without it every upload fails, for everyone.
-- **One real Stripe payment**, end to end, on a live card.
+- **Deploy the Firestore rules.** Until they're published, anyone can grant
+  themselves the top tier from a browser console. This is the urgent one.
+- **Go live on Stripe** when the account is activated: live key, re-run the
+  `/admin` setup, a new webhook endpoint with its own secret, the customer
+  portal turned on, then one real payment and a refund. The whole flow is
+  already proven end to end in the sandbox — checkout, webhook, plan, portal,
+  cancel.
 - **Firebase Storage / Blaze**, whenever the billing address goes through. The
   shelf stays hidden until then and needs no code change.
 

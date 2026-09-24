@@ -2,8 +2,22 @@ import { NextRequest } from "next/server";
 import type Stripe from "stripe";
 import { adminDb } from "@/lib/firebase/admin";
 import { stripe, stripeReady, type CrewSize } from "@/lib/stripe";
-import type { Tier } from "@/lib/entitlement";
+import { TIER_RANK, type Tier } from "@/lib/entitlement";
 import { provisionCrew } from "@/lib/crew";
+
+/** One subscription's state, as stored under entitlements/{uid}.stripeSubs. */
+type StoredSub = { tier: Tier | null; status: string; expiresAt: number | null };
+
+/** Of everything Stripe says this account holds, the subscription that grants
+ *  the most right now — or null when none of them is active. */
+function bestActive(subs: Record<string, StoredSub>): { id: string; sub: StoredSub } | null {
+  let best: { id: string; sub: StoredSub } | null = null;
+  for (const [id, sub] of Object.entries(subs)) {
+    if (!sub || sub.status !== "active" || !sub.tier) continue;
+    if (!best || TIER_RANK[sub.tier] > TIER_RANK[best.sub.tier as Tier]) best = { id, sub };
+  }
+  return best;
+}
 
 export const runtime = "nodejs";
 
@@ -44,16 +58,46 @@ async function apply(sub: Stripe.Subscription) {
   const tier = tierOf(sub);
   const active = sub.status === "active" || sub.status === "trialing";
   const customerId = typeof sub.customer === "string" ? sub.customer : sub.customer.id;
-  await adminDb().collection("entitlements").doc(uid).set(
-    {
-      stripeTier: tier,
-      stripeStatus: active ? "active" : sub.status,
-      stripeExpiresAt: periodEndMs(sub),
-      stripeSubId: sub.id,
-      stripeCustomerId: customerId,
-    },
-    { merge: true }
-  );
+
+  // An account can hold more than one subscription — someone who buys Climb and
+  // later buys Summit outright, or a crew leader who also subscribes for
+  // themselves. Storing a single "current" subscription meant the newest event
+  // overwrote the others: buy Summit while leading a crew and the crew record
+  // vanished; cancel that Summit later and the crew access went with it, while
+  // the crew subscription was still being paid for.
+  //
+  // Every subscription is now kept under its own id, and the flat fields are a
+  // mirror of whichever one currently grants the most. Written in a transaction
+  // because Stripe can deliver two events at once.
+  const ref = adminDb().collection("entitlements").doc(uid);
+  await adminDb().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const prior = (snap.data()?.stripeSubs ?? {}) as Record<string, StoredSub>;
+    const subs: Record<string, StoredSub> = {
+      ...prior,
+      [sub.id]: {
+        tier,
+        status: active ? "active" : sub.status,
+        expiresAt: periodEndMs(sub),
+      },
+    };
+    const best = bestActive(subs);
+    tx.set(
+      ref,
+      {
+        stripeSubs: subs,
+        // The flat fields describe the subscription that grants access today,
+        // or the latest event when none of them does. Every existing reader
+        // keeps working unchanged.
+        stripeTier: best ? best.sub.tier : null,
+        stripeStatus: best ? "active" : sub.status,
+        stripeExpiresAt: best ? best.sub.expiresAt : periodEndMs(sub),
+        stripeSubId: best ? best.id : sub.id,
+        stripeCustomerId: customerId,
+      },
+      { merge: true }
+    );
+  });
   // Reverse map for later customer-only events.
   await adminDb().collection("stripeCustomers").doc(customerId).set({ uid }, { merge: true });
 
