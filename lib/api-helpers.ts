@@ -59,6 +59,17 @@ export async function requireMaterial(
   | { ok: true; uid: string; material: Material }
   | { ok: false; response: Response }
 > {
+  // Retired. The only callers are the old /materials pages, which nothing links
+  // to any more — but their four AI routes (summary, quiz, flashcards, tutor)
+  // were still answering anyone signed in, with no plan check and no limit,
+  // and a user can write their own `materials` doc from the browser. Closed
+  // here, in the one place all four pass through, until the files are deleted.
+  if (process.env.LEGACY_MATERIALS !== "1") {
+    return {
+      ok: false,
+      response: Response.json({ error: "This part of Kube has retired." }, { status: 410 }),
+    };
+  }
   const uid = await getUid(req);
   if (!uid) {
     return {

@@ -4,6 +4,7 @@ import { adminDb } from "@/lib/firebase/admin";
 import { verifyStoredCourse, reportLine } from "@/lib/course/verify";
 import { CHAT_BUDGET_MODEL } from "@/lib/openrouter";
 import { budgetEngineReady } from "@/lib/course/generate";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { UsageMeter } from "@/lib/usage";
 import { CLIMB_PRICE_IN, CLIMB_PRICE_OUT } from "@/lib/openrouter";
 import type { Section, ExamQuestion } from "@/lib/course/types";
@@ -25,6 +26,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   const uid = await getUid(req);
   if (!uid) return Response.json({ error: "Not signed in." }, { status: 401 });
+  // Re-marking a whole course is one paid call per batch of questions. It's a
+  // repair button, not something anyone needs twice a minute.
+  const rl = checkRateLimit(`recheck:${uid}`, 5, 10 * 60 * 1000);
+  if (!rl.ok) {
+    const seconds = Math.ceil(rl.retryAfterMs / 1000);
+    return Response.json(
+      { error: `Kube just re-marked this. Try again in ${Math.ceil(seconds / 60)} minute${seconds > 60 ? "s" : ""}.` },
+      { status: 429, headers: { "Retry-After": String(seconds) } }
+    );
+  }
   if (!budgetEngineReady()) {
     return Response.json({ error: "The answer checker isn't configured." }, { status: 503 });
   }

@@ -7,6 +7,7 @@ import {
   type IntakeFile,
 } from "@/lib/course/generate";
 import { UsageMeter } from "@/lib/usage";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -39,6 +40,16 @@ export async function POST(req: NextRequest) {
   // it precedes: a plan, or free allowance still on the account.
   const gate = await requireBuildAccess(req);
   if (!gate.ok) return gate.response;
+  // One read comes before every build, so this sits a little above the build
+  // limit (5 per 10 min) to leave room for a dropped connection or a retry.
+  const rl = checkRateLimit(`observe:${gate.uid}`, 10, 10 * 60 * 1000);
+  if (!rl.ok) {
+    const seconds = Math.ceil(rl.retryAfterMs / 1000);
+    return Response.json(
+      { error: `That's a lot of files in a few minutes. Try again in ${Math.ceil(seconds / 60)} minute${seconds > 60 ? "s" : ""}.` },
+      { status: 429, headers: { "Retry-After": String(seconds) } }
+    );
+  }
 
   let body: { courseTitle?: string; files?: unknown };
   try {

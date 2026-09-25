@@ -5,9 +5,16 @@ import { requireEntitlement } from "@/lib/entitlement-server";
 import { getAnthropic, CHAT_MODEL } from "@/lib/anthropic";
 import { chatJSON, CHAT_BUDGET_MODEL } from "@/lib/openrouter";
 import { budgetEngineReady } from "@/lib/course/generate";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
+
+// Every message here is a paid model call. A student in real flow asks a
+// question every minute or two; 30 in ten minutes is far past that and still
+// stops a stuck key or a script from draining the shared balance.
+const CHAT_LIMIT = 30;
+const CHAT_WINDOW_MS = 10 * 60 * 1000;
 
 /** In-lesson Kube — the baby-steps edition. A student who asks for help here
  *  ALREADY didn't get it from the lesson, so the answer must never be a wall
@@ -57,6 +64,15 @@ export async function POST(req: NextRequest) {
   const gate = await requireEntitlement(req, "summit");
   if (!gate.ok) return gate.response;
   const uid = gate.uid;
+
+  const rl = checkRateLimit(`chat:${uid}`, CHAT_LIMIT, CHAT_WINDOW_MS);
+  if (!rl.ok) {
+    const seconds = Math.ceil(rl.retryAfterMs / 1000);
+    return Response.json(
+      { error: `Kube needs a short breather — lots of questions in a few minutes. Try again in ${Math.ceil(seconds / 60)} minute${seconds > 60 ? "s" : ""}.` },
+      { status: 429, headers: { "Retry-After": String(seconds) } }
+    );
+  }
 
   let courseTitle = "";
   let topicTitle = "";

@@ -5,9 +5,15 @@ import { requireStudyAccess } from "@/lib/entitlement-server";
 import { getAnthropic, CHAT_MODEL } from "@/lib/anthropic";
 import { chatJSON, CHAT_BUDGET_MODEL } from "@/lib/openrouter";
 import { budgetEngineReady } from "@/lib/course/generate";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
+
+// Each check is a paid model call. A fast drill runs maybe one every
+// 20 seconds; 60 in ten minutes allows that and nothing much faster.
+const CHECK_LIMIT = 60;
+const CHECK_WINDOW_MS = 10 * 60 * 1000;
 
 /** Definitions drill judge (KUBE_CASUAL_AND_PRACTICE.md §3a). Grades by
  *  MEANING, never spelling — the user's own words and synonyms are right;
@@ -37,6 +43,15 @@ export async function POST(req: NextRequest) {
   // The practice meaning-judge is a Climb feature (cram gym).
   const gate = await requireStudyAccess(req, { insideLesson: true });
   if (!gate.ok) return gate.response;
+
+  const rl = checkRateLimit(`define:${gate.uid}`, CHECK_LIMIT, CHECK_WINDOW_MS);
+  if (!rl.ok) {
+    const seconds = Math.ceil(rl.retryAfterMs / 1000);
+    return Response.json(
+      { error: `That's a lot of checks in a few minutes — take a breath. Try again in ${Math.ceil(seconds / 60)} minute${seconds > 60 ? "s" : ""}.` },
+      { status: 429, headers: { "Retry-After": String(seconds) } }
+    );
+  }
 
   let term = "";
   let definition = "";
