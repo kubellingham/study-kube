@@ -79,7 +79,7 @@ const unitSchema = z.object({
         lessons: z
           .array(lessonSchema)
           .describe(
-            "The four-quarter drill (2-3 lessons for a light concept, 4 for medium/heavy): Q1 meet-it-slowly (4-8 tiny teach beats that WALK the student into the idea — never the whole definition in one breath), Q2 question-it (gentle checks on exactly what was met), Q3 again-differently (a worked example, a you-try-one check, a spot-the-mistake check), Q4 stretch-and-compare (neighbours, harder cases, transfer)"
+            "The circle's quarters (2-3 for a light concept, 4 for medium, 4-6 for heavy — extra quarters go where the difficulty is, and Stretch & compare is always last): Q1 meet-it-slowly (4-8 tiny teach beats that WALK the student into the idea — never the whole definition in one breath), Q2 question-it (gentle checks on exactly what was met), Q3 again-differently (a worked example, a you-try-one check, a spot-the-mistake check), Q4 stretch-and-compare (neighbours, harder cases, transfer)"
           ),
       })
     )
@@ -126,18 +126,36 @@ function coversLine(covers: string[] | undefined): string {
     : "";
 }
 
+/**
+ * HOW BIG A CIRCLE IS — its quarters.
+ *
+ * Four is the default, not a law. Circles are now sized by meaning, so some
+ * hold far more than others: "PHP Comments" is small, "PHP Data Types" is
+ * seven types deep. A tough circle gets MORE quarters instead of being split
+ * into more circles — the bigger the circles, the fewer of them on the ladder.
+ * The extra quarters have jobs of their own; they are never just "more".
+ */
+const QUARTER_RULE = `HOW MANY QUARTERS — size the circle to the idea:
+- LIGHT: 2-3 quarters. MEDIUM: 4. HEAVY (tough, or holding many named things): 4, 5 or 6 — as many as the idea genuinely needs, never padding.
+- The four core quarters: "Meet it, slowly" → "Question it" → "Again, differently" → "Stretch & compare".
+- Extra quarters go WHERE THE DIFFICULTY IS, with a job of their own:
+  · a big idea in two parts gets a second "Meet it" + "Question it" pair for its second part (scalar types, then compound types), before "Again, differently";
+  · a tough procedure gets a second "Again, differently" — another fully worked example from a new angle (printf's format codes, a second conversion).
+- "Stretch & compare" is always the LAST quarter. Ids run q1, q2, q3 … in order.`;
+
 const CIRCLE_RULE = `WHAT A CIRCLE IS — the unit of this map. Get this right above everything else.
 - A circle is ONE idea a lecturer would give its own syllabus heading, or an exam would ask about by name: "PHP Data Types", "Form Validation", "Open-Source Licences", "Variable Scope".
 - Its DEPTH lives inside it, in its quarters — never in extra circles. Things the material teaches together as one idea (the seven PHP data types; echo, print and print_r; a family of licences) are ONE circle, with every item taught inside it.
 - Split an idea into separate circles only when each part would be its own exam question AND needs a full lesson of its own to master (BCD, Excess-3 and Gray code each have a different conversion method — three circles).
 - Never two circles for the same idea. Two slides, two sections, or a circle that already exists on the course covering it: it is ONE circle.
+- A big idea gets a BIGGER circle — up to six quarters — never a second circle. Mark such circles "heavy".
 - COVERAGE IS NOT OPTIONAL. Every named thing in the material — each keyword, function, operator, data type, licence, protocol, rule — goes in the "covers" list of exactly one circle, so its lesson teaches it. Walk the material from the first page to the last. Fewer circles never means less taught.`;
 
 const SYSTEM = `You are Kube, a calm and warm tutor who turns a lecturer's unit material into a playable learning ladder of DEEP, drilled circles — genuinely teaching someone who starts knowing nothing.
 
 You do NOT summarize, and you never build "show a card + Got it button" lessons. You extract a concept map and drill each concept:
 - ${CIRCLE_RULE.replace(/\n/g, "\n  ")}
-- Each topic is a FOUR-QUARTER circle (lighter concepts may compress to 2-3 quarters, but never to a single card):
+- Each topic is a circle of quarters — four by default, 2-3 for a light concept, up to six for a heavy one (never a single card):
   Q1 "Meet it, slowly" — 4-8 tiny teach beats, each ONE small idea, that WALK the student into the concept (start from a question or a need, build up; never state the full definition in one breath).
   Q2 "Question it" — gentle checks on exactly what was just met, poked from different angles.
   Q3 "Again, differently" — the SAME concept re-approached: a worked example, then a "you try one" check, then a "spot the mistake" check diagnosing a realistic student error.
@@ -289,7 +307,8 @@ const DRILL_RULES = `You are Kube, a calm, warm tutor. You drill ONE concept int
 - Q2 "Question it" — gentle checks on exactly what was just met, poked from different angles.
 - Q3 "Again, differently" — the SAME concept re-approached: a worked example, then a "you try one" check, then a "spot the mistake" check diagnosing a realistic student error.
 - Q4 "Stretch & compare" — neighbours, harder cases, transfer to a fresh scenario; only now compare with related concepts.
-- Lighter concepts may compress to 2-3 quarters, but NEVER to a single card. Depth scales with weight: heavy = full deep drill (~14-18 interactions); medium ~10; light ~6-8 but still a real circle.
+- ${QUARTER_RULE}
+- NEVER a single card. Depth scales with weight: heavy = a full deep drill (~14-18 interactions over 4 quarters, up to ~26 over 6); medium ~10; light ~6-8 but still a real circle.
 - HARD RULE: every repetition is a FRESH angle (meet / use / break / compare). Never repeat the same question shape within a circle.
 - Teach for UNDERSTANDING: beats explain the why; checks use plausible distractors from real misconceptions; praise is specific to the idea just tested ("Right — the +1 is what separates 2's from 1's complement"), never a generic "Correct!".
 - WORKED EXAMPLES (Q3 especially): work it end to end with REAL numbers/values — show EVERY step and state the final result. Verify any arithmetic, truth table, bit pattern or conversion before you write it; a wrong worked number teaches the wrong thing. If a computation is one you can't be sure of, teach it qualitatively rather than guess a number.
@@ -605,7 +624,7 @@ const topicLessonsSchema = z.object({
   lessons: z
     .array(lessonSchema)
     .describe(
-      "The four-quarter drill for THIS ONE topic (2-3 lessons for a light concept, 4 for medium/heavy)."
+      "The quarters for THIS ONE circle (2-3 for a light concept, 4 for medium, 4-6 for heavy; Stretch & compare always last)."
     ),
 });
 
@@ -743,6 +762,12 @@ export function requiredQuarters(weight: string): number {
 
 const INSIST_QUARTERS = `YOUR LAST ATTEMPT RETURNED TOO FEW QUARTERS. Return the COMPLETE circle this time: q1 "Meet it, slowly", q2 "Question it", q3 "Again, differently", q4 "Stretch & compare", each with its own steps. Do not return a single quarter.`;
 
+/** The fallback for a big circle whose answer didn't come back whole (a model
+ *  can only write so much in one reply, and a six-quarter lesson can hit that
+ *  ceiling mid-sentence). Losing the circle is the one outcome that isn't
+ *  acceptable — four compact quarters that teach everything in it are. */
+const COMPACT_QUARTERS = `YOUR LAST ATTEMPT DID NOT COME BACK COMPLETE — it was too long to finish. Return EXACTLY four quarters this time (q1 "Meet it, slowly", q2 "Question it", q3 "Again, differently", q4 "Stretch & compare"), with tight beats, and still teach every item this circle must cover.`;
+
 /** Step 2: one topic's four-quarter drill. Called once per topic, in parallel. */
 export async function generateTopicLessons(
   courseTitle: string,
@@ -866,7 +891,7 @@ const LESSON_JSON_SHAPE = `Return ONLY a JSON object (no prose, no markdown fenc
   {"id":"q3","title":"3 · Again, differently","steps":[ ... ]},
   {"id":"q4","title":"4 · Stretch & compare","steps":[ ... ]}
 ]}
-- HARD RULE — RETURN ALL FOUR QUARTERS. The "lessons" array must hold q1, q2, q3 and q4 (a LIGHT topic may stop at q3, never fewer than 2). A single-quarter answer is a failed answer: it leaves the student with one card instead of a lesson. The shape above is an abbreviation — write every quarter out in full.
+- HARD RULE — RETURN EVERY QUARTER THIS CIRCLE NEEDS. At least q1-q4 (a LIGHT circle may stop at q3, never fewer than 2). A HEAVY circle may run to q5 or q6 — the extra quarters sit before "Stretch & compare", which is always last, and each has a job (a second part of the idea, or a second worked example). A single-quarter answer is a failed answer. The shape above is an abbreviation — write every quarter out in full.
 - Each step is EITHER a teach beat OR a check. "answer" is the 0-based index; give 3-4 options per check.`;
 
 interface CheapOpts {
@@ -972,14 +997,24 @@ ${rawText.slice(0, MAX_UNIT_CHARS)}
 
 ${LESSON_JSON_SHAPE}`;
   const model = useVision ? opts.vision ?? SUMMIT_VISION_MODEL : opts.model ?? SUMMIT_MODEL;
-  const run = async (text: string) => {
+  // A heavy circle may run to six quarters, so it gets room to finish.
+  const heavy = topic.weight === "heavy";
+  const run = async (text: string, maxTokens = heavy ? 16000 : 12000) => {
     const content = useVision ? [{ type: "text" as const, text }, ...orImageBlocks(images)] : text;
-    const { data, usage } = await chatJSON({ model, system: UNIT_SYSTEM, content, maxTokens: 12000 });
+    const { data, usage } = await chatJSON({ model, system: UNIT_SYSTEM, content, maxTokens });
     meter?.add(usage);
     return topicLessonsSchema.parse(data).lessons;
   };
 
-  let lessons = await run(prompt);
+  let lessons: z.infer<typeof lessonSchema>[];
+  try {
+    lessons = await run(prompt);
+  } catch (err) {
+    // A big answer that got cut off comes back as unreadable JSON. Rather than
+    // lose the whole circle, ask once for four compact quarters.
+    if (!heavy) throw err;
+    lessons = await run(`${prompt}\n\n${COMPACT_QUARTERS}`, 12000);
+  }
   // Budget models often copy the SHAPE of the example instead of the
   // instruction and hand back a single quarter — which reaches the student as
   // one lonely card where a four-quarter circle was promised. Insist once.
