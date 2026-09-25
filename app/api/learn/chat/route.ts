@@ -6,6 +6,8 @@ import { getAnthropic, CHAT_MODEL } from "@/lib/anthropic";
 import { chatJSON, CHAT_BUDGET_MODEL } from "@/lib/openrouter";
 import { budgetEngineReady } from "@/lib/course/generate";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { checkAllowance, recordSpend } from "@/lib/spend";
+import { UsageMeter } from "@/lib/usage";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -73,6 +75,8 @@ export async function POST(req: NextRequest) {
       { status: 429, headers: { "Retry-After": String(seconds) } }
     );
   }
+  const allowance = await checkAllowance(uid, gate.email, gate.ent, "study");
+  if (!allowance.ok) return allowance.response;
 
   let courseTitle = "";
   let topicTitle = "";
@@ -121,11 +125,12 @@ ${coveredSoFar || "(nothing before this — it's the first circle)"}`;
   // The reply is JSON either way; only the engine differs. Using the budget
   // model keeps "Ask Kube" alive on the same funded key as digestion.
   const useBudget = budgetEngineReady();
+  const meter = new UsageMeter();
 
   try {
     let jsonText: string;
     if (useBudget) {
-      const { data } = await chatJSON({
+      const { data, usage } = await chatJSON({
         model: CHAT_BUDGET_MODEL,
         system: SYSTEM,
         content:
@@ -135,6 +140,7 @@ ${coveredSoFar || "(nothing before this — it's the first circle)"}`;
           `Reply as JSON only, no prose or fences, exactly: {"kind":"clarify"|"answer","intro"?:string,"options"?:[string],"beats"?:[string]}`,
         maxTokens: 1200,
       });
+      meter.add(usage);
       jsonText = JSON.stringify(data);
     } else {
       const stream = getAnthropic().messages.stream({
@@ -150,6 +156,7 @@ ${coveredSoFar || "(nothing before this — it's the first circle)"}`;
           jsonText += event.delta.text;
         }
       }
+      meter.add((await stream.finalMessage()).usage);
     }
 
     const reply = replySchema.parse(JSON.parse(jsonText));
@@ -181,5 +188,7 @@ ${coveredSoFar || "(nothing before this — it's the first circle)"}`;
       },
       { status: 502 }
     );
+  } finally {
+    await recordSpend(uid, meter.costUsd(), "chat");
   }
 }

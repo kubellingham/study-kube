@@ -8,7 +8,7 @@ that changes what's written here updates it in the same PR.
 after launch). `PROJECT_BRIEF.md` describes the **old** product (materials,
 summaries, quizzes) and is out of date. Trust this file over it.
 
-*Last updated: 2026-09-25, after #50.*
+*Last updated: 2026-09-25, after #51.*
 
 ---
 
@@ -148,10 +148,38 @@ draining the balance:
 The old `/materials` AI routes (summary, quiz, flashcards, tutor) are
 **switched off** (410) in `requireMaterial` until those files are deleted.
 
-**Not built yet:** a per-person *monthly* allowance measured in real cost
-(e.g. a Summit account can't cost more than ~$X of model spend a month),
-stored in Firestore so it's exact. This is the recommended next build. The
-meter already exists (`UsageMeter`); it just isn't summed per user per month.
+**The monthly allowance (#51)** is the real per-person wall. It's
+`lib/spend.ts`. Every AI door checks it before spending and records what the
+call really cost afterwards. OpenRouter reports each call's actual charge
+(`usage: { include: true }`), and the meter uses that. Only calls without a
+figure fall back to a token estimate. It's stored in Firestore
+(`spend/{uid}`: `month`, `usd`, `byKind`, and `history` of past months), so
+it's exact across every server instance. Only the server can read or write it.
+
+| Plan | Kube may spend on them per month (USD) | Env to change it |
+|---|---|---|
+| Free / lapsed | $0.50 | `ALLOWANCE_FREE_USD` |
+| Climb | $1.00 | `ALLOWANCE_CLIMB_USD` |
+| Summit | $4.00 | `ALLOWANCE_SUMMIT_USD` |
+| Crew (per person) | same as Summit | `ALLOWANCE_CREW_USD` |
+
+How it behaves:
+
+- **Building and reading** (build, observe, re-mark) stop at 100%.
+- **Help inside lessons** (tutor, drill checks, cards, chat notes) keeps going
+  to 125% (`STUDY_GRACE`), so nobody is cut off mid-lesson because a big
+  upload used the month.
+- A build that has started always finishes. The check happens before, and the
+  cost is recorded after, even when the build fails.
+- Opening and climbing lessons costs nothing and is never blocked.
+- It refills at midnight UTC on the 1st.
+- The owner (`lib/owner.ts`) is counted but never stopped.
+- If the ledger can't be read, Kube lets the student through.
+- `SPEND_ALLOWANCE=0` turns enforcement off (spend is still recorded).
+- **Students see a share, never dollars**: the account page shows a bar with
+  "N% used, refills on 1 October".
+- **Isaac sees dollars**: `/admin` shows this month's total and the top 25
+  people by cost.
 
 ## 6. Payments (Stripe)
 
@@ -190,7 +218,9 @@ Optional: `NEXT_PUBLIC_APP_URL` (defaults to the vercel.app domain),
 `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` (turns the shelf on), `FREE_BUILD=0`
 (kill switch), `OPENROUTER_*_MODEL` / `*_PRICE_*` (model swaps),
 `ANTHROPIC_API_KEY` / `OWNER_PREMIUM` / `SUMMIT_ENGINE` (owner premium),
-`LEGACY_MATERIALS=1` (re-opens the retired routes; don't).
+`LEGACY_MATERIALS=1` (re-opens the retired routes; don't),
+`ALLOWANCE_*_USD` (monthly allowances, §5), `SPEND_ALLOWANCE=0` (stop
+enforcing them).
 
 ## 9. Where things live
 
@@ -204,6 +234,7 @@ Optional: `NEXT_PUBLIC_APP_URL` (defaults to the vercel.app domain),
 | Plans page | `app/learn/upgrade` |
 | Stripe | `lib/stripe.ts`, `app/api/stripe/*` |
 | Rate limiter | `lib/rate-limit.ts` |
+| Monthly allowance | `lib/spend.ts` |
 | Admin | `app/admin` |
 
 ## 10. Workflow and gotchas
@@ -236,12 +267,15 @@ Optional: `NEXT_PUBLIC_APP_URL` (defaults to the vercel.app domain),
 rate limits · #43 domain · #44 two subscriptions · #45 free = 12 topics ·
 #46 circle definition and dedupe · #47 quarters sized to the idea ·
 #48 tiers (gifts, Climb taste, free floor) · #49 pictures read once ·
-#50 per-person limits on every AI door and this file.
+#50 per-person limits on every AI door and this file · #51 the monthly
+allowance, counted in real dollars.
 
 ### Not proven live yet (needs OpenRouter credit)
 
 The new circle sizing, dedupe, quarters, Climb's 3 taught topics, the picture
-reader and its cost, and a free build end to end. **The test:** rebuild the PHP
+reader and its cost, a free build end to end, and the monthly allowance
+(check `/admin` shows the build under "This month", and the account page bar
+moves). **The test:** rebuild the PHP
 Unit 2 (the 3 PDFs) as a fresh subject. Check the circle count, that nothing
 repeats, that the quarters vary, and the cost in `/admin`.
 
@@ -265,10 +299,16 @@ repeats, that the quarters vary, and the cost in `/admin`.
   first month only.
 - Confirm that a lapsed account gets no practice gym, and that its floor is
   the first 12 topics by oldest subject.
+- The monthly allowance figures (§5): $0.50 free, $1 Climb, $4 Summit and
+  Crew. Climb and Summit are about 40% of what each plan brings in after
+  Stripe's cut. Crew matches Summit, which is nearer 80% of a seat's share.
+  All were set before any real build had been costed. Revisit them
+  after the smoke test and the first month of real users. The student copy
+  when it runs out is in `lib/spend.ts`.
 
 ### Recommended next build
 
-The per-person monthly cost allowance (§5).
+None queued. Next is the live smoke test, then launch.
 
 ### After launch (set down on purpose; not gaps)
 

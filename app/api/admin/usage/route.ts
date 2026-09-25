@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { requireOwner } from "@/lib/admin-guard";
 import { adminDb } from "@/lib/firebase/admin";
+import { monthKey } from "@/lib/spend";
 
 export const runtime = "nodejs";
 
@@ -72,10 +73,34 @@ export async function GET(req: NextRequest) {
     totals.costUsd = Math.round(totals.costUsd * 10_000) / 10_000;
     const avgCost = totals.digests > 0 ? totals.costUsd / totals.digests : 0;
 
+    // This month, per person — everything they cost (builds, reads, tutor,
+    // drill checks, cards), from the allowance ledger. Sorted here rather than
+    // in the query so it needs no composite index.
+    const month = monthKey();
+    const spendSnap = await db.collection("spend").where("month", "==", month).get();
+    const spenders = spendSnap.docs
+      .map((d) => ({ uid: d.id, usd: (d.get("usd") as number) ?? 0 }))
+      .sort((a, b) => b.usd - a.usd);
+    const top = spenders.slice(0, 25);
+    const userDocs = top.length
+      ? await db.getAll(...top.map((p) => db.collection("users").doc(p.uid)))
+      : [];
+    const monthTotal = spenders.reduce((sum, p) => sum + p.usd, 0);
+
     return Response.json({
       totals,
       avgCost: Math.round(avgCost * 10_000) / 10_000,
       recent: recent.slice(0, 40),
+      month: {
+        key: month,
+        people: spenders.length,
+        totalUsd: Math.round(monthTotal * 10_000) / 10_000,
+        top: top.map((p, i) => ({
+          uid: p.uid,
+          email: (userDocs[i]?.get("email") as string | undefined) ?? null,
+          usd: Math.round(p.usd * 10_000) / 10_000,
+        })),
+      },
     });
   } catch (err) {
     return Response.json(

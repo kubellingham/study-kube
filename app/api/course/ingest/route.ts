@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 import { NextRequest, after } from "next/server";
-import { requireBuildAccess, getEntitlement, spendFreeTopics } from "@/lib/entitlement-server";
+import { requireBuildAccess, spendFreeTopics } from "@/lib/entitlement-server";
+import { checkAllowance, recordSpend } from "@/lib/spend";
 import { isOwner } from "@/lib/owner";
 import { OWNER_MODEL, OWNER_PRICE_IN, OWNER_PRICE_OUT } from "@/lib/anthropic";
 import { adminDb } from "@/lib/firebase/admin";
@@ -278,9 +279,14 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // The month's allowance is checked once, here, before anything is spent. A
+  // build that starts always finishes — even one that crosses the line.
+  const allowance = await checkAllowance(uid, gate.email, gate.ent, "build");
+  if (!allowance.ok) return allowance.response;
+
   // Tier decides the engine: Climb DISTILLS (concept map + exams on the budget
   // model, no drilling); Summit+ gets the deep four-quarter teaching on Sonnet.
-  const ent = await getEntitlement(uid);
+  const ent = gate.ent;
   // Optional: the OWNER account can run the PREMIUM deep path (top Claude model)
   // to A/B against the budget engine on the same file. OFF by default so an
   // owner upload never silently costs Opus money — set OWNER_PREMIUM=1 to enable.
@@ -420,9 +426,18 @@ export async function POST(req: NextRequest) {
     // Any status other than "working" ends the job, so it also stands the
     // watchdog down — that's every exit path covered without a stopGuard()
     // sprinkled through eight of them.
+    //
+    // The first ending is also where the build's cost joins the student's
+    // month — once, whichever way it ended, failures included (tokens spent on
+    // a failed build were still spent).
+    let charged = false;
     const setJob = (fields: Record<string, unknown>) => {
-      if (typeof fields.status === "string" && fields.status !== "working") stopGuard();
-      return jobRef.update({ ...fields, updatedAt: Date.now() }).catch(() => {});
+      const ending = typeof fields.status === "string" && fields.status !== "working";
+      if (ending) stopGuard();
+      const write = jobRef.update({ ...fields, updatedAt: Date.now() }).catch(() => {});
+      if (!ending || charged) return write;
+      charged = true;
+      return Promise.all([write, recordSpend(uid, meter.costUsd(), "build")]).then(() => {});
     };
 
     // Last line of defence. The phase budgets above are built so we always

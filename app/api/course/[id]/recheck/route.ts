@@ -1,5 +1,7 @@
 import { NextRequest } from "next/server";
-import { getUid } from "@/lib/api-helpers";
+import { getAuth } from "@/lib/api-helpers";
+import { getEntitlement } from "@/lib/entitlement-server";
+import { checkAllowance, recordSpend } from "@/lib/spend";
 import { adminDb } from "@/lib/firebase/admin";
 import { verifyStoredCourse, reportLine } from "@/lib/course/verify";
 import { CHAT_BUDGET_MODEL } from "@/lib/openrouter";
@@ -24,8 +26,9 @@ export const maxDuration = 300;
  */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const uid = await getUid(req);
-  if (!uid) return Response.json({ error: "Not signed in." }, { status: 401 });
+  const auth = await getAuth(req);
+  if (!auth) return Response.json({ error: "Not signed in." }, { status: 401 });
+  const uid = auth.uid;
   // Re-marking a whole course is one paid call per batch of questions. It's a
   // repair button, not something anyone needs twice a minute.
   const rl = checkRateLimit(`recheck:${uid}`, 5, 10 * 60 * 1000);
@@ -51,6 +54,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (sections.length === 0 && examBank.length === 0) {
     return Response.json({ error: "Nothing to check yet — digest a file first." }, { status: 400 });
   }
+
+  const allowance = await checkAllowance(uid, auth.email, await getEntitlement(uid), "build");
+  if (!allowance.ok) return allowance.response;
 
   const meter = new UsageMeter(CLIMB_PRICE_IN, CLIMB_PRICE_OUT);
   try {
@@ -80,5 +86,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       { error: err instanceof Error ? err.message : "The answer check failed." },
       { status: 502 }
     );
+  } finally {
+    await recordSpend(uid, meter.costUsd(), "recheck");
   }
 }

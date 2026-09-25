@@ -6,6 +6,8 @@ import { getAnthropic, CHAT_MODEL } from "@/lib/anthropic";
 import { chatJSON, CHAT_BUDGET_MODEL } from "@/lib/openrouter";
 import { budgetEngineReady } from "@/lib/course/generate";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { checkAllowance, recordSpend } from "@/lib/spend";
+import { UsageMeter } from "@/lib/usage";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -52,6 +54,8 @@ export async function POST(req: NextRequest) {
       { status: 429, headers: { "Retry-After": String(seconds) } }
     );
   }
+  const allowance = await checkAllowance(gate.uid, gate.email, gate.ent, "study");
+  if (!allowance.ok) return allowance.response;
 
   let term = "";
   let definition = "";
@@ -73,10 +77,11 @@ export async function POST(req: NextRequest) {
   const SYSTEM = "You judge whether a student's definition captures the MEANING of a concept, for a recall drill. Grade by meaning, NEVER by spelling or exact wording — the student's own words and correct synonyms are fully right. But do NOT be fooled by empty words or jargon that dodge the actual idea. Reward understanding; do not reward hollow phrasing. When it's ALMOST there, give your crisp better wording, then TWO candidate corrections to choose between (one clearly better, one plausible-but-off) so the student is taught into the fix. Warm, brief, never condescending — a miss is how it sticks.";
   const userMsg = `Concept: ${term}\nReference definition (the lesson's own): ${definition}\nDifficulty the student picked: ${level}\n\nStudent's answer: ${answer}`;
 
+  const meter = new UsageMeter();
   try {
     let jsonText: string;
     if (budgetEngineReady()) {
-      const { data } = await chatJSON({
+      const { data, usage } = await chatJSON({
         model: CHAT_BUDGET_MODEL,
         system: SYSTEM,
         content:
@@ -84,6 +89,7 @@ export async function POST(req: NextRequest) {
           `\n\nReply as JSON only, no prose or fences, matching the verdict shape.`,
         maxTokens: 700,
       });
+      meter.add(usage);
       jsonText = JSON.stringify(data);
     } else {
       const stream = getAnthropic().messages.stream({
@@ -99,10 +105,13 @@ export async function POST(req: NextRequest) {
           jsonText += event.delta.text;
         }
       }
+      meter.add((await stream.finalMessage()).usage);
     }
     const parsed = verdictSchema.parse(JSON.parse(jsonText));
     return Response.json(parsed);
   } catch {
     return Response.json({ error: "Kube couldn't check that just now." }, { status: 502 });
+  } finally {
+    await recordSpend(gate.uid, meter.costUsd(), "drill");
   }
 }

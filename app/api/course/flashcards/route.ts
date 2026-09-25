@@ -3,6 +3,9 @@ import { requireStudyAccess } from "@/lib/entitlement-server";
 import { adminDb } from "@/lib/firebase/admin";
 import { generateCourseFlashcards } from "@/lib/course/flashcards";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { checkAllowance, recordSpend } from "@/lib/spend";
+import { UsageMeter } from "@/lib/usage";
+import { CLIMB_PRICE_IN, CLIMB_PRICE_OUT } from "@/lib/openrouter";
 import type { Section } from "@/lib/course/types";
 
 export const runtime = "nodejs";
@@ -55,7 +58,13 @@ export async function POST(req: NextRequest) {
     return Response.json({ generated: 0, note: "Cards already sharp." });
   }
 
-  const cards = await generateCourseFlashcards(title, need);
+  // Cards are made when a course is opened, so they're study, not building.
+  const allowance = await checkAllowance(uid, gate.email, gate.ent, "study");
+  if (!allowance.ok) return allowance.response;
+
+  const meter = new UsageMeter(CLIMB_PRICE_IN, CLIMB_PRICE_OUT);
+  const cards = await generateCourseFlashcards(title, need, meter);
+  await recordSpend(uid, meter.costUsd(), "cards");
   const ids = Object.keys(cards);
   if (ids.length === 0) return Response.json({ generated: 0 });
 

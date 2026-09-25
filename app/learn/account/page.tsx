@@ -194,6 +194,7 @@ export default function AccountPage() {
                 }`}
           </p>
         )}
+        {entitlement?.allowance && <MonthMeter {...entitlement.allowance} />}
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <ManageBilling />
           {entitlement !== null && !hasSummit(entitlement) && (
@@ -404,5 +405,34 @@ export default function AccountPage() {
         </a>
       </p>
     </main>
+  );
+}
+
+/** How much of this month's AI allowance is used. Shown as a share, never in
+ *  dollars — a student needs to know what's left, not what Kube paid. */
+function MonthMeter({ usedShare, resetsAt }: { usedShare: number; resetsAt: number }) {
+  const pct = Math.round(Math.min(1, Math.max(0, usedShare)) * 100);
+  const refills = new Date(resetsAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", timeZone: "UTC" });
+  return (
+    <div className="mt-4">
+      <div className="flex items-center justify-between text-xs" style={{ color: "var(--ink-soft)" }}>
+        <span>This month&apos;s building and help</span>
+        <span>{pct >= 100 ? "Used up" : `${pct}% used`}</span>
+      </div>
+      <div
+        className="mt-1.5 h-1.5 overflow-hidden rounded-full"
+        style={{ background: "var(--line)" }}
+        role="meter"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={pct}
+        aria-label="This month's allowance used"
+      >
+        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: pct >= 90 ? "var(--amber)" : "var(--kube)" }} />
+      </div>
+      <p className="mt-1.5 text-xs" style={{ color: "var(--faint)" }}>
+        Refills on {refills}. Opening and climbing what you&apos;ve built never uses it.
+      </p>
+    </div>
   );
 }

@@ -8,6 +8,7 @@ import {
 } from "@/lib/course/generate";
 import { UsageMeter } from "@/lib/usage";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { checkAllowance, recordSpend } from "@/lib/spend";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -50,6 +51,10 @@ export async function POST(req: NextRequest) {
       { status: 429, headers: { "Retry-After": String(seconds) } }
     );
   }
+  // The read is the first step of a build, so it answers to the same
+  // monthly allowance — better to hear it now than after choosing options.
+  const allowance = await checkAllowance(gate.uid, gate.email, gate.ent, "build");
+  if (!allowance.ok) return allowance.response;
 
   let body: { courseTitle?: string; files?: unknown };
   try {
@@ -78,8 +83,8 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "That upload had too little to read." }, { status: 400 });
   }
 
+  const meter = new UsageMeter();
   try {
-    const meter = new UsageMeter();
     // The read is a small, mechanical job — run it on the budget engine when
     // one is configured, so a budget-tier digest never needs Anthropic credit.
     const read = budgetEngineReady()
@@ -91,5 +96,7 @@ export async function POST(req: NextRequest) {
       { error: err instanceof Error ? err.message : "Kube couldn't read that material." },
       { status: 502 }
     );
+  } finally {
+    await recordSpend(gate.uid, meter.costUsd(), "read");
   }
 }

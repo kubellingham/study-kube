@@ -2,8 +2,8 @@
 // tokens it used — regular input, cached-write input, cached-read input, and
 // output. We sum them into one meter and turn the total into a dollar estimate
 // so a digest can show its own cost. The tokens are REAL (straight from the
-// API); the dollar figure applies a fixed rate to them, so the authoritative
-// bill is always the Anthropic Console — this is the in-app mirror of it.
+// API). The dollars are real too wherever the provider reports its charge
+// (OpenRouter does); only calls without one fall back to a fixed rate.
 
 /** The usage shape the Anthropic SDK returns on every response/stream. */
 export interface RawUsage {
@@ -11,6 +11,9 @@ export interface RawUsage {
   output_tokens?: number | null;
   cache_creation_input_tokens?: number | null;
   cache_read_input_tokens?: number | null;
+  /** The provider's own charge for the call, in USD, when it reports one
+   *  (OpenRouter does). Used as-is instead of the token estimate. */
+  cost_usd?: number | null;
 }
 
 // Sonnet 5 list price, USD per million tokens. Cache-write is 1.25× input,
@@ -41,6 +44,10 @@ export class UsageMeter {
   output = 0;
   cacheWrite = 0;
   cacheRead = 0;
+  /** Dollars the provider reported directly, and the estimate for the calls
+   *  that came without a figure. Their sum is the meter's cost. */
+  private reportedUsd = 0;
+  private estimatedUsd = 0;
   private priceIn: number;
   private priceOut: number;
 
@@ -56,16 +63,20 @@ export class UsageMeter {
     this.output += u.output_tokens ?? 0;
     this.cacheWrite += u.cache_creation_input_tokens ?? 0;
     this.cacheRead += u.cache_read_input_tokens ?? 0;
+    if (typeof u.cost_usd === "number" && Number.isFinite(u.cost_usd) && u.cost_usd >= 0) {
+      this.reportedUsd += u.cost_usd;
+      return;
+    }
+    this.estimatedUsd +=
+      ((u.input_tokens ?? 0) * this.priceIn +
+        (u.cache_creation_input_tokens ?? 0) * this.priceIn * CACHE_WRITE_MULT +
+        (u.cache_read_input_tokens ?? 0) * this.priceIn * CACHE_READ_MULT +
+        (u.output_tokens ?? 0) * this.priceOut) /
+      1_000_000;
   }
 
   costUsd(): number {
-    const dollars =
-      (this.input * this.priceIn +
-        this.cacheWrite * this.priceIn * CACHE_WRITE_MULT +
-        this.cacheRead * this.priceIn * CACHE_READ_MULT +
-        this.output * this.priceOut) /
-      1_000_000;
-    return dollars;
+    return this.reportedUsd + this.estimatedUsd;
   }
 
   summary(): UsageSummary {
