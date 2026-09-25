@@ -35,10 +35,7 @@ service cloud.firestore {
       return [
         'learnProgress', 'practiceState', 'studyPlan', 'mistakes',
         'questionFlags', 'slideFeedback', 'learningEvents', 'examAttempts',
-        'chatNotes', 'shelfItems',
-        // Pre-Kube /dashboard + /materials pages, unchanged until they go.
-        'materials', 'summaries', 'cards', 'decks', 'quizzes', 'attempts',
-        'messages'
+        'chatNotes', 'shelfItems'
       ];
     }
 

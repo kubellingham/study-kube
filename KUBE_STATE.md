@@ -8,7 +8,7 @@ that changes what's written here updates it in the same PR.
 after launch). `PROJECT_BRIEF.md` describes the **old** product (materials,
 summaries, quizzes) and is out of date. Trust this file over it.
 
-*Last updated: 2026-09-25, after #51.*
+*Last updated: 2026-09-25, after #52.*
 
 ---
 
@@ -145,8 +145,11 @@ draining the balance:
 | Promo code, crew join | 10 / 10 min |
 | Free builds | 12 topics lifetime (stored, exact) |
 
-The old `/materials` AI routes (summary, quiz, flashcards, tutor) are
-**switched off** (410) in `requireMaterial` until those files are deleted.
+The old materials app (`/dashboard`, `/materials` and its summary, quiz,
+flashcards and tutor routes) was **deleted** in #52. One piece of it lives on:
+`lib/ingest/pdf.ts` (with `IngestResult` in `lib/types.ts`) is the build's
+server-side PDF reader, used through `lib/ingest/office.ts`. Keep it. Its
+`unpdf` library causes the one harmless build warning.
 
 **The monthly allowance (#51)** is the real per-person wall. It's
 `lib/spend.ts`. Every AI door checks it before spending and records what the
@@ -218,7 +221,6 @@ Optional: `NEXT_PUBLIC_APP_URL` (defaults to the vercel.app domain),
 `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` (turns the shelf on), `FREE_BUILD=0`
 (kill switch), `OPENROUTER_*_MODEL` / `*_PRICE_*` (model swaps),
 `ANTHROPIC_API_KEY` / `OWNER_PREMIUM` / `SUMMIT_ENGINE` (owner premium),
-`LEGACY_MATERIALS=1` (re-opens the retired routes; don't),
 `ALLOWANCE_*_USD` (monthly allowances, §5), `SPEND_ALLOWANCE=0` (stop
 enforcing them).
 
@@ -252,9 +254,9 @@ enforcing them).
 - **Lint:** the repo has some pre-existing lint errors, so lint only the files
   you changed. A function named `use…` is treated as a hook, and
   set-state-in-effect is flagged (use an async IIFE with an `alive` flag).
-- **Deleting files:** the sandbox blocks bulk deletes as irreversible. Isaac
-  said to delete the legacy pages; it still needs his explicit OK in-session.
-  Don't route around the block.
+- **Deleting files:** needs Isaac's explicit OK in the session. Before
+  deleting, grep for importers: "unreachable" was once wrong about
+  `lib/ingest/pdf.ts`.
 - **Egress:** outbound network from the sandbox is restricted. OpenRouter and
   Stripe can't be called from here, so live tests are Isaac's.
 
@@ -268,7 +270,7 @@ rate limits · #43 domain · #44 two subscriptions · #45 free = 12 topics ·
 #46 circle definition and dedupe · #47 quarters sized to the idea ·
 #48 tiers (gifts, Climb taste, free floor) · #49 pictures read once ·
 #50 per-person limits on every AI door and this file · #51 the monthly
-allowance, counted in real dollars.
+allowance, counted in real dollars · #52 the old materials app deleted.
 
 ### Not proven live yet (needs OpenRouter credit)
 
@@ -282,16 +284,18 @@ repeats, that the quarters vary, and the cost in `/admin`.
 ### Waiting on Isaac
 
 1. Recharge OpenRouter, then run the smoke test above.
-2. OK to delete the legacy pages: `app/dashboard`, `app/materials`,
-   `app/components/Header.tsx`, `/api/materials|flashcards|quiz|summary|tutor`,
-   `lib/ingest/{index,pdf,text,youtube,article}.ts`, `lib/types.ts`, and
-   `requireMaterial` in `lib/api-helpers.ts`.
-3. Stripe live: activate the account, add the live key, re-run the `/admin`
-   setup, add a live webhook endpoint and its secret, turn on the customer
-   portal, then one real payment and a refund.
-4. Firebase Blaze and Storage, whenever billing goes through. The shelf turns
+   Isaac's timing: within a day of 2026-09-25.
+2. Stripe: **one more sandbox run first** (Isaac's call), then live: activate
+   the account, add the live key, re-run the `/admin` setup, add a live
+   webhook endpoint and its secret, turn on the customer portal, then one
+   real payment and a refund.
+3. Vercel Pro (Hobby is non-commercial only). Isaac is handling it, around
+   when Stripe goes live.
+4. Publish `firestore.rules` again. #52 closed the seven collections the old
+   app used. Not urgent: nothing reads them any more.
+5. Firebase Blaze and Storage, whenever billing goes through. The shelf turns
    on by itself.
-5. Confirm the `google/gemini-3.1-flash-lite` slug exists on OpenRouter.
+6. Confirm the `google/gemini-3.1-flash-lite` slug exists on OpenRouter.
 
 ### Isaac's call (open)
 
@@ -309,6 +313,12 @@ repeats, that the quarters vary, and the cost in `/admin`.
 ### Recommended next build
 
 None queued. Next is the live smoke test, then launch.
+
+### Coming up: onboarding and screen layout
+
+Isaac will open this in a separate conversation. It's a strong renovation,
+not a reinvention: same product, same flows, better presented. Wait for him
+to lead it.
 
 ### After launch (set down on purpose; not gaps)
 

@@ -1,7 +1,5 @@
 import { NextRequest } from "next/server";
 import { createRemoteJWKSet, jwtVerify } from "jose";
-import { adminDb } from "@/lib/firebase/admin";
-import type { Material } from "@/lib/types";
 
 // Firebase ID tokens are standard RS256 JWTs. We verify them directly against
 // Google's public signing keys with `jose` instead of firebase-admin/auth,
@@ -50,46 +48,4 @@ export async function getAuth(
 /** Verify the Firebase ID token from the Authorization header. */
 export async function getUid(req: NextRequest): Promise<string | null> {
   return (await getAuth(req))?.uid ?? null;
-}
-
-export async function requireMaterial(
-  req: NextRequest,
-  materialId: unknown
-): Promise<
-  | { ok: true; uid: string; material: Material }
-  | { ok: false; response: Response }
-> {
-  // Retired. The only callers are the old /materials pages, which nothing links
-  // to any more — but their four AI routes (summary, quiz, flashcards, tutor)
-  // were still answering anyone signed in, with no plan check and no limit,
-  // and a user can write their own `materials` doc from the browser. Closed
-  // here, in the one place all four pass through, until the files are deleted.
-  if (process.env.LEGACY_MATERIALS !== "1") {
-    return {
-      ok: false,
-      response: Response.json({ error: "This part of Kube has retired." }, { status: 410 }),
-    };
-  }
-  const uid = await getUid(req);
-  if (!uid) {
-    return {
-      ok: false,
-      response: Response.json({ error: "Not signed in." }, { status: 401 }),
-    };
-  }
-  if (typeof materialId !== "string" || !materialId) {
-    return {
-      ok: false,
-      response: Response.json({ error: "Missing material_id." }, { status: 400 }),
-    };
-  }
-  const snap = await adminDb().collection("materials").doc(materialId).get();
-  if (!snap.exists || snap.get("userId") !== uid) {
-    return {
-      ok: false,
-      response: Response.json({ error: "Material not found." }, { status: 404 }),
-    };
-  }
-  const material = { id: snap.id, ...snap.data() } as Material;
-  return { ok: true, uid, material };
 }

@@ -72,18 +72,12 @@ smoke test shows what a build really costs. Each is one Vercel variable
 | The tutor chat, definition checks, re-marking and the upload read had no per-person limit | One account or script could drain the shared AI balance | #50 |
 | The retired /materials AI routes still answered anyone signed in | Summary, quiz, flashcards and tutor, with no plan check | #50 |
 | One account could cost more than it paid, month after month | Staying just under the per-minute limits, all day | #51 |
+| The whole old materials app was still shipped | /dashboard, /materials and five API routes nobody could reach | #52 |
 
 ---
 
 ## Waiting on Isaac
 
-- **Delete the legacy pages.** `app/dashboard`, `app/materials`,
-  `app/components/Header.tsx`, and the five API routes only they call
-  (`/api/materials`, `/api/flashcards`, `/api/quiz`, `/api/summary`,
-  `/api/tutor` — three of which spend AI money), plus
-  `lib/ingest/{index,pdf,text,youtube,article}.ts` and `lib/types.ts`. All
-  verified unreachable. The sandbox blocked the deletion as irreversible; it
-  needs permission.
 - **OpenRouter credit.** Without it every upload fails, for everyone.
 - **Go live on Stripe** when the account is activated: live key, re-run the
   `/admin` setup, a new webhook endpoint with its own secret, the customer
