@@ -29,6 +29,17 @@ export const CHAT_BUDGET_MODEL = process.env.OPENROUTER_CHAT_MODEL || CLIMB_MODE
 // spend up. Set SUMMIT_ENGINE="sonnet" to run Summit on the premium Anthropic
 // path instead; otherwise these OpenRouter models are used.
 export const SUMMIT_MODEL = process.env.OPENROUTER_SUMMIT_MODEL || CLIMB_MODEL;
+
+// The picture reader. Every image in an upload is read ONCE, by this model, and
+// turned into text; everything after that — the map, every lesson, the exam —
+// runs as plain text on the text model. Pictures used to ride along with every
+// one of those calls on GPT-4o-mini, which counts an image as ~2,833+ tokens
+// (about what the full GPT-4o charges for it): that is where a single
+// afternoon's $2.60 went. Gemini Flash-Lite counts an image as ~1,120 tokens
+// at a similar per-token price, and it's paid once per file instead of once
+// per circle. If this model ever fails, the reader falls back to the vision
+// model above rather than lose the pictures.
+export const READ_MODEL = process.env.OPENROUTER_READ_MODEL || "google/gemini-3.1-flash-lite";
 export const SUMMIT_VISION_MODEL = process.env.OPENROUTER_SUMMIT_VISION_MODEL || CLIMB_VISION_MODEL;
 export const SUMMIT_PRICE_IN = Number(process.env.OPENROUTER_SUMMIT_PRICE_IN ?? CLIMB_PRICE_IN);
 export const SUMMIT_PRICE_OUT = Number(process.env.OPENROUTER_SUMMIT_PRICE_OUT ?? CLIMB_PRICE_OUT);

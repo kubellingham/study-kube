@@ -6,7 +6,7 @@ import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { getAnthropic, MODEL } from "@/lib/anthropic";
 import type { UsageMeter } from "@/lib/usage";
-import { chatJSON, orImageBlocks, CLIMB_MODEL, CLIMB_VISION_MODEL, SUMMIT_MODEL, SUMMIT_VISION_MODEL } from "@/lib/openrouter";
+import { chatJSON, orImageBlocks, CLIMB_MODEL, CLIMB_VISION_MODEL, SUMMIT_MODEL, SUMMIT_VISION_MODEL, READ_MODEL } from "@/lib/openrouter";
 import { sanitizeSvg } from "./svg";
 import type { Section, Topic, Step, Lesson, ExamQuestion, SyllabusInfo } from "./types";
 
@@ -374,6 +374,91 @@ const AUGMENT_CLAUSE = `AUGMENTED MODE — the student asked for their material 
  * characters of source, bounded so a one-pager stays small and a huge deck
  * stays buildable inside the function budget.
  */
+// ── Read the pictures once ────────────────────────────────────────────────
+// A slide's picture is read ONE time, turned into faithful text, and appended
+// to the material. From then on the map, every lesson and the exam bank see it
+// as text — so the expensive part (an image) is paid once per file instead of
+// once per call, and every downstream call can run on the text model.
+
+/** How many pictures one upload may have read. More than this is almost always
+ *  logos, decoration and repeated headers. */
+export const MAX_READ_IMAGES = 16;
+/** Pictures per reader call — small batches keep each answer well inside the
+ *  model's output limit and let one bad batch fail without losing the rest. */
+const READ_BATCH = 6;
+
+const READ_SYSTEM = `You transcribe lecture pictures into text for a tutor who cannot see them. Be faithful and complete; never summarise, never add knowledge of your own.`;
+
+const readSchema = z.object({
+  pictures: z.array(z.string()).describe("One entry per picture, in order."),
+});
+
+function readPrompt(courseTitle: string, first: number, count: number): string {
+  return `These are ${count} pictures from a student's "${courseTitle}" course material (pictures ${first}-${first + count - 1}). For EACH picture, in order, write everything a tutor needs to teach from it without seeing it:
+- every word on it, verbatim — headings, bullets, labels, captions;
+- code exactly as written, keeping line breaks;
+- tables as "row: value | value" lines;
+- formulas and equations in plain text;
+- a diagram described precisely: its parts, their labels, what connects to what and which way arrows point, so it could be redrawn from your words.
+If a picture carries no teaching (a logo, decoration, a blank or title-only slide), write "(no teaching content)".
+Return ONLY JSON: {"pictures": ["<picture ${first}>", "<picture ${first + 1}>", ...]} — exactly ${count} entries.`;
+}
+
+/** Read a file's pictures into text, once. Returns the text to append to the
+ *  material ("" if nothing could be read), and whether every picture was read.
+ *  Never throws: a batch that fails on the reader is retried on the vision
+ *  model, and a batch that fails on both is simply reported as unread. */
+export async function readPictures(
+  courseTitle: string,
+  images: SourceImage[],
+  meter?: UsageMeter
+): Promise<{ text: string; read: number; unread: number }> {
+  const pics = images.slice(0, MAX_READ_IMAGES);
+  const starts: number[] = [];
+  for (let i = 0; i < pics.length; i += READ_BATCH) starts.push(i);
+
+  // Batches run side by side: pictures must not eat the time the lessons need.
+  const batches = await Promise.all(
+    starts.map(async (i) => {
+      const batch = pics.slice(i, i + READ_BATCH);
+      const content = [
+        { type: "text" as const, text: readPrompt(courseTitle, i + 1, batch.length) },
+        ...orImageBlocks(batch),
+      ];
+      for (const model of [READ_MODEL, CLIMB_VISION_MODEL]) {
+        try {
+          const { data, usage } = await chatJSON({ model, system: READ_SYSTEM, content, maxTokens: 6000 });
+          meter?.add(usage);
+          return { i, size: batch.length, pictures: readSchema.parse(data).pictures };
+        } catch {
+          // try the next model
+        }
+      }
+      return { i, size: batch.length, pictures: null as string[] | null };
+    })
+  );
+
+  const parts: string[] = [];
+  let read = 0;
+  let unread = 0;
+  for (const { i, size, pictures } of batches) {
+    if (!pictures) {
+      unread += size;
+      continue;
+    }
+    for (let j = 0; j < size; j++) {
+      const said = (pictures[j] ?? "").trim();
+      if (said && !/^\(no teaching content\)$/i.test(said)) parts.push(`[Picture ${i + j + 1}]\n${said}`);
+    }
+    read += size;
+  }
+  return {
+    text: parts.length ? `--- WHAT THE PICTURES IN THIS MATERIAL SHOW ---\n${parts.join("\n\n")}` : "",
+    read,
+    unread,
+  };
+}
+
 // ── Never two circles for the same idea ──────────────────────────────────
 // The prompt now tells the model which circles already exist (with titles),
 // and that's what stops most repeats. This is the net underneath it: a new map
@@ -1409,14 +1494,22 @@ ${OBSERVE_JSON_SHAPE}`;
   const content = useVision
     ? [{ type: "text" as const, text: prompt }, ...orImageBlocks(images)]
     : prompt;
-  const { data, usage } = await chatJSON({
-    model: useVision ? opts.vision ?? CLIMB_VISION_MODEL : opts.model ?? CLIMB_MODEL,
-    system: UNIT_SYSTEM,
-    content,
-    maxTokens: 2000,
-  });
-  meter?.add(usage);
-  return observationSchema.parse(data);
+  // Pictures here go to the picture reader first (priced sanely for images),
+  // falling back to the older vision model only if it fails.
+  const models = useVision
+    ? [opts.vision ?? READ_MODEL, CLIMB_VISION_MODEL]
+    : [opts.model ?? CLIMB_MODEL];
+  let lastErr: unknown = null;
+  for (const model of models) {
+    try {
+      const { data, usage } = await chatJSON({ model, system: UNIT_SYSTEM, content, maxTokens: 2000 });
+      meter?.add(usage);
+      return observationSchema.parse(data);
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error("Kube couldn't read that material.");
 }
 
 /** File-role classification, on the budget model. */
