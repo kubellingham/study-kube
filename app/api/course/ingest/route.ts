@@ -1,6 +1,6 @@
 import { createHash } from "crypto";
 import { NextRequest, after } from "next/server";
-import { requireEntitlement, getEntitlement } from "@/lib/entitlement-server";
+import { requireBuildAccess, getEntitlement, spendFreeTopics } from "@/lib/entitlement-server";
 import { isOwner } from "@/lib/owner";
 import { OWNER_MODEL, OWNER_PRICE_IN, OWNER_PRICE_OUT } from "@/lib/anthropic";
 import { adminDb } from "@/lib/firebase/admin";
@@ -244,11 +244,14 @@ export async function POST(req: NextRequest) {
   // The function's 300s starts HERE, not when the background work starts —
   // auth, the upload read and the course fetch all spend from the same clock.
   const clock = digestClock(Date.now());
-  // Building/digesting a subject needs at least Climb (protects digestion spend
-  // and enforces the "every digested user has paid something" rule).
-  const gate = await requireEntitlement(req, "climb");
+  // Building a subject takes a plan — or a free account's topic allowance. A
+  // free build is capped in TOPICS: whatever the material holds, Kube builds
+  // as far as the allowance reaches and says so, rather than asking anyone to
+  // go away and trim a PDF.
+  const gate = await requireBuildAccess(req);
   if (!gate.ok) return gate.response;
   const uid = gate.uid;
+  const topicCap = gate.topicCap;
 
   // Owner bypass — the account behind Kube needs to run demos and admin work
   // without tripping its own rate limits. Everyone else runs through.
@@ -790,8 +793,18 @@ export async function POST(req: NextRequest) {
           ? await generateUnitSkeletonCheap(courseTitle, unitNumber, rawText, existingTopics, images, meter, { ...summitOpts, cram: false, mode: genMode, standalone })
           : await generateUnitSkeleton(courseTitle, unitNumber, rawText, existingTopics, images, genMode, meter, premiumModel, standalone);
         if (standalone) skeleton.topics = skeleton.topics.map((t) => ({ ...t, deps: [] }));
+
+        // A free account builds up to its remaining topic allowance. Kube maps
+        // the WHOLE document either way — the student is told everything that's
+        // in there, and exactly how much of it is being built now. Nobody is
+        // asked to go and trim a file.
+        const foundTopics = skeleton.topics.length;
+        const capped = topicCap != null && foundTopics > topicCap;
+        if (topicCap != null) skeleton.topics = skeleton.topics.slice(0, topicCap);
         await setJob({
-          note: `Mapped ${skeleton.topics.length} concept${skeleton.topics.length === 1 ? "" : "s"} — drilling each into a full circle…`,
+          note: capped
+            ? `Found ${foundTopics} topics in this — building the ${skeleton.topics.length} your free topics cover…`
+            : `Mapped ${skeleton.topics.length} concept${skeleton.topics.length === 1 ? "" : "s"} — drilling each into a full circle…`,
         });
 
         const titles = skeleton.topics.map((t) => t.title);
@@ -830,6 +843,9 @@ export async function POST(req: NextRequest) {
         record.cost = meter.summary();
         let added = 0;
         let addedQ = 0;
+        // Taught topics only — the review circle is Kube's own bookkeeping and
+        // must never be charged to anyone's free allowance.
+        let addedTaught = 0;
         await db.runTransaction(async (tx) => {
           const fresh = await tx.get(courseRef);
           const sections = ((fresh.get("sections") as Section[]) ?? []).slice();
@@ -871,6 +887,7 @@ export async function POST(req: NextRequest) {
             sections.push(section);
           }
           added = section.topics.length;
+          addedTaught = section.topics.filter((t) => t.kind !== "review").length;
           addedQ = questions.length;
           record.unit = unitNumber;
           // On a resume these are the topics added THIS run; the file's own
@@ -885,6 +902,10 @@ export async function POST(req: NextRequest) {
             updatedAt: Date.now(),
           });
         });
+        // Only topics that really came out of this build count against the
+        // allowance. A digest that failed, or ran out of time before teaching
+        // anything, costs the student nothing.
+        if (topicCap != null && addedTaught > 0) await spendFreeTopics(uid, addedTaught);
         await setJob({
           status: "done",
           cost: meter.summary(),

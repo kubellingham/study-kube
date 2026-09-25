@@ -12,15 +12,35 @@
 
 export type Tier = "climb" | "summit" | "crew";
 
+/** What a brand-new account may build before it has paid anything: TOPICS, not
+ *  files or pages. Topics are the only unit a student understands and the only
+ *  one that tracks what a build actually costs — a small document is built
+ *  whole, a big one is built as far as the allowance goes and says so. */
+export const FREE_TOPIC_ALLOWANCE = 12;
+
 export const TIER_RANK: Record<Tier, number> = { climb: 1, summit: 2, crew: 3 };
 
 export type EntitlementSource = "promo" | "stripe" | "crew";
+
+/** The free allowance, as it stands for this account. */
+export interface FreeAllowance {
+  /** Topics this account has already had built. */
+  used: number;
+  /** Topics it may build in total. */
+  allowance: number;
+  /** False once the account has ever held a paid grant. Someone whose plan
+   *  lapsed doesn't fall back into the free tier — otherwise you could
+   *  subscribe, build a whole semester, cancel, and keep it all open. */
+  eligible: boolean;
+}
 
 export interface Entitlement {
   tier: Tier | null;
   source: EntitlementSource | null;
   /** Epoch ms when this grant lapses; null = no active grant (or never expires). */
   expiresAt: number | null;
+  /** Present for accounts that have never paid. */
+  free?: FreeAllowance;
 }
 
 export const LOCKED: Entitlement = { tier: null, source: null, expiresAt: null };
@@ -55,6 +75,22 @@ export function meetsTier(e: Entitlement, min: Tier): boolean {
 export const hasClimb = (e: Entitlement) => meetsTier(e, "climb");
 /** The actual climb: deep teaching, daily pull, live AI. */
 export const hasSummit = (e: Entitlement) => meetsTier(e, "summit");
+
+/** Topics this account can still have built for free. */
+export const freeTopicsLeft = (e: Entitlement) =>
+  e.tier === null && e.free?.eligible ? Math.max(0, e.free.allowance - e.free.used) : 0;
+
+/** Can this account be taught — open a lesson and climb it?
+ *
+ *  Summit and above, always. And a free account, because what its allowance
+ *  built is the real thing, fully taught, and stays theirs forever. It can't
+ *  grow past the allowance, so there's nothing to give away by leaving it open
+ *  — whereas re-locking someone's own finished work would be a betrayal.
+ *
+ *  Note this is NOT `> 0`: spending the allowance closes the door to building
+ *  more, never to studying what's already built. */
+export const mayClimb = (e: Entitlement) =>
+  hasSummit(e) || (e.tier === null && !!e.free?.eligible);
 
 export const TIER_LABEL: Record<Tier, string> = {
   climb: "Kube Climb",

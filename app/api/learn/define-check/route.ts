@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
-import { requireEntitlement } from "@/lib/entitlement-server";
+import { requireStudyAccess } from "@/lib/entitlement-server";
 import { getAnthropic, CHAT_MODEL } from "@/lib/anthropic";
 import { chatJSON, CHAT_BUDGET_MODEL } from "@/lib/openrouter";
 import { budgetEngineReady } from "@/lib/course/generate";
@@ -35,7 +35,7 @@ const verdictSchema = z.object({
 
 export async function POST(req: NextRequest) {
   // The practice meaning-judge is a Climb feature (cram gym).
-  const gate = await requireEntitlement(req, "climb");
+  const gate = await requireStudyAccess(req);
   if (!gate.ok) return gate.response;
 
   let term = "";

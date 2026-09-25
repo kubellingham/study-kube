@@ -9,7 +9,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useUser } from "@/lib/use-user";
 import { useEntitlement } from "@/lib/use-entitlement";
-import { hasSummit, LOCKED } from "@/lib/entitlement";
+import { mayClimb, LOCKED } from "@/lib/entitlement";
 import type { CourseBundle } from "@/lib/course";
 import { loadProgress, type LearnProgress } from "@/lib/learn/progress";
 import { topicLessons, lessonKey } from "@/lib/course/lessons";
@@ -37,7 +37,7 @@ export default function MapBoard({
   // tap — the ladder shows it on the circle itself, and so should this.
   const { entitlement } = useEntitlement();
   const entLoaded = entitlement !== null;
-  const summit = !entLoaded || hasSummit(entitlement ?? LOCKED);
+  const summit = !entLoaded || mayClimb(entitlement ?? LOCKED);
   const [progress, setProgress] = useState<LearnProgress | null>(null);
   const [adding, setAdding] = useState(false);
 

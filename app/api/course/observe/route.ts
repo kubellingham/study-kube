@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireEntitlement } from "@/lib/entitlement-server";
+import { requireBuildAccess } from "@/lib/entitlement-server";
 import {
   generateObservation,
   generateObservationCheap,
@@ -35,7 +35,9 @@ function sanitizeImages(raw: unknown): Img[] {
 // just dropped in and report back — what it is, what's worth knowing, and
 // whether to build straight from it or also draw on Kube's own knowledge.
 export async function POST(req: NextRequest) {
-  const gate = await requireEntitlement(req, "climb");
+  // The read costs a model call, so it follows the same gate as the build
+  // it precedes: a plan, or free allowance still on the account.
+  const gate = await requireBuildAccess(req);
   if (!gate.ok) return gate.response;
 
   let body: { courseTitle?: string; files?: unknown };

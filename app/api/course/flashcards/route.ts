@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireEntitlement } from "@/lib/entitlement-server";
+import { requireStudyAccess } from "@/lib/entitlement-server";
 import { adminDb } from "@/lib/firebase/admin";
 import { generateCourseFlashcards } from "@/lib/course/flashcards";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -15,7 +15,7 @@ export const maxDuration = 120;
 // triggers it lazily the first time a course still on the old fallback deck is
 // opened.
 export async function POST(req: NextRequest) {
-  const gate = await requireEntitlement(req, "climb");
+  const gate = await requireStudyAccess(req);
   if (!gate.ok) return gate.response;
   const uid = gate.uid;
 

@@ -12,7 +12,7 @@ import { auth } from "@/lib/firebase/client";
 import { useUser } from "@/lib/use-user";
 import { authedFetch } from "@/lib/authed-fetch";
 import { useEntitlement } from "@/lib/use-entitlement";
-import { TIER_LABEL, hasSummit } from "@/lib/entitlement";
+import { TIER_LABEL, hasSummit, freeTopicsLeft } from "@/lib/entitlement";
 import ManageBilling from "@/app/learn/components/ManageBilling";
 
 /** Where an account's access came from, said plainly rather than as a code. */
@@ -176,13 +176,17 @@ export default function AccountPage() {
               ? "…"
               : entitlement.tier
                 ? TIER_LABEL[entitlement.tier]
-                : "No plan yet"}
+                : entitlement.free?.eligible
+                  ? "Free"
+                  : "No plan yet"}
           </span>
         </div>
         {entitlement && (
           <p className="mt-2 text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>
             {!entitlement.tier
-              ? "Pick a plan whenever you're ready — your subjects and progress stay exactly as they are."
+              ? entitlement.free?.eligible
+                ? `${freeTopicsLeft(entitlement)} of ${entitlement.free.allowance} free topics left. Everything you've already built stays yours, taught in full, forever.`
+                : "Pick a plan whenever you're ready — your subjects and progress stay exactly as they are."
               : `${SOURCE_LINE[entitlement.source ?? "stripe"]}${
                   entitlement.expiresAt
                     ? ` Runs until ${new Date(entitlement.expiresAt).toLocaleDateString()}.`

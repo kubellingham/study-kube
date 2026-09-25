@@ -34,7 +34,7 @@ import OpeningAnimation from "@/app/learn/components/OpeningAnimation";
 import MobileTabs, { MOBILE_TABS_H } from "@/app/learn/components/MobileTabs";
 import { useIsMobile } from "@/lib/use-media";
 import { useEntitlement } from "@/lib/use-entitlement";
-import { hasSummit, hasClimb, LOCKED, TIER_LABEL } from "@/lib/entitlement";
+import { mayClimb, hasClimb, LOCKED, TIER_LABEL } from "@/lib/entitlement";
 
 // ── Studious palette (fixed) ──────────────────────────────────────────
 const T = {
@@ -131,7 +131,7 @@ export default function CourseLadderPage() {
   // user never sees a flash of glass; the server is the real gate regardless.
   const { entitlement } = useEntitlement();
   const entLoaded = entitlement !== null;
-  const summit = !entLoaded || hasSummit(entitlement ?? LOCKED); // may climb
+  const summit = !entLoaded || mayClimb(entitlement ?? LOCKED); // may climb
   const climb = !entLoaded || hasClimb(entitlement ?? LOCKED); // cram gym / build
 
   // Opening title: plays on app entry (first dashboard mount this tab) and

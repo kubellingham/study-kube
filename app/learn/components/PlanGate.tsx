@@ -5,14 +5,16 @@
 // routes underneath are server-gated regardless.
 import Link from "next/link";
 import { useEntitlement } from "@/lib/use-entitlement";
-import { hasClimb } from "@/lib/entitlement";
+import { hasClimb, mayClimb } from "@/lib/entitlement";
 
 /** null = still deciding (render nothing / let the page show its own loader);
  *  true = locked (render <CramLocked/>); false = allowed. */
 export function useCramLocked(): boolean | null {
   const { entitlement } = useEntitlement();
   if (entitlement === null) return null;
-  return !hasClimb(entitlement);
+  // A free account gets the gym for what its allowance built — the practice,
+  // exams and notes are generated from those topics and are already paid for.
+  return !hasClimb(entitlement) && !mayClimb(entitlement);
 }
 
 export function CramLocked({ feature = "This" }: { feature?: string }) {

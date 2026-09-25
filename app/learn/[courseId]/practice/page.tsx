@@ -17,7 +17,7 @@ import { db, auth } from "@/lib/firebase/client";
 import { useCourse } from "@/lib/learn/use-course";
 import { listBuiltinBundles } from "@/lib/course";
 import { useEntitlement } from "@/lib/use-entitlement";
-import { hasSummit, LOCKED, TIER_LABEL } from "@/lib/entitlement";
+import { mayClimb, LOCKED, TIER_LABEL } from "@/lib/entitlement";
 import { useCramLocked, CramLocked } from "@/app/learn/components/PlanGate";
 import { buildConceptPool, sprintItems } from "@/lib/course/concepts";
 import { loadPracticeState, type CardState } from "@/lib/learn/practice";
@@ -75,7 +75,7 @@ export default function PracticePage() {
   const cramLocked = useCramLocked();
   const { entitlement } = useEntitlement();
   const entLoaded = entitlement !== null;
-  const summit = !entLoaded || hasSummit(entitlement ?? LOCKED);
+  const summit = !entLoaded || mayClimb(entitlement ?? LOCKED);
 
   const [tool, setTool] = useState<Tool | null>(null);
   const [cards, setCards] = useState<Record<string, CardState>>({});
