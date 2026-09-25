@@ -27,6 +27,7 @@ interface Usage {
   totals: { digests: number; calls: number; inputTokens: number; outputTokens: number; cacheWriteTokens: number; cacheReadTokens: number; costUsd: number };
   avgCost: number;
   recent: { fileName: string; courseId: string; userId: string; at: number; costUsd: number; calls: number; cacheReadTokens: number; outputTokens: number }[];
+  month?: { key: string; people: number; totalUsd: number; top: { uid: string; email: string | null; usd: number }[] };
 }
 
 function fmtCode(c: string) {
@@ -295,8 +296,31 @@ export default function AdminPage() {
               </div>
               <p style={{ fontSize: 11.5, lineHeight: 1.5, color: K.faint, margin: "12px 0 0" }}>
                 {usage.totals.calls.toLocaleString()} Claude calls · {usage.totals.cacheReadTokens.toLocaleString()} cached-read tokens (billed at 0.1×) · {usage.totals.outputTokens.toLocaleString()} output.
-                Estimated from real token counts at the Sonnet rate — the Console is the actual bill.
+                Real charges wherever OpenRouter reports them; estimated from token counts otherwise.
               </p>
+              {usage.month && usage.month.top.length > 0 && (
+                <div style={{ marginTop: 16, overflow: "hidden", border: `1px solid ${K.line}`, borderRadius: 12 }}>
+                  <div style={{ padding: "10px 12px", fontSize: 12.5, color: K.inkSoft, background: K.bg }}>
+                    This month ({usage.month.key}): {formatCost(usage.month.totalUsd)} across {usage.month.people} {usage.month.people === 1 ? "person" : "people"} — builds, reads, tutor, drills and cards.
+                  </div>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+                    <thead>
+                      <tr style={{ textAlign: "left", color: K.faint, fontSize: 10.5, textTransform: "uppercase", letterSpacing: ".08em" }}>
+                        <th style={{ padding: "9px 12px" }}>Person</th>
+                        <th style={{ padding: "9px 12px", textAlign: "right" }}>This month</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {usage.month.top.map((p) => (
+                        <tr key={p.uid} style={{ borderTop: `1px solid ${K.line}` }}>
+                          <td style={{ padding: "9px 12px", color: K.ink, maxWidth: 340, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={p.uid}>{p.email ?? p.uid}</td>
+                          <td style={{ padding: "9px 12px", textAlign: "right", fontFamily: K.mono, color: K.ink }}>{formatCost(p.usd)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
               {usage.recent.length > 0 && (
                 <div style={{ marginTop: 16, overflow: "hidden", border: `1px solid ${K.line}`, borderRadius: 12 }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>

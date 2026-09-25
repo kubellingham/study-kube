@@ -28,7 +28,7 @@ export const freeBuildsOn = () => process.env.FREE_BUILD !== "0";
 export async function requireEntitlement(
   req: NextRequest,
   min: Tier
-): Promise<{ ok: true; uid: string; email: string | null } | { ok: false; response: Response }> {
+): Promise<{ ok: true; uid: string; email: string | null; ent: Entitlement } | { ok: false; response: Response }> {
   const auth = await getAuth(req);
   if (!auth)
     return { ok: false, response: Response.json({ error: "Not signed in." }, { status: 401 }) };
@@ -42,7 +42,7 @@ export async function requireEntitlement(
       ),
     };
   }
-  return { ok: true, uid: auth.uid, email: auth.email };
+  return { ok: true, uid: auth.uid, email: auth.email, ent };
 }
 
 /** Gate STUDYING what's already built — lessons, practice, notes, the helpers
@@ -51,17 +51,17 @@ export async function requireEntitlement(
 export async function requireStudyAccess(
   req: NextRequest,
   opts: { insideLesson?: boolean } = {}
-): Promise<{ ok: true; uid: string; email: string | null } | { ok: false; response: Response }> {
+): Promise<{ ok: true; uid: string; email: string | null; ent: Entitlement } | { ok: false; response: Response }> {
   const auth = await getAuth(req);
   if (!auth)
     return { ok: false, response: Response.json({ error: "Not signed in." }, { status: 401 }) };
   const ent = await getEntitlement(auth.uid);
   if (meetsTier(ent, "climb") || mayClimb(ent))
-    return { ok: true, uid: auth.uid, email: auth.email };
+    return { ok: true, uid: auth.uid, email: auth.email, ent };
   // A lapsed plan keeps its floor of circles open, so the help INSIDE those
   // lessons has to keep working too. The practice gym doesn't come with it.
   if (opts.insideLesson && (ent.floor?.length ?? 0) > 0)
-    return { ok: true, uid: auth.uid, email: auth.email };
+    return { ok: true, uid: auth.uid, email: auth.email, ent };
   return {
     ok: false,
     response: Response.json(
@@ -78,7 +78,7 @@ export async function requireStudyAccess(
 export async function requireBuildAccess(
   req: NextRequest
 ): Promise<
-  | { ok: true; uid: string; email: string | null; topicCap: number | null }
+  | { ok: true; uid: string; email: string | null; ent: Entitlement; topicCap: number | null }
   | { ok: false; response: Response }
 > {
   const auth = await getAuth(req);
@@ -86,10 +86,10 @@ export async function requireBuildAccess(
     return { ok: false, response: Response.json({ error: "Not signed in." }, { status: 401 }) };
   const ent = await getEntitlement(auth.uid);
   if (meetsTier(ent, "climb"))
-    return { ok: true, uid: auth.uid, email: auth.email, topicCap: null };
+    return { ok: true, uid: auth.uid, email: auth.email, ent, topicCap: null };
 
   const left = freeBuildsOn() ? freeTopicsLeft(ent) : 0;
-  if (left > 0) return { ok: true, uid: auth.uid, email: auth.email, topicCap: left };
+  if (left > 0) return { ok: true, uid: auth.uid, email: auth.email, ent, topicCap: left };
 
   return {
     ok: false,

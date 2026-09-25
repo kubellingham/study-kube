@@ -66,6 +66,9 @@ export function orImageBlocks(images: ORImage[] | undefined): ORContent[] {
 export interface ORUsage {
   input_tokens: number;
   output_tokens: number;
+  /** What OpenRouter actually charged for this call, in USD — present when it
+   *  reports it. Preferred over any estimate from token counts. */
+  cost_usd?: number;
 }
 
 /** One JSON chat call to OpenRouter. Returns the parsed object + token usage;
@@ -96,6 +99,9 @@ export async function chatJSON(opts: {
       max_tokens: opts.maxTokens ?? 4000,
       temperature: 0.4,
       response_format: { type: "json_object" },
+      // Ask for the real charge alongside the token counts, so the monthly
+      // allowance counts dollars actually spent rather than a list-price guess.
+      usage: { include: true },
     }),
   });
 
@@ -123,6 +129,10 @@ export async function chatJSON(opts: {
   const u = json?.usage ?? {};
   return {
     data,
-    usage: { input_tokens: u.prompt_tokens ?? 0, output_tokens: u.completion_tokens ?? 0 },
+    usage: {
+      input_tokens: u.prompt_tokens ?? 0,
+      output_tokens: u.completion_tokens ?? 0,
+      ...(typeof u.cost === "number" && Number.isFinite(u.cost) ? { cost_usd: u.cost } : {}),
+    },
   };
 }

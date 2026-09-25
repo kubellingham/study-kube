@@ -44,6 +44,9 @@ export interface Entitlement {
   /** A lapsed account's floor: the circles that stay open after a plan ends,
    *  so nobody who has paid is ever left with less than a newcomer. */
   floor?: string[];
+  /** This month's AI allowance, as a share used (0–1) and when it refills.
+   *  Display only — the server checks the real figure on every paid call. */
+  allowance?: { usedShare: number; resetsAt: number };
 }
 
 export const LOCKED: Entitlement = { tier: null, source: null, expiresAt: null };

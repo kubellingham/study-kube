@@ -1,5 +1,8 @@
 import { NextRequest, after } from "next/server";
-import { getUid } from "@/lib/api-helpers";
+import { getAuth } from "@/lib/api-helpers";
+import { getEntitlement } from "@/lib/entitlement-server";
+import { checkAllowance, recordSpend } from "@/lib/spend";
+import { UsageMeter } from "@/lib/usage";
 import { adminDb } from "@/lib/firebase/admin";
 import { getAnthropic, CHAT_MODEL } from "@/lib/anthropic";
 import { chatJSON, CHAT_BUDGET_MODEL } from "@/lib/openrouter";
@@ -39,8 +42,9 @@ interface Turn {
 }
 
 export async function POST(req: NextRequest) {
-  const uid = await getUid(req);
-  if (!uid) return Response.json({ error: "Not signed in." }, { status: 401 });
+  const auth = await getAuth(req);
+  if (!auth) return Response.json({ error: "Not signed in." }, { status: 401 });
+  const uid = auth.uid;
   // A note follows a tutor chat, so it can't honestly outrun the chat's own
   // limit. Past that, skip quietly — the note is a nicety, never an error.
   if (!checkRateLimit(`chatnote:${uid}`, 30, 10 * 60 * 1000).ok) {
@@ -80,8 +84,15 @@ export async function POST(req: NextRequest) {
     return Response.json({ ok: true, skipped: true });
   }
 
+  // Past the month's allowance the note is skipped quietly, like the limit
+  // above: it's a nicety, and the student never asked for it.
+  if (!(await checkAllowance(uid, auth.email, await getEntitlement(uid), "study")).ok) {
+    return Response.json({ ok: true, skipped: true });
+  }
+
   // Respond immediately; assess and record in the background.
   after(async () => {
+    const meter = new UsageMeter();
     try {
       const SYSTEM = "You assess a short tutoring chat that happened INSIDE one lesson slide, and write Kube's private note about it. Judge honestly: 'struggled' only when the student genuinely needed help understanding something (confusion, repeated questions, misconceptions) — not for curiosity, testing the tutor, or off-topic chatter.";
       const userMsg = `Topic: ${topicTitle}\nSlice: ${lessonTitle}\n\n--- CHAT TRANSCRIPT ---\n${transcript
@@ -89,12 +100,13 @@ export async function POST(req: NextRequest) {
         .join("\n\n")}`;
       let jsonText: string;
       if (budgetEngineReady()) {
-        const { data } = await chatJSON({
+        const { data, usage } = await chatJSON({
           model: CHAT_BUDGET_MODEL,
           system: SYSTEM,
           content: userMsg + `\n\nReply as JSON only, no prose or fences, matching the note shape.`,
           maxTokens: 800,
         });
+        meter.add(usage);
         jsonText = JSON.stringify(data);
       } else {
         const stream = getAnthropic().messages.stream({
@@ -110,6 +122,7 @@ export async function POST(req: NextRequest) {
             jsonText += event.delta.text;
           }
         }
+        meter.add((await stream.finalMessage()).usage);
       }
       const note = noteSchema.parse(JSON.parse(jsonText));
       // Quiet chats leave no trail — only real struggles are worth a record.
@@ -130,6 +143,8 @@ export async function POST(req: NextRequest) {
       });
     } catch {
       // A lost note must never surface as an error to the student.
+    } finally {
+      await recordSpend(uid, meter.costUsd(), "note");
     }
   });
 

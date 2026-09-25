@@ -36,6 +36,16 @@ Free now builds 12 topics for real (#45), so the promise is true.
 
 Climb now teaches the first 3 topics of every subject in full (#48).
 
+### 4. The monthly allowance figures
+
+$0.50 free, $1 Climb, $4 Summit and Crew, in what Kube pays for the AI, per
+person per month. They're a first guess, set before a single real build had
+been costed. Climb and Summit are about 40% of what each plan brings in after
+Stripe's cut. Crew matches Summit, which is nearer 80% of a seat's share, so
+that joining a crew never lowers anyone's allowance. Worth resetting once the
+smoke test shows what a build really costs. Each is one Vercel variable
+(`ALLOWANCE_*_USD`): a redeploy, no code change.
+
 ---
 
 ## Fixed
@@ -61,6 +71,7 @@ Climb now teaches the first 3 topics of every subject in full (#48).
 | A few photos made a build cost ~$2.60 | Every picture re-sent to a vision model on every call | #49 |
 | The tutor chat, definition checks, re-marking and the upload read had no per-person limit | One account or script could drain the shared AI balance | #50 |
 | The retired /materials AI routes still answered anyone signed in | Summary, quiz, flashcards and tutor, with no plan check | #50 |
+| One account could cost more than it paid, month after month | Staying just under the per-minute limits, all day | #51 |
 
 ---
 
