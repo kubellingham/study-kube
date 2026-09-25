@@ -84,7 +84,7 @@ const unitSchema = z.object({
       })
     )
     .describe(
-      "ONE CONCEPT PER TOPIC — split dense source slides into separate topics (BCD, Excess-3 and Gray code are three topics, never one). 4-10 topics per document, in dependency order"
+      "One circle per syllabus-level idea, depth inside its quarters, every named thing in the material taught by exactly one circle. In dependency order."
     ),
   examQuestions: z
     .array(
@@ -105,10 +105,38 @@ const unitSchema = z.object({
 
 export type GeneratedUnit = z.infer<typeof unitSchema>;
 
+/**
+ * WHAT A CIRCLE IS — the unit every map, ladder and allowance is counted in.
+ *
+ * A circle used to be sized by document LENGTH (about one per 500 characters),
+ * so the same PHP deck produced 7 circles under one rule and ~25 under the
+ * next, and three overlapping decks produced "PHP Data Types" twice, variables
+ * three times and scope twice. A number like "12 free circles" meant nothing.
+ *
+ * Now a circle is sized by MEANING: one idea a lecturer would put on the
+ * syllabus. Depth lives inside it, in its quarters. And because fewer circles
+ * must never mean less taught, every named thing in the material is assigned
+ * to exactly one circle's `covers` list, which its lesson must teach.
+ */
+/** The line that hands a circle's `covers` contract to its lesson builder. */
+function coversLine(covers: string[] | undefined): string {
+  const list = (covers ?? []).map((c) => c.trim()).filter(Boolean);
+  return list.length
+    ? `\n- it MUST teach every one of these, each somewhere in its quarters (this circle is the only place they are taught): ${list.join(" · ")}`
+    : "";
+}
+
+const CIRCLE_RULE = `WHAT A CIRCLE IS — the unit of this map. Get this right above everything else.
+- A circle is ONE idea a lecturer would give its own syllabus heading, or an exam would ask about by name: "PHP Data Types", "Form Validation", "Open-Source Licences", "Variable Scope".
+- Its DEPTH lives inside it, in its quarters — never in extra circles. Things the material teaches together as one idea (the seven PHP data types; echo, print and print_r; a family of licences) are ONE circle, with every item taught inside it.
+- Split an idea into separate circles only when each part would be its own exam question AND needs a full lesson of its own to master (BCD, Excess-3 and Gray code each have a different conversion method — three circles).
+- Never two circles for the same idea. Two slides, two sections, or a circle that already exists on the course covering it: it is ONE circle.
+- COVERAGE IS NOT OPTIONAL. Every named thing in the material — each keyword, function, operator, data type, licence, protocol, rule — goes in the "covers" list of exactly one circle, so its lesson teaches it. Walk the material from the first page to the last. Fewer circles never means less taught.`;
+
 const SYSTEM = `You are Kube, a calm and warm tutor who turns a lecturer's unit material into a playable learning ladder of DEEP, drilled circles — genuinely teaching someone who starts knowing nothing.
 
 You do NOT summarize, and you never build "show a card + Got it button" lessons. You extract a concept map and drill each concept:
-- ONE CONCEPT PER TOPIC, never cram. If a slide presents three codes together, that is three topics, each drilled independently. The source's density is not the lesson's density.
+- ${CIRCLE_RULE.replace(/\n/g, "\n  ")}
 - Each topic is a FOUR-QUARTER circle (lighter concepts may compress to 2-3 quarters, but never to a single card):
   Q1 "Meet it, slowly" — 4-8 tiny teach beats, each ONE small idea, that WALK the student into the concept (start from a question or a need, build up; never state the full definition in one breath).
   Q2 "Question it" — gentle checks on exactly what was just met, poked from different angles.
@@ -245,10 +273,9 @@ export function parseGeneratedUnit(jsonText: string): GeneratedUnit {
  * ------------------------------------------------------------------ */
 
 const CONCEPT_RULES = `You are Kube, a calm, warm tutor mapping a lecturer's unit material into a learning ladder.
-- ONE CONCEPT PER TOPIC, never cram. If a slide presents three codes together, that is three topics. The source's density is not the lesson's density (BCD, Excess-3 and Gray code are three topics, never one).
-- COVER THE DOCUMENT END TO END. Walk it from the first slide/page to the last and account for ALL of it. Stopping halfway, or thinning out after the opening sections, is the single worst failure here — the back half of a deck is usually where the examinable detail lives.
-- EVERY NAMED THING IS ITS OWN TOPIC. Where the source names and defines a family of siblings — each software licence, each sorting algorithm, each protocol, each normal form — each one gets its OWN topic. Never fold seven named licences into a single "Licensing" topic; a student is examined on GPL vs LGPL vs MIT, and that difference cannot be drilled if they are one bullet list.
-- Topic count follows the material, not a habit (the instruction below gives the range). Weight inherits upward: a foundation a heavy topic depends on is itself heavy.
+${CIRCLE_RULE}
+- COVER THE DOCUMENT END TO END. Stopping halfway, or thinning out after the opening sections, is the single worst failure here — the back half of a deck is usually where the examinable detail lives. Every named thing lands in some circle's "covers".
+- The circle count follows the IDEAS in the material, not its length (the instruction below gives a rough expectation, never a quota). Weight inherits upward: a foundation a heavy circle depends on is itself heavy.
 - MERGE THE REPEATS. Lecture decks routinely teach one idea twice — a light introduction early, then a fuller treatment later (or a summary table at the end). Fold every repeat into ONE topic built from the fullest treatment. Never emit two topics for the same idea because the deck said it twice.
 - COMPARISON TABLES ARE GOLD. Wherever the source contrasts two things side by side (structure vs union, GET vs POST, class vs ID, margin vs padding, block vs inline), that contrast is a classic exam question — give it its OWN topic and drill the DISCRIMINATION, not two isolated definitions. A summary/comparison table near the end of a deck always earns its own topic.
 - SUMMARY TABLES are a checklist of what the lecturer thinks matters — mine them for coverage, but teach each row properly rather than reprinting the table.
@@ -286,7 +313,7 @@ const EXAM_RULES = `You are Kube. You write a unit's ASSESSMENT pool — the exa
 // outline for scope. Always surfaced to the student as "standard curriculum —
 // add your notes to ground it."
 const CONCEPT_RULES_KNOWLEDGE = `You are Kube, a calm, warm tutor. The provided text is a SYLLABUS / OUTLINE (topics, outcomes, a course plan) — NOT teaching content. Build the concept map a student must master to meet these outcomes, drawing on your OWN solid knowledge of the standard university curriculum for this subject.
-- ONE CONCEPT PER TOPIC, never cram. 4-12 topics, in dependency order (weight inherits upward).
+- ${CIRCLE_RULE.split("\n")[1].slice(2)} Typically 4-12 circles, in dependency order (weight inherits upward). Every outcome the outline names lands in some circle's "covers".
 - You MAY add foundational concepts the outline assumes but doesn't spell out (a student needs them). Do NOT wander beyond the course's scope or invent exotic topics it wouldn't cover.
 - Follow the outline's terminology, ordering and emphasis. If the outline signals the assessment style (e.g. a practical/lab exam), weight toward what that exam tests.
 - Recap lines are crisp, exam-night facts.`;
@@ -328,11 +355,88 @@ const AUGMENT_CLAUSE = `AUGMENTED MODE — the student asked for their material 
  * characters of source, bounded so a one-pager stays small and a huge deck
  * stays buildable inside the function budget.
  */
+// ── Never two circles for the same idea ──────────────────────────────────
+// The prompt now tells the model which circles already exist (with titles),
+// and that's what stops most repeats. This is the net underneath it: a new map
+// is checked against the course BEFORE any lesson is paid for, and a circle
+// that is plainly already there is dropped.
+//
+// It's deliberately cautious. A repeat that slips through shows as a double
+// circle, which is untidy; a false match would silently delete teaching, which
+// is far worse. So it only fires when one title's meaningful words sit
+// entirely inside the other's.
+
+const TITLE_FILLER = new Set([
+  "a", "an", "the", "and", "or", "of", "in", "on", "to", "for", "with", "vs",
+  "versus", "using", "via", "into", "basic", "basics", "introduction", "intro",
+  "key", "how", "what", "is", "are", "its", "their", "your", "about", "overview",
+  "fundamental", "fundamentals", "concept", "concepts", "understanding", "working",
+]);
+
+function titleWords(title: string): string[] {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9+#]+/g, " ")
+    .split(" ")
+    .filter((w) => w && !TITLE_FILLER.has(w))
+    .map((w) => w.replace(/ies$/, "y").replace(/(?<=[a-z]{3})s$/, ""));
+}
+
+/** Drop incoming circles that are already on the course (or repeated within
+ *  the same new map). A repeat inside the new map is folded into the circle it
+ *  repeats — its `covers` join the survivor's, so nothing named goes untaught.
+ *  A repeat of an existing circle is simply dropped: that circle already
+ *  teaches the idea. */
+export function dropRepeatedCircles<T extends { id: string; title: string; covers?: string[] }>(
+  incoming: T[],
+  existing: { id: string; title: string }[]
+): { kept: T[]; repeats: { title: string; sameAs: string }[] } {
+  // Words on (almost) every title — "php" in a PHP course, "git" in a Git one —
+  // say nothing about which idea a circle is, so they don't count.
+  const all = [...existing, ...incoming].map((t) => new Set(titleWords(t.title)));
+  const df = new Map<string, number>();
+  for (const set of all) for (const w of set) df.set(w, (df.get(w) ?? 0) + 1);
+  const common = new Set(
+    [...df].filter(([, n]) => all.length >= 5 && n / all.length > 0.4).map(([w]) => w)
+  );
+  const key = (title: string) => new Set(titleWords(title).filter((w) => !common.has(w)));
+
+  const sameIdea = (a: Set<string>, b: Set<string>) => {
+    if (a.size < 2 || b.size < 2) return a.size > 0 && a.size === b.size && [...a].every((w) => b.has(w));
+    const [small, big] = a.size <= b.size ? [a, b] : [b, a];
+    return [...small].every((w) => big.has(w));
+  };
+
+  const pool = existing.map((t) => ({ title: t.title, words: key(t.title), incoming: null as T | null }));
+  const kept: T[] = [];
+  const repeats: { title: string; sameAs: string }[] = [];
+  for (const t of incoming) {
+    const words = key(t.title);
+    const hit = pool.find((p) => sameIdea(words, p.words));
+    if (!hit) {
+      const copy = { ...t, covers: [...(t.covers ?? [])] };
+      kept.push(copy);
+      pool.push({ title: t.title, words, incoming: copy });
+      continue;
+    }
+    repeats.push({ title: t.title, sameAs: hit.title });
+    if (hit.incoming) {
+      const merged = new Set([...(hit.incoming.covers ?? []), ...(t.covers ?? [])]);
+      hit.incoming.covers = [...merged];
+    }
+  }
+  return { kept, repeats };
+}
+
 export function topicTarget(chars: number): { min: number; max: number } {
-  const est = Math.round(chars / 500);
+  // A rough EXPECTATION for how many syllabus-level ideas a document this size
+  // holds — about one per 1,600 characters (a couple of dense slides) — handed
+  // to the model as a guide, never a quota. The ideas decide; this only stops
+  // a one-pager being carved into ten slivers or a textbook chapter into three.
+  const est = Math.round(chars / 1600);
   return {
-    min: Math.max(4, Math.min(30, est - 4)),
-    max: Math.max(8, Math.min(38, est + 6)),
+    min: Math.max(3, Math.min(14, est - 2)),
+    max: Math.max(6, Math.min(18, est + 3)),
   };
 }
 
@@ -474,6 +578,14 @@ const skeletonTopicSchema = z.object({
     ),
   whyItMatters: z.string().describe("One line: why this topic matters for the exam"),
   recap: z.array(z.string()).describe("3-5 key fact lines for quick review / glossary"),
+  // Every named thing this circle is responsible for teaching. Not stored on
+  // the course — it's the contract handed to the lesson builder, and the
+  // reason fewer circles can never mean less taught.
+  covers: z
+    .array(z.string())
+    .optional()
+    .default([])
+    .describe("Every named thing in the material this circle must teach — keywords, functions, operators, types, rules. Each named thing belongs to exactly one circle."),
 });
 
 const skeletonSchema = z.object({
@@ -482,7 +594,7 @@ const skeletonSchema = z.object({
   topics: z
     .array(skeletonTopicSchema)
     .describe(
-      "ONE CONCEPT PER TOPIC — split dense source slides into separate topics. 4-10 topics, in dependency order. No lessons here — just the concept map."
+      "One circle per syllabus-level idea, depth inside, every named thing assigned to exactly one circle's covers. In dependency order. No lessons here — just the concept map."
     ),
 });
 
@@ -612,7 +724,7 @@ export async function generateUnitSkeleton(
           ...cachedMaterial(rawText, (images ?? []).slice(0, MAX_SKELETON_IMAGES), materialLabel(know)),
           {
             type: "text",
-            text: `${rulesFor(mode, CONCEPT_RULES, CONCEPT_RULES_KNOWLEDGE, CONCEPT_RULES_AUGMENTED)}${mapClause}\n\nThis material should yield roughly ${topicTarget(rawText.length).min}-${topicTarget(rawText.length).max} concepts — map them ALL, end to end.\n\nCourse: ${courseTitle}\nUnit number: ${unitNumber}\nPrefix all topic ids with "u${unitNumber}-".\n\n${existing}\n\nProduce ONLY the concept map for this unit: the section title, a one-line tagline, and the ${standalone ? "list" : "ordered list"} of topics (id, title, weight, deps, whyItMatters, recap). Do NOT write any lessons — those come next.`,
+            text: `${rulesFor(mode, CONCEPT_RULES, CONCEPT_RULES_KNOWLEDGE, CONCEPT_RULES_AUGMENTED)}${mapClause}\n\nMaterial this size usually holds roughly ${topicTarget(rawText.length).min}-${topicTarget(rawText.length).max} syllabus-level ideas — a guide, not a quota. Let the ideas decide, and account for everything named in it, end to end.\n\nCourse: ${courseTitle}\nUnit number: ${unitNumber}\nPrefix all topic ids with "u${unitNumber}-".\n\n${existing}\n\nProduce ONLY the concept map for this unit: the section title, a one-line tagline, and the ${standalone ? "list" : "ordered list"} of circles (id, title, weight, deps, whyItMatters, recap, covers). Do NOT write any lessons — those come next.`,
           },
         ],
       },
@@ -670,7 +782,7 @@ export async function generateTopicLessons(
                 "\n"
               )}\n\nBUILD THE FOUR-QUARTER CIRCLE FOR EXACTLY ONE TOPIC:\n- id: ${topic.id}\n- title: ${topic.title}\n- weight: ${topic.weight}\n- why it matters: ${topic.whyItMatters}\n- its recap facts: ${topic.recap.join(
               " | "
-            )}\n\n${know ? "Teach ONLY this concept from your own solid knowledge (the text above is just the syllabus for scope)." : "Drill ONLY this concept, grounded in the material above."} Return just its lessons array. Use lesson ids like 'q1','q2','q3','q4'.`,
+            )}${coversLine(topic.covers)}\n\nThis circle is one syllabus-level idea; its depth lives in its quarters. ${know ? "Teach ONLY this circle from your own solid knowledge (the text above is just the syllabus for scope)." : "Drill ONLY this circle, grounded in the material above."} Return just its lessons array. Use lesson ids like 'q1','q2','q3','q4'.`,
           },
         ],
       },
@@ -735,9 +847,10 @@ export async function generateExamBank(
  * ------------------------------------------------------------------ */
 
 const SKELETON_JSON_SHAPE = `Return ONLY a JSON object (no prose, no markdown fences) of exactly this shape:
-{"sectionTitle": string, "tagline": string, "topics": [{"id": string, "title": string, "weight": "heavy"|"medium"|"light", "deps": string[], "whyItMatters": string, "recap": string[]}]}
-- ONE idea per topic, in dependency order. Prefix every id with the unit prefix given.
-- recap = 3-5 crisp, exam-night fact lines per topic.`;
+{"sectionTitle": string, "tagline": string, "topics": [{"id": string, "title": string, "weight": "heavy"|"medium"|"light", "deps": string[], "whyItMatters": string, "recap": string[], "covers": string[]}]}
+- ONE syllabus-level idea per circle, in dependency order. Prefix every id with the unit prefix given.
+- recap = 3-5 crisp, exam-night fact lines per circle.
+- covers = EVERY named thing in the material this circle teaches (e.g. ["string", "integer", "float", "boolean", "array", "object", "NULL"]). Between them, the circles' covers lists account for everything named in the material, each thing exactly once.`;
 
 const EXAM_JSON_SHAPE = `Return ONLY a JSON object (no prose, no markdown fences) of exactly this shape:
 {"examQuestions": [{"topicId": string, "prompt": string, "options": [string, string, string, string], "answer": 0, "hint": string, "explanation": string}]}
@@ -783,12 +896,19 @@ export async function generateUnitSkeletonCheap(
   const know = opts.mode === "knowledge";
   const existing =
     existingTopics.length > 0
-      ? `Existing topics (do NOT recreate; you may list their ids as deps): ${existingTopics.map((t) => t.id).join(", ")}`
+      ? // Titles, not just ids. The budget engine used to get a bare list of
+        // slugs, couldn't tell what they covered, and rebuilt "PHP Data Types"
+        // on top of an existing "PHP Data Types". The premium path always had
+        // the titles.
+        `Circles already on this course — do NOT recreate any of them, or any idea one of them already covers; produce only circles genuinely new in this material (you may list their ids as deps):\n${existingTopics.map((t) => `- ${t.id}: ${t.title}`).join("\n")}`
       : "This is the first material — the ladder is empty.";
   const span = topicTarget(rawText.length);
   const count = cram
-    ? `CLIMB CRAM MODE: break the unit into MANY small, drillable concepts — aim for ${span.min + 4}-${span.max + 6}, more granular than a deep course. Every distinct term, formula, circuit or rule is its own concept.`
-    : `This material should yield roughly ${span.min}-${span.max} concepts. Map them all, each weighted by how examinable it is. These become deep four-quarter lessons, so pick real, teachable concepts — not slivers — but do NOT stop early: covering only the first half of the document is a failure.`;
+    ? // A circle is a circle on every tier. Climb's practice gym is built from
+      // the named things, so cram mode asks for a thorough covers list rather
+      // than for extra circles.
+      `Material this size usually holds roughly ${span.min}-${span.max} syllabus-level ideas — a guide, not a quota. This map feeds a practice gym, so be exhaustive in each circle's "covers": every distinct term, formula, circuit or rule named in the material.`
+    : `Material this size usually holds roughly ${span.min}-${span.max} syllabus-level ideas — a guide, not a quota. Each becomes a deep four-quarter lesson, weighted by how examinable it is. Do NOT stop early: covering only the first half of the document is a failure.`;
   const label = know ? "SYLLABUS / OUTLINE (scope only — teach from your knowledge)" : "COURSE MATERIAL";
   const mapClause = opts.standalone ? `\n\n${MAP_CONCEPT_CLAUSE}` : "";
   const prompt = `${rulesFor(opts.mode ?? "file", CONCEPT_RULES, CONCEPT_RULES_KNOWLEDGE, CONCEPT_RULES_AUGMENTED)}${mapClause}
@@ -799,7 +919,7 @@ Course: ${courseTitle}
 Unit ${unitNumber}. Prefix every topic id with "u${unitNumber}-".
 ${existing}
 
-Produce ONLY the concept map: sectionTitle, tagline, and the ${opts.standalone ? "topics" : "ordered topics"} (id, title, weight, deps, whyItMatters, recap). No lessons.
+Produce ONLY the concept map: sectionTitle, tagline, and the ${opts.standalone ? "circles" : "ordered circles"} (id, title, weight, deps, whyItMatters, recap, covers). No lessons.
 
 --- ${label} ---
 ${rawText.slice(0, MAX_UNIT_CHARS)}
@@ -843,9 +963,9 @@ DRILL EXACTLY ONE TOPIC into its four-quarter circle:
 - title: ${topic.title}
 - weight: ${topic.weight}
 - why it matters: ${topic.whyItMatters}
-- recap facts: ${topic.recap.join(" | ")}
+- recap facts: ${topic.recap.join(" | ")}${coversLine(topic.covers)}
 
-${know ? "Teach ONLY this concept from your own solid knowledge (the text below is the syllabus for scope)." : "Drill ONLY this concept, grounded in the material below."} Use lesson ids q1..q4.
+This circle is one syllabus-level idea; its depth lives in its quarters. ${know ? "Teach ONLY this circle from your own solid knowledge (the text below is the syllabus for scope)." : "Drill ONLY this circle, grounded in the material below."} Use lesson ids q1..q4.
 
 --- ${label} ---
 ${rawText.slice(0, MAX_UNIT_CHARS)}

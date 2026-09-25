@@ -96,6 +96,21 @@ than a locked view of everything.
 
 ---
 
+## Decided
+
+- **What a circle is.** One idea a lecturer would put on the syllabus, or an exam
+  would ask about by name. Depth lives inside it, in its quarters — never in
+  extra circles. Every named thing in the material is assigned to exactly one
+  circle's `covers`, so fewer circles never means less taught. (This replaces
+  the earlier "every named licence is its own circle" rule on purpose.)
+- **Free = 12 topics.** Counted in circles as defined above; built in full;
+  kept forever. A nearly-spent allowance never builds a fragment of a bigger
+  document — below 3 remaining, Kube says what's in it and builds nothing.
+- **Tiers, and what happens on change.** Upgrading never takes anything away;
+  downgrading returns you to that tier's rights. Cancelling drops you to the
+  free floor, never below it. Nothing is ever deleted. Climb gets 3 taught
+  topics per subject as the taste of Summit. *(Agreed, not yet built.)*
+
 ## After launch
 
 Ideas that came up and were deliberately set down. They are not gaps.
