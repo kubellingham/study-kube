@@ -291,11 +291,9 @@ repeats, that the quarters vary, and the cost in `/admin`.
    real payment and a refund.
 3. Vercel Pro (Hobby is non-commercial only). Isaac is handling it, around
    when Stripe goes live.
-4. Publish `firestore.rules` again. #52 closed the seven collections the old
-   app used. Not urgent: nothing reads them any more.
-5. Firebase Blaze and Storage, whenever billing goes through. The shelf turns
+4. Firebase Blaze and Storage, whenever billing goes through. The shelf turns
    on by itself.
-6. Confirm the `google/gemini-3.1-flash-lite` slug exists on OpenRouter.
+5. Confirm the `google/gemini-3.1-flash-lite` slug exists on OpenRouter.
 
 ### Isaac's call (open)
 
