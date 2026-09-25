@@ -15,7 +15,7 @@ const PLANS = [
     name: "Kube Climb",
     tagline: "Your course, fully broken down.",
     month: "$2.99", intro: "$0.99 first month", annual: "$29.99",
-    features: ["Unlimited subjects & uploads", "The full practice gym — flashcards, matching, sprints", "Mock exams with instant feedback", "Notes, rewritten with love", "Your whole learning tree, laid out"],
+    features: ["Unlimited subjects & uploads", "The full practice gym — flashcards, matching, sprints", "Mock exams with instant feedback", "Notes, rewritten with love", "The first 3 topics of every subject, taught in full", "Your whole learning tree, laid out"],
     accent: "var(--kube)",
   },
   {
@@ -23,7 +23,7 @@ const PLANS = [
     name: "Kube Summit",
     tagline: "Climb your whole semester — with a tutor who pulls you through it.",
     month: "$9.99", intro: "$5.99 first month", annual: "$99.99",
-    features: ["Everything in Climb", "Unlock the climb — the full four-quarter teaching", "Your daily plan, aligned to your exams", "The live AI tutor on your own material", "Progress tracking & personalization"],
+    features: ["Everything in Climb", "Every topic taught in full — the whole climb", "Your daily plan, aligned to your exams", "The live AI tutor on your own material", "Progress tracking & personalization"],
     accent: "var(--amber)",
     featured: true,
   },
@@ -64,7 +64,7 @@ export default function UpgradePage() {
       </div>
       <h1 className="text-3xl">Pick your climb</h1>
       <p className="mt-2 text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>
-        Build for free — pay to climb. Cancel anytime.
+        Start free with 12 topics, taught in full. Pick a plan to keep going.
       </p>
 
       {/* Interval toggle */}
@@ -150,6 +150,16 @@ export default function UpgradePage() {
             {busy === `crew${crewSize}` ? "Starting…" : "Choose Crew"}
           </button>
         </div>
+      </div>
+
+      {/* Said before anyone pays, not discovered after they cancel. The whole
+          policy in one breath: what you were given stays; what you rented goes
+          back when you stop renting — and nothing is ever deleted. */}
+      <div className="k-card mt-6 px-5 py-4 text-sm leading-relaxed" style={{ color: "var(--ink-soft)" }}>
+        <b style={{ color: "var(--ink)" }}>What happens to your work.</b> Nothing you build is ever
+        deleted. Upgrading never takes anything away, and the topics you built free stay open for good.
+        Change plans or cancel anytime: you keep your plan&apos;s topics open, and at least 12 stay open
+        even with no plan at all. The rest waits behind glass, exactly as you left it, until you come back.
       </div>
 
       <p className="mt-6 text-center text-xs" style={{ color: "var(--faint)" }}>

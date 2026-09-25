@@ -18,6 +18,7 @@ import { topicLessons, lessonKey } from "@/lib/course/lessons";
 import { buildConceptPool } from "@/lib/course/concepts";
 import { listBuiltinBundles } from "@/lib/course";
 import { useCourse } from "@/lib/learn/use-course";
+import { openCircleIds } from "@/lib/learn/access";
 import { loadProgress, loadExamSummary, type LearnProgress } from "@/lib/learn/progress";
 import { loadPracticeState } from "@/lib/learn/practice";
 import { loadFlags } from "@/lib/learn/flags";
@@ -132,6 +133,14 @@ export default function CourseLadderPage() {
   const { entitlement } = useEntitlement();
   const entLoaded = entitlement !== null;
   const summit = !entLoaded || mayClimb(entitlement ?? LOCKED); // may climb
+  // Whether a circle opens is decided per circle now, not per account: Climb
+  // opens its first three, a lapsed plan keeps its floor, gifts stay open.
+  // Optimistic while entitlement loads, like the rest of the page.
+  const openIds = useMemo(
+    () => openCircleIds(entitlement ?? null, bundle?.ladder ?? []),
+    [entitlement, bundle]
+  );
+  const isOpen = (id: string) => !entLoaded || openIds.has(id);
   const climb = !entLoaded || hasClimb(entitlement ?? LOCKED); // cram gym / build
 
   // Opening title: plays on app entry (first dashboard mount this tab) and
@@ -388,7 +397,7 @@ export default function CourseLadderPage() {
             </div>
           </div>
           {curTopic && (
-            <Link href={summit ? `/learn/${params.courseId}/lesson/${curTopic.id}` : "/learn/upgrade"} style={{ display: "block", width: "100%", marginTop: 16, background: summit ? T.kube : T.amber, color: "#fff", borderRadius: 13, padding: "13px 14px", fontFamily: T.mono, fontWeight: 600, fontSize: 11.5, letterSpacing: ".06em", textTransform: "uppercase", textAlign: "center", boxShadow: summit ? "0 4px 0 rgba(20,32,43,.18)" : "0 4px 0 rgba(150,92,16,.4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{summit ? `Continue: ${curTopic.title}` : "Unlock with Summit"}</Link>
+            <Link href={isOpen(curTopic.id) ? `/learn/${params.courseId}/lesson/${curTopic.id}` : "/learn/upgrade"} style={{ display: "block", width: "100%", marginTop: 16, background: isOpen(curTopic.id) ? T.kube : T.amber, color: "#fff", borderRadius: 13, padding: "13px 14px", fontFamily: T.mono, fontWeight: 600, fontSize: 11.5, letterSpacing: ".06em", textTransform: "uppercase", textAlign: "center", boxShadow: isOpen(curTopic.id) ? "0 4px 0 rgba(20,32,43,.18)" : "0 4px 0 rgba(150,92,16,.4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{isOpen(curTopic.id) ? `Continue: ${curTopic.title}` : "Unlock with Summit"}</Link>
           )}
         </div>
 
@@ -634,7 +643,7 @@ export default function CourseLadderPage() {
                                     </>
                                   )}
                                 </div>
-                              ) : !summit ? (
+                              ) : !isOpen(tp.id) ? (
                                 // Tree behind glass: shown, warmly not-yet-yours.
                                 <div style={{ marginTop: 12 }}>
                                   <div style={{ fontSize: 12, lineHeight: 1.4, color: T.inkSoft }}>Ready when you are — unlock your climb with Summit.</div>

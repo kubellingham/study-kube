@@ -8,7 +8,7 @@ import { getAnthropic, MODEL } from "@/lib/anthropic";
 import type { UsageMeter } from "@/lib/usage";
 import { chatJSON, orImageBlocks, CLIMB_MODEL, CLIMB_VISION_MODEL, SUMMIT_MODEL, SUMMIT_VISION_MODEL } from "@/lib/openrouter";
 import { sanitizeSvg } from "./svg";
-import type { Section, Topic, Step, ExamQuestion, SyllabusInfo } from "./types";
+import type { Section, Topic, Step, Lesson, ExamQuestion, SyllabusInfo } from "./types";
 
 // Steps are flattened (teach fields + check fields all optional) because a
 // single object schema is far more reliable for structured output than a
@@ -1170,6 +1170,55 @@ export function composeGeneratedUnit(
   };
 }
 
+/** One quarter's steps, made safe to store: optional fields only when present
+ *  (Firestore rejects undefined), SVG sanitised, and malformed checks dropped. */
+function sanitizeSteps(raw: z.infer<typeof stepSchema>[]): Step[] {
+  const steps: Step[] = [];
+  for (const s of raw) {
+    // Optional fields are added only when present — Firestore rejects
+    // undefined values, so absent must mean absent.
+    if (s.kind === "teach" && s.body) {
+      const safeSvg = s.svg ? sanitizeSvg(s.svg) : null;
+      steps.push({
+        kind: "teach",
+        body: s.body,
+        ...(s.title ? { title: s.title } : {}),
+        ...(s.code ? { code: s.code } : {}),
+        ...(safeSvg ? { svg: safeSvg } : {}),
+      });
+    } else if (
+      s.kind === "check" &&
+      s.prompt &&
+      s.options &&
+      s.options.length >= 2 &&
+      s.answer !== undefined &&
+      s.answer >= 0 &&
+      s.answer < s.options.length
+    ) {
+      steps.push({
+        kind: "check",
+        prompt: s.prompt,
+        options: s.options,
+        answer: s.answer,
+        praise: s.praise || "That's exactly the idea — locked in.",
+        ...(s.code ? { code: s.code } : {}),
+      });
+    }
+  }
+  return steps;
+}
+
+/** A circle's drilled quarters, sanitised — the same rules every build uses. */
+export function toLessons(raw: z.infer<typeof lessonSchema>[]): Lesson[] {
+  return raw
+    .map((l, i) => ({
+      id: l.id || `q${i + 1}`,
+      title: l.title || `Part ${i + 1}`,
+      steps: sanitizeSteps(l.steps),
+    }))
+    .filter((l) => l.steps.length > 0);
+}
+
 /** Convert + sanitize a generated unit into a Section and exam questions that
  *  are guaranteed valid against the existing ladder (deps only point at known
  *  earlier topics, answers in range, questions tagged to real topics). */
@@ -1182,41 +1231,6 @@ export function assembleUnit(
   const known = new Set(existingTopicIds);
   const topics: Topic[] = [];
 
-  function sanitizeSteps(raw: z.infer<typeof stepSchema>[]): Step[] {
-    const steps: Step[] = [];
-    for (const s of raw) {
-      // Optional fields are added only when present — Firestore rejects
-      // undefined values, so absent must mean absent.
-      if (s.kind === "teach" && s.body) {
-        const safeSvg = s.svg ? sanitizeSvg(s.svg) : null;
-        steps.push({
-          kind: "teach",
-          body: s.body,
-          ...(s.title ? { title: s.title } : {}),
-          ...(s.code ? { code: s.code } : {}),
-          ...(safeSvg ? { svg: safeSvg } : {}),
-        });
-      } else if (
-        s.kind === "check" &&
-        s.prompt &&
-        s.options &&
-        s.options.length >= 2 &&
-        s.answer !== undefined &&
-        s.answer >= 0 &&
-        s.answer < s.options.length
-      ) {
-        steps.push({
-          kind: "check",
-          prompt: s.prompt,
-          options: s.options,
-          answer: s.answer,
-          praise: s.praise || "That's exactly the idea — locked in.",
-          ...(s.code ? { code: s.code } : {}),
-        });
-      }
-    }
-    return steps;
-  }
 
   for (const t of generated.topics) {
     let id = t.id;

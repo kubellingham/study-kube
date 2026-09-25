@@ -70,6 +70,9 @@ export interface Topic {
   kind?: "teach" | "review";
   /** Review nodes only: what to re-test. */
   review?: ReviewSpec;
+  /** Built on a free account's allowance. A gift is never taken back: it
+   *  stays open through an upgrade to Climb and through a cancelled plan. */
+  gift?: boolean;
   /** Topic ids that must be understood first. Must point backwards in ladder order. */
   deps: string[];
   /** One line shown on the analysis screen: why this topic matters. */

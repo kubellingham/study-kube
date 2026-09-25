@@ -28,8 +28,10 @@ import {
   assemblePastPaperQuestions,
   normalizeCourse,
   dropRepeatedCircles,
+  toLessons,
   type GenMode,
 } from "@/lib/course/generate";
+import { CLIMB_TASTE } from "@/lib/entitlement";
 import {
   verifyLessons,
   verifyExamQuestions,
@@ -733,13 +735,35 @@ export async function POST(req: NextRequest) {
         // depth.
         const skelOpts = standalone ? { standalone: true } : undefined;
 
-        // ── CLIMB: distill only. Concept map + exams on the budget model; NO
-        // drilling (the deep teaching is Summit). Feeds practice, notes, exams;
-        // the tree shows those topics locked-behind-glass. Cheap and fast. ──
+        // ── CLIMB: the practice gym on everything, plus a TASTE of Summit —
+        // the first three circles of each subject taught in full. The rest of
+        // the map is distilled (recap, flashcards, exams) and shown behind glass.
         if (isClimbOnly) {
           const skeleton = await generateUnitSkeletonCheap(courseTitle, unitNumber, rawText, existingTopics, images, meter, skelOpts);
           if (standalone) skeleton.topics = skeleton.topics.map((t) => ({ ...t, deps: [] }));
           skeleton.topics = dropRepeatedCircles(skeleton.topics, courseCircles).kept;
+
+          // Only as many as the subject still needs: its first three circles
+          // are taught once, not three more on every upload.
+          const taughtInSubject = preSections
+            .flatMap((s) => s.topics)
+            .filter((t) => t.kind !== "review" && (t.lessons?.length ?? 0) > 0).length;
+          const toTeach = Math.min(skeleton.topics.length, Math.max(0, CLIMB_TASTE - taughtInSubject));
+          const tasteLessons = new Map<string, ReturnType<typeof toLessons>>();
+          if (toTeach > 0) {
+            await setJob({ note: `Mapped ${skeleton.topics.length} — teaching your first ${toTeach} in full, Climb's taste of Summit…` });
+            const titles = skeleton.topics.map((t) => t.title);
+            const tasteTopics = skeleton.topics.slice(0, toTeach);
+            const { results } = await drillWithinBudget(
+              tasteTopics,
+              clock.budget(DRILL_BUDGET_MS, VERIFY_RESERVE_MS, MIN_DRILL_MS),
+              (topic) => generateTopicLessonsCheap(courseTitle, unitNumber, rawText, topic, titles, images, meter, { ...summitOpts, mode: genMode, standalone })
+            );
+            results.forEach((raw, i) => {
+              const lessons = raw ? toLessons(raw) : [];
+              if (lessons.length > 0) tasteLessons.set(tasteTopics[i].title, lessons);
+            });
+          }
           await setJob({ note: `Mapped ${skeleton.topics.length} concept${skeleton.topics.length === 1 ? "" : "s"} — writing your practice & exams…` });
           const rawQuestions = await generateExamBankCheap(courseTitle, unitNumber, rawText, skeleton.topics, images, meter).catch(() => []);
           await setJob({ note: "Checking every answer key…" });
@@ -760,6 +784,13 @@ export async function POST(req: NextRequest) {
             const files = ((fresh.get("files") as IngestedFile[]) ?? []).filter((f) => f.id !== fileId);
             const allIds = sections.flatMap((s) => s.topics).map((t) => t.id);
             const { section, questions } = assembleClimbUnit(skeleton, questionsRaw, unitNumber, allIds);
+            // Give the taste circles their lessons. Matched by title — ids can
+            // be re-prefixed on a collision, titles in one map can't repeat.
+            if (tasteLessons.size > 0) {
+              section.topics = section.topics.map((t) =>
+                tasteLessons.has(t.title) ? { ...t, lessons: tasteLessons.get(t.title)! } : t
+              );
+            }
             if (toExtras) {
               section.extras = true;
               section.title = EXTRAS_TITLE;
@@ -787,7 +818,7 @@ export async function POST(req: NextRequest) {
             status: "done",
             cost: meter.summary(),
             note:
-              `${toExtras ? "Added to Extras" : isMap ? "New cluster added" : `Unit ${unitNumber} distilled`} — ${addedC} concept${addedC === 1 ? "" : "s"} with recap, flashcards & ${addedCQ} exam question${addedCQ === 1 ? "" : "s"}. Practice and notes are ready.` +
+              `${toExtras ? "Added to Extras" : isMap ? "New cluster added" : `Unit ${unitNumber} distilled`} — ${addedC} concept${addedC === 1 ? "" : "s"} with recap, flashcards & ${addedCQ} exam question${addedCQ === 1 ? "" : "s"}${tasteLessons.size > 0 ? `, and your first ${tasteLessons.size} taught in full` : ""}. Practice and notes are ready.` +
               (reportLine(climbReport) ? ` (Answer check: ${reportLine(climbReport)}.)` : ""),
           });
           return;
@@ -893,6 +924,12 @@ export async function POST(req: NextRequest) {
 
           const allIds = sections.flatMap((s) => s.topics).map((t) => t.id);
           const { section, questions } = assembleUnit(generated, unitNumber, allIds, !standalone);
+          // Built on the free allowance → a gift. Gifts stay open whatever
+          // happens to the account afterwards: an upgrade to Climb, or a plan
+          // that ends. What you were given stays.
+          if (topicCap != null) {
+            section.topics = section.topics.map((t) => (t.kind === "review" ? t : { ...t, gift: true }));
+          }
           if (toExtras) {
             section.extras = true;
             section.title = EXTRAS_TITLE;

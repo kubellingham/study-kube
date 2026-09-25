@@ -41,6 +41,9 @@ export interface Entitlement {
   expiresAt: number | null;
   /** Present for accounts that have never paid. */
   free?: FreeAllowance;
+  /** A lapsed account's floor: the circles that stay open after a plan ends,
+   *  so nobody who has paid is ever left with less than a newcomer. */
+  floor?: string[];
 }
 
 export const LOCKED: Entitlement = { tier: null, source: null, expiresAt: null };
@@ -91,6 +94,38 @@ export const freeTopicsLeft = (e: Entitlement) =>
  *  more, never to studying what's already built. */
 export const mayClimb = (e: Entitlement) =>
   hasSummit(e) || (e.tier === null && !!e.free?.eligible);
+
+/** How many taught circles Climb opens in every subject — the taste of what
+ *  Summit does with the rest of it. */
+export const CLIMB_TASTE = 3;
+
+/**
+ * Is this circle open to this account? The whole tier policy in one place:
+ *
+ *   What you were GIVEN stays. What you RENTED goes back when you stop renting.
+ *
+ * - Summit / Crew: every circle.
+ * - A circle built on the free allowance is a gift, and a gift is never taken
+ *   back — upgrading to Climb doesn't close your twelve, cancelling doesn't.
+ * - Climb: the first three taught circles of each subject.
+ * - Never paid: everything it has, since its allowance built all of it.
+ * - Paid once, plan ended: the free floor — twelve circles — never less than a
+ *   newcomer gets. Nothing is ever deleted; resubscribing opens it all again.
+ *
+ * `position` is the circle's index among the TAUGHT circles of its subject.
+ */
+export function circleOpen(
+  e: Entitlement,
+  circle: { id: string; gift?: boolean; kind?: string },
+  position: number
+): boolean {
+  if (hasSummit(e)) return true;
+  if (circle.kind === "review") return e.tier === "climb" || (e.tier === null && !!e.free?.eligible);
+  if (circle.gift) return true;
+  if (e.tier === "climb") return position < CLIMB_TASTE;
+  if (e.tier === null) return e.free?.eligible ? true : !!e.floor?.includes(circle.id);
+  return false;
+}
 
 export const TIER_LABEL: Record<Tier, string> = {
   climb: "Kube Climb",

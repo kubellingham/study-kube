@@ -49,13 +49,18 @@ export async function requireEntitlement(
  *  inside a lesson. A plan, or a free account, which keeps what its allowance
  *  built for good. (Building more is a separate gate, below.) */
 export async function requireStudyAccess(
-  req: NextRequest
+  req: NextRequest,
+  opts: { insideLesson?: boolean } = {}
 ): Promise<{ ok: true; uid: string; email: string | null } | { ok: false; response: Response }> {
   const auth = await getAuth(req);
   if (!auth)
     return { ok: false, response: Response.json({ error: "Not signed in." }, { status: 401 }) };
   const ent = await getEntitlement(auth.uid);
   if (meetsTier(ent, "climb") || mayClimb(ent))
+    return { ok: true, uid: auth.uid, email: auth.email };
+  // A lapsed plan keeps its floor of circles open, so the help INSIDE those
+  // lessons has to keep working too. The practice gym doesn't come with it.
+  if (opts.insideLesson && (ent.floor?.length ?? 0) > 0)
     return { ok: true, uid: auth.uid, email: auth.email };
   return {
     ok: false,
@@ -155,7 +160,32 @@ export async function getEntitlement(uid: string): Promise<Entitlement> {
       allowance: FREE_TOPIC_ALLOWANCE,
       eligible: !everPaid,
     },
+    ...(everPaid ? { floor: await freeFloor(uid) } : {}),
   };
+}
+
+/** The free floor for an account whose plan has ended: its first twelve taught
+ *  circles, oldest subject first, in ladder order. Someone who has paid is
+ *  never left with less than a newcomer gets — and it's a fixed, predictable
+ *  set, not a guess at what they "were studying". Only computed for lapsed
+ *  accounts, which are rare, so the extra read costs nearly nothing. */
+async function freeFloor(uid: string): Promise<string[]> {
+  const snap = await adminDb().collection("courses").where("userId", "==", uid).get();
+  const courses = snap.docs
+    .map((doc) => doc.data() as { createdAt?: number; sections?: { unit: number; topics: { id: string; kind?: string }[] }[] })
+    .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+  const floor: string[] = [];
+  for (const c of courses) {
+    const sections = [...(c.sections ?? [])].sort((a, b) => a.unit - b.unit);
+    for (const sec of sections) {
+      for (const t of sec.topics ?? []) {
+        if (t.kind === "review") continue;
+        floor.push(t.id);
+        if (floor.length >= FREE_TOPIC_ALLOWANCE) return floor;
+      }
+    }
+  }
+  return floor;
 }
 
 /** Count topics against the free allowance. Called only after a build has
