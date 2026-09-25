@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation";
 import { useUser } from "@/lib/use-user";
 import { useEntitlement } from "@/lib/use-entitlement";
 import { mayClimb, LOCKED } from "@/lib/entitlement";
+import { openCircleIds } from "@/lib/learn/access";
 import type { CourseBundle } from "@/lib/course";
 import { loadProgress, type LearnProgress } from "@/lib/learn/progress";
 import { topicLessons, lessonKey } from "@/lib/course/lessons";
@@ -38,6 +39,10 @@ export default function MapBoard({
   const { entitlement } = useEntitlement();
   const entLoaded = entitlement !== null;
   const summit = !entLoaded || mayClimb(entitlement ?? LOCKED);
+  // Per circle, not per account — Climb opens its first three, a lapsed plan
+  // keeps its floor, gifts stay open. Optimistic while entitlement loads.
+  const openIds = openCircleIds(entitlement ?? null, bundle.ladder);
+  const isOpen = (id: string) => !entLoaded || openIds.has(id);
   const [progress, setProgress] = useState<LearnProgress | null>(null);
   const [adding, setAdding] = useState(false);
 
@@ -191,9 +196,9 @@ export default function MapBoard({
                         <button
                           key={t.id}
                           type="button"
-                          title={summit ? undefined : "Unlock your climb with Summit"}
+                          title={isOpen(t.id) ? undefined : "Unlock your climb with Summit"}
                           onClick={() =>
-                            router.push(summit ? `/learn/${courseId}/lesson/${t.id}` : "/learn/upgrade")
+                            router.push(isOpen(t.id) ? `/learn/${courseId}/lesson/${t.id}` : "/learn/upgrade")
                           }
                           className="flex items-center gap-2.5 rounded-xl border px-3 py-2 text-left text-sm"
                           style={{
@@ -222,7 +227,7 @@ export default function MapBoard({
                           <span className="min-w-0 flex-1">
                             <RichInline text={t.title} />
                           </span>
-                          {!summit && (
+                          {!isOpen(t.id) && (
                             <span
                               aria-label="Locked — Summit opens this"
                               className="flex-none"
@@ -234,7 +239,7 @@ export default function MapBoard({
                               </svg>
                             </span>
                           )}
-                          {summit && !isDone && sliceProgress(t.id).done > 0 && (
+                          {isOpen(t.id) && !isDone && sliceProgress(t.id).done > 0 && (
                             <span
                               className="flex-none text-[11px] font-semibold"
                               style={{ color: "var(--kube)" }}

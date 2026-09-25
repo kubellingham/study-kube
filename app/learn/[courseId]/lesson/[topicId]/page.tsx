@@ -10,7 +10,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCourse } from "@/lib/learn/use-course";
 import { useEntitlement } from "@/lib/use-entitlement";
-import { mayClimb } from "@/lib/entitlement";
+import { openCircleIds } from "@/lib/learn/access";
 import type { CheckStep, TeachStep, Step, Lesson } from "@/lib/course/types";
 import {
   topicLessons,
@@ -550,9 +550,10 @@ export default function TopicPage() {
 
   // The climb itself is Summit. The tree is shown behind glass on the ladder;
   // reaching a lesson without Summit lands here — warm, inviting, never a scold.
-  // Summit climbs anything; a free account climbs what its own allowance
-  // built, for as long as it likes.
-  if (entitlement !== null && !mayClimb(entitlement)) {
+  // Whether THIS circle opens: Summit climbs anything, a free account climbs
+  // what its allowance built, Climb its first three per subject, a lapsed plan
+  // its floor — one rule, lib/entitlement.ts circleOpen.
+  if (entitlement !== null && !openCircleIds(entitlement, bundle.ladder).has(topic.id)) {
     return (
       <main className="mx-auto max-w-md flex-1 px-4 py-20 text-center">
         <div className="mx-auto grid place-items-center" style={{ width: 56, height: 56, borderRadius: "50%", background: "var(--kube-soft)", color: "var(--kube)" }}>

@@ -35,7 +35,7 @@ const verdictSchema = z.object({
 
 export async function POST(req: NextRequest) {
   // The practice meaning-judge is a Climb feature (cram gym).
-  const gate = await requireStudyAccess(req);
+  const gate = await requireStudyAccess(req, { insideLesson: true });
   if (!gate.ok) return gate.response;
 
   let term = "";

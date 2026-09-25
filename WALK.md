@@ -109,7 +109,10 @@ than a locked view of everything.
 - **Tiers, and what happens on change.** Upgrading never takes anything away;
   downgrading returns you to that tier's rights. Cancelling drops you to the
   free floor, never below it. Nothing is ever deleted. Climb gets 3 taught
-  topics per subject as the taste of Summit. *(Agreed, not yet built.)*
+  topics per subject as the taste of Summit. *(Built in #48. The one caveat:
+  a lapsed account keeps its floor of topics but not the practice gym.)*
+- **Quarters.** Light 2-3, medium 4, heavy up to 6 — extra quarters go where
+  the difficulty is. Bigger circles, fewer of them. *(Built in #47.)*
 
 ## After launch
 
