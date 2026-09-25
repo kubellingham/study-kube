@@ -28,9 +28,8 @@ service cloud.firestore {
       return signedIn() && data.userId == request.auth.uid;
     }
 
-    // The collections the browser owns: a student's own learning record, the
-    // shelf of material Kube is holding, and the pre-Kube material pages that
-    // are still present but no longer linked. Anything not here is server-only.
+    // The collections the browser owns: a student's own learning record and
+    // the shelf of material Kube is holding. Anything not here is server-only.
     function browserOwned() {
       return [
         'learnProgress', 'practiceState', 'studyPlan', 'mistakes',
