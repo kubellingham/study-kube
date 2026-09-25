@@ -27,6 +27,7 @@ import {
   parsePastPaper,
   assemblePastPaperQuestions,
   normalizeCourse,
+  dropRepeatedCircles,
   type GenMode,
 } from "@/lib/course/generate";
 import {
@@ -110,6 +111,10 @@ function digestClock(startedAt: number) {
 // a focused first ladder that reliably finishes; more depth comes from adding
 // actual unit files (which are NOT capped).
 const KNOWLEDGE_TOPIC_CAP = 8;
+/** The smallest part of a bigger document a free account will build. Below
+ *  this, Kube says what the document holds and builds nothing rather than a
+ *  fragment. (A document that simply IS small is built whole regardless.) */
+const MIN_FREE_BUILD = 3;
 
 /** Read an explicit unit choice from the request (JSON number or form string).
  *  Accepts 1..99, or the literal "extras" to park the file in the Extras bay;
@@ -715,6 +720,12 @@ export async function POST(req: NextRequest) {
               .filter((s) => s.unit <= unitNumber)
               .flatMap((s) => s.topics)
               .map((t) => ({ id: t.id, title: t.title }));
+        // Every circle already on the course, whatever its unit — a repeat is a
+        // repeat whether it sits in this unit or three units back.
+        const courseCircles = preSections
+          .flatMap((s) => s.topics)
+          .filter((t) => t.kind !== "review")
+          .map((t) => ({ id: t.id, title: t.title }));
         // Standalone only changes the TEACHING stance (self-contained topics, no
         // dependency threading) — never how much gets built. A Map used to also
         // drop out of cram mode here, which quietly gave the same file fewer
@@ -728,6 +739,7 @@ export async function POST(req: NextRequest) {
         if (isClimbOnly) {
           const skeleton = await generateUnitSkeletonCheap(courseTitle, unitNumber, rawText, existingTopics, images, meter, skelOpts);
           if (standalone) skeleton.topics = skeleton.topics.map((t) => ({ ...t, deps: [] }));
+          skeleton.topics = dropRepeatedCircles(skeleton.topics, courseCircles).kept;
           await setJob({ note: `Mapped ${skeleton.topics.length} concept${skeleton.topics.length === 1 ? "" : "s"} — writing your practice & exams…` });
           const rawQuestions = await generateExamBankCheap(courseTitle, unitNumber, rawText, skeleton.topics, images, meter).catch(() => []);
           await setJob({ note: "Checking every answer key…" });
@@ -794,12 +806,37 @@ export async function POST(req: NextRequest) {
           : await generateUnitSkeleton(courseTitle, unitNumber, rawText, existingTopics, images, genMode, meter, premiumModel, standalone);
         if (standalone) skeleton.topics = skeleton.topics.map((t) => ({ ...t, deps: [] }));
 
+        // A circle already on the course is dropped now — before a lesson is
+        // paid for, and before it can be counted against anyone's allowance.
+        const { kept: freshCircles, repeats } = dropRepeatedCircles(skeleton.topics, courseCircles);
+        skeleton.topics = freshCircles;
+        if (repeats.length > 0) {
+          await setJob({
+            note: `Already on your course, so not built twice: ${repeats.map((r) => r.title).join(", ")}.`,
+          });
+        }
+
         // A free account builds up to its remaining topic allowance. Kube maps
         // the WHOLE document either way — the student is told everything that's
         // in there, and exactly how much of it is being built now. Nobody is
         // asked to go and trim a file.
         const foundTopics = skeleton.topics.length;
         const capped = topicCap != null && foundTopics > topicCap;
+
+        // Never build a runt. If a document holds seven circles and the free
+        // account has two left, building two makes Kube look incapable and
+        // spends the student's last allowance on a fragment. Say what's in it,
+        // spend nothing, and offer the plan that builds all of it.
+        if (capped && topicCap! < MIN_FREE_BUILD) {
+          await setJob({
+            status: "skipped",
+            cost: meter.summary(),
+            // "Topics", not "circles", in anything a student reads — it's the
+            // word the rest of the app counts in ("12 / 35 topics climbed").
+            note: `This holds ${foundTopics} topics — ${skeleton.topics.map((t) => t.title).join(", ")} — and you have ${topicCap} free ${topicCap === 1 ? "topic" : "topics"} left, too few to build it properly. None were spent. Summit builds all of it.`,
+          });
+          return;
+        }
         if (topicCap != null) skeleton.topics = skeleton.topics.slice(0, topicCap);
         await setJob({
           note: capped
