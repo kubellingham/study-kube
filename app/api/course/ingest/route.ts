@@ -29,6 +29,8 @@ import {
   normalizeCourse,
   dropRepeatedCircles,
   toLessons,
+  readPictures,
+  MAX_READ_IMAGES,
   type GenMode,
 } from "@/lib/course/generate";
 import { CLIMB_TASTE } from "@/lib/entitlement";
@@ -470,6 +472,22 @@ export async function POST(req: NextRequest) {
 
 
     try {
+      // Read the pictures ONCE, into text, before anything else looks at the
+      // file. From here on the classifier, the map, every lesson and the exam
+      // bank work from text on the text model — the pictures used to be re-sent
+      // to an image model with every one of those calls, which is where the
+      // money went. (The file's identity was fingerprinted above, from the
+      // original upload, so re-adding the same file is still recognised.)
+      if (images.length > 0) {
+        await setJob({ note: `Reading ${Math.min(images.length, MAX_READ_IMAGES)} picture${images.length === 1 ? "" : "s"} in your material…` });
+        const pics = await readPictures(courseTitle, images, meter);
+        if (pics.text) rawText = rawText ? `${rawText}\n\n${pics.text}` : pics.text;
+        // Text-only from here — unless NOTHING could be read and the file is
+        // mostly pictures (a scanned page with almost no text), where sending
+        // the pictures along is still the only way to teach it.
+        if (pics.read > 0 || rawText.length >= 1500) images = [];
+      }
+
       // Building from just an outline (Kube's own knowledge) is a Summit power —
       // Climb is grounded-only, it distills the material you actually give it.
       if (mode === "fromKnowledge" && isClimbOnly) {
