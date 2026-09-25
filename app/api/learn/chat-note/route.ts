@@ -4,6 +4,7 @@ import { adminDb } from "@/lib/firebase/admin";
 import { getAnthropic, CHAT_MODEL } from "@/lib/anthropic";
 import { chatJSON, CHAT_BUDGET_MODEL } from "@/lib/openrouter";
 import { budgetEngineReady } from "@/lib/course/generate";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 
@@ -40,6 +41,11 @@ interface Turn {
 export async function POST(req: NextRequest) {
   const uid = await getUid(req);
   if (!uid) return Response.json({ error: "Not signed in." }, { status: 401 });
+  // A note follows a tutor chat, so it can't honestly outrun the chat's own
+  // limit. Past that, skip quietly — the note is a nicety, never an error.
+  if (!checkRateLimit(`chatnote:${uid}`, 30, 10 * 60 * 1000).ok) {
+    return Response.json({ ok: true, skipped: true });
+  }
 
   let courseId = "";
   let topicId = "";

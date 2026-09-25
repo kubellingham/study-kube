@@ -1,1 +1,2 @@
 @AGENTS.md
+@KUBE_STATE.md

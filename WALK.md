@@ -5,6 +5,9 @@ it, study it, pay for it — looking for what's **broken, untrue, or built but
 unreachable**. Not a wishlist. If a finding needs a new idea to fix, it isn't a
 finding: it goes to "after launch" at the bottom.
 
+The whole picture (product, plans, pipeline, what's waiting) lives in
+`KUBE_STATE.md`. This file is only the findings.
+
 Three buckets:
 
 - **Fix on sight** — broken, untrue, or unreachable. No discussion needed.
@@ -25,29 +28,13 @@ The price is $0.99 for the **first month**, then $2.99. The same page says it
 correctly further down ("$1 your first month"). The header reads as an ongoing
 price.
 
-### 2. The taster promises something the app refuses
+### ~~2. The taster promises something the app refuses~~ — settled
 
-At the keep-it wall, after someone climbs a real lesson: *"feed Kube your own
-PDFs and it builds a ladder like this for every subject."* A free account
-cannot upload anything — digesting requires a paid plan. It's the most
-persuasive moment in the product, and it's a promise the next screen breaks.
+Free now builds 12 topics for real (#45), so the promise is true.
 
-Two honest ways out, one cheap and one not:
+### ~~3. The locked ladder~~ — settled
 
-- Say it plainly: building needs a plan, and the taster is the free part.
-- Give a free account one real build (one subject, one file, kept forever).
-
-Same contradiction as the plans page saying "Build for free — pay to climb"
-while the code requires a plan to upload. Whatever is decided, these two and
-the plans page have to agree.
-
-### 3. The locked ladder
-
-A Climb account sees the whole tree behind glass and can't open any of it.
-That's deliberate and honest, but it means the cheapest paying tier triggers
-the most expensive thing Kube does (the digest) and gets the least visible
-thing back. Worth deciding whether Climb should own something whole rather
-than a locked view of everything.
+Climb now teaches the first 3 topics of every subject in full (#48).
 
 ---
 
@@ -71,6 +58,9 @@ than a locked view of everything.
 | Redeeming a code and joining a crew had no rate limit | Both endpoints, unlimited tries | #41 |
 | Link previews pointed at a domain we don't own | Page metadata said kube.study | #43 |
 | A second subscription erased the first | Buy Summit while leading a crew, cancel it, lose the crew | #44 |
+| A few photos made a build cost ~$2.60 | Every picture re-sent to a vision model on every call | #49 |
+| The tutor chat, definition checks, re-marking and the upload read had no per-person limit | One account or script could drain the shared AI balance | #50 |
+| The retired /materials AI routes still answered anyone signed in | Summary, quiz, flashcards and tutor, with no plan check | #50 |
 
 ---
 
@@ -84,8 +74,6 @@ than a locked view of everything.
   verified unreachable. The sandbox blocked the deletion as irreversible; it
   needs permission.
 - **OpenRouter credit.** Without it every upload fails, for everyone.
-- **Deploy the Firestore rules.** Until they're published, anyone can grant
-  themselves the top tier from a browser console. This is the urgent one.
 - **Go live on Stripe** when the account is activated: live key, re-run the
   `/admin` setup, a new webhook endpoint with its own secret, the customer
   portal turned on, then one real payment and a refund. The whole flow is
