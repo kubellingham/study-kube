@@ -5,6 +5,7 @@
 // (so big files are fine), then Kube classifies and digests each one as a
 // BACKGROUND job — closing the tab is safe; progress reattaches on return.
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import {
   collection,
   doc,
@@ -15,6 +16,8 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { authedFetch } from "@/lib/authed-fetch";
+import { useEntitlement } from "@/lib/use-entitlement";
+import { freeTopicsLeft } from "@/lib/entitlement";
 import { extractFileInBrowser, type ExtractedMaterial } from "@/lib/ingest/client-extract";
 import type { IngestedFile } from "@/lib/course/types";
 import type { Observation } from "@/lib/course/generate";
@@ -66,6 +69,12 @@ export default function AddMaterial({
   invitation: boolean;
   courseTitle?: string;
 }) {
+  const { entitlement } = useEntitlement();
+  // Free accounts build against a topic allowance. Saying how much is left
+  // BEFORE they upload is the whole point — nobody should discover a limit by
+  // hitting it.
+  const freeLeft = entitlement ? freeTopicsLeft(entitlement) : 0;
+  const onFree = !!entitlement && entitlement.tier === null && !!entitlement.free?.eligible;
   const [text, setText] = useState("");
   const [tab, setTab] = useState<"files" | "text">("files");
   const [lines, setLines] = useState<JobLine[]>([]);
@@ -520,6 +529,30 @@ export default function AddMaterial({
           many batches as you like. Kube works out what each file is and slots
           it in. Nothing already learned is ever re-processed.
         </p>
+      )}
+
+      {onFree && (
+        <div
+          className="mt-4 rounded-2xl border px-4 py-3 text-sm"
+          style={{ borderColor: "var(--kube-line)", background: "var(--kube-soft)", color: "var(--ink-soft)" }}
+        >
+          {freeLeft > 0 ? (
+            <>
+              <b style={{ color: "var(--ink)" }}>{freeLeft} free topics left.</b> Kube reads
+              everything you give it and tells you what&apos;s in there — then builds as far as
+              your topics reach. What it builds is the full thing, and it stays yours.
+            </>
+          ) : (
+            <>
+              <b style={{ color: "var(--ink)" }}>Your free topics are all built.</b> Everything you
+              made stays yours, in full.{" "}
+              <Link href="/learn/upgrade" style={{ color: "var(--kube)", fontWeight: 600 }}>
+                Pick a plan
+              </Link>{" "}
+              to keep going.
+            </>
+          )}
+        </div>
       )}
 
       <div className="mt-4 flex gap-2">

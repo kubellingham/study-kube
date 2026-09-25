@@ -5,13 +5,21 @@ import type { NextRequest } from "next/server";
 import { adminDb } from "@/lib/firebase/admin";
 import { getAuth } from "@/lib/api-helpers";
 import {
+  freeTopicsLeft,
+  mayClimb,
   meetsTier,
   resolveEntitlement,
+  FREE_TOPIC_ALLOWANCE,
   TIER_LABEL,
   type Entitlement,
   type Grant,
   type Tier,
 } from "@/lib/entitlement";
+
+/** The free allowance can be switched off instantly — one environment
+ *  variable, no deploy of code. If a hundred signups ever start draining the
+ *  model budget overnight, this is the handle to pull first and think second. */
+export const freeBuildsOn = () => process.env.FREE_BUILD !== "0";
 
 // ── Route guard ──────────────────────────────────────────────────────────
 
@@ -35,6 +43,61 @@ export async function requireEntitlement(
     };
   }
   return { ok: true, uid: auth.uid, email: auth.email };
+}
+
+/** Gate STUDYING what's already built — lessons, practice, notes, the helpers
+ *  inside a lesson. A plan, or a free account, which keeps what its allowance
+ *  built for good. (Building more is a separate gate, below.) */
+export async function requireStudyAccess(
+  req: NextRequest
+): Promise<{ ok: true; uid: string; email: string | null } | { ok: false; response: Response }> {
+  const auth = await getAuth(req);
+  if (!auth)
+    return { ok: false, response: Response.json({ error: "Not signed in." }, { status: 401 }) };
+  const ent = await getEntitlement(auth.uid);
+  if (meetsTier(ent, "climb") || mayClimb(ent))
+    return { ok: true, uid: auth.uid, email: auth.email };
+  return {
+    ok: false,
+    response: Response.json(
+      { error: `This needs ${TIER_LABEL.climb}.`, needsTier: "climb" as Tier },
+      { status: 402 }
+    ),
+  };
+}
+
+/** Gate the BUILD path (digesting material). Unlike every other paid route
+ *  this one has two ways in: a plan, or a free account with allowance left.
+ *  Returns `topicCap` — the number of topics this build may produce, or null
+ *  when there's no cap at all. */
+export async function requireBuildAccess(
+  req: NextRequest
+): Promise<
+  | { ok: true; uid: string; email: string | null; topicCap: number | null }
+  | { ok: false; response: Response }
+> {
+  const auth = await getAuth(req);
+  if (!auth)
+    return { ok: false, response: Response.json({ error: "Not signed in." }, { status: 401 }) };
+  const ent = await getEntitlement(auth.uid);
+  if (meetsTier(ent, "climb"))
+    return { ok: true, uid: auth.uid, email: auth.email, topicCap: null };
+
+  const left = freeBuildsOn() ? freeTopicsLeft(ent) : 0;
+  if (left > 0) return { ok: true, uid: auth.uid, email: auth.email, topicCap: left };
+
+  return {
+    ok: false,
+    response: Response.json(
+      {
+        error: ent.free?.eligible
+          ? `You've used all ${ent.free.allowance} of your free topics — everything you've built stays yours. Pick a plan to keep building.`
+          : "Building a subject needs a plan.",
+        needsTier: "climb" as Tier,
+      },
+      { status: 402 }
+    ),
+  };
 }
 
 // ── Access resolution ────────────────────────────────────────────────────
@@ -71,7 +134,41 @@ export async function getEntitlement(uid: string): Promise<Entitlement> {
   }
   if (d.crewTier)
     grants.push({ tier: d.crewTier as Tier, source: "crew", expiresAt: d.crewExpiresAt ?? null });
-  return resolveEntitlement(grants, now);
+  const ent = resolveEntitlement(grants, now);
+  if (ent.tier) return ent;
+
+  // No active plan. Either this account has never paid — in which case it gets
+  // the free allowance — or it had one and it lapsed, in which case it doesn't:
+  // otherwise you could subscribe, build a whole semester, cancel, and keep it.
+  const everPaid =
+    !!d.promoTier ||
+    !!d.crewTier ||
+    !!d.stripeTier ||
+    Object.keys((d.stripeSubs ?? {}) as Record<string, unknown>).length > 0;
+  // Eligibility is about never having paid — deliberately NOT about the kill
+  // switch. Turning free builds off must stop NEW builds, never take away what
+  // someone already built; that's the build gate's job, below.
+  return {
+    ...ent,
+    free: {
+      used: typeof d.freeTopicsUsed === "number" ? d.freeTopicsUsed : 0,
+      allowance: FREE_TOPIC_ALLOWANCE,
+      eligible: !everPaid,
+    },
+  };
+}
+
+/** Count topics against the free allowance. Called only after a build has
+ *  actually produced them — a digest that failed, or ran out of time before
+ *  teaching anything, costs the student nothing. */
+export async function spendFreeTopics(uid: string, topics: number): Promise<void> {
+  if (topics <= 0) return;
+  const ref = adminDb().collection("entitlements").doc(uid);
+  await adminDb().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const used = (snap.data()?.freeTopicsUsed as number | undefined) ?? 0;
+    tx.set(ref, { freeTopicsUsed: used + topics }, { merge: true });
+  });
 }
 
 // ── Promo codes ──────────────────────────────────────────────────────────
