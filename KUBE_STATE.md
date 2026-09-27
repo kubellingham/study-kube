@@ -8,7 +8,7 @@ that changes what's written here updates it in the same PR.
 after launch). `PROJECT_BRIEF.md` describes the **old** product (materials,
 summaries, quizzes) and is out of date. Trust this file over it.
 
-*Last updated: 2026-09-25, after #52.*
+*Last updated: 2026-09-27, after #54.*
 
 ---
 
@@ -270,7 +270,9 @@ rate limits · #43 domain · #44 two subscriptions · #45 free = 12 topics ·
 #46 circle definition and dedupe · #47 quarters sized to the idea ·
 #48 tiers (gifts, Climb taste, free floor) · #49 pictures read once ·
 #50 per-person limits on every AI door and this file · #51 the monthly
-allowance, counted in real dollars · #52 the old materials app deleted.
+allowance, counted in real dollars · #52 the old materials app deleted ·
+#54 walk 3: password reset, complete account deletion, honest privacy page
+and README.
 
 ### Not proven live yet (needs OpenRouter credit)
 
@@ -297,6 +299,9 @@ repeats, that the quarters vary, and the cost in `/admin`.
 
 ### Isaac's call (open)
 
+- The landing page's promises, for the renovation (WALK.md #5): the free tier
+  is invisible there, Climb's "Unlimited uploads" meets the monthly allowance,
+  and "ask your tutor anything, anytime" is really "inside any lesson".
 - "From $1 a month" in the landing header reads as ongoing. It's $0.99 for the
   first month only.
 - Confirm that a lapsed account gets no practice gym, and that its floor is

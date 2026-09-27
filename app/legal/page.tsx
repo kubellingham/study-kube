@@ -48,13 +48,13 @@ export default function LegalPage() {
           Privacy &amp; terms
         </h1>
         <p style={{ color: "#46566a", fontSize: 15, margin: 0 }}>
-          Last updated: 15 September 2026. Studying Kube is built and operated
+          Last updated: 27 September 2026. Studying Kube is built and operated
           by an independent developer at <a href="mailto:ikube77@gmail.com" style={{ color: "#1f6f6b" }}>ikube77@gmail.com</a>.
         </p>
 
         <Section title="What we store about you">
           <ul style={LIST}>
-            <li>Your name and email (from your Google sign-in).</li>
+            <li>Your name and email (from sign-up, or from your Google sign-in).</li>
             <li>Your uploaded course material — PDFs, notes, decks, past papers.</li>
             <li>The courses, lessons, exams and progress Kube generates from that material.</li>
             <li>Basic account state: referral code, crew membership, subscription tier.</li>
@@ -78,10 +78,12 @@ export default function LegalPage() {
 
         <Section title="Deleting your data">
           <p style={P}>
-            Email <a href="mailto:ikube77@gmail.com" style={{ color: "#1f6f6b" }}>ikube77@gmail.com</a> from the address on your account and ask.
-            Everything associated with your account will be removed from
-            Firestore within a few working days. Backups (see below) age out on
-            their own schedule.
+            Do it yourself any time: Your account → Delete account removes your
+            account and everything in it straight away. Or email <a href="mailto:ikube77@gmail.com" style={{ color: "#1f6f6b" }}>ikube77@gmail.com</a> from
+            the address on your account and ask, and it will be removed within a
+            few working days. Backups age out on their own schedule. The one thing
+            kept is a scrambled, one-way fingerprint of your email (not the
+            email itself), so a first-month discount can&apos;t be claimed twice.
           </p>
         </Section>
 

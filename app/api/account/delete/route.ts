@@ -35,6 +35,16 @@ export async function POST(req: NextRequest) {
       const snap = await db.collection(name).where("userId", "==", uid).get();
       snap.forEach((d) => refs.push(d.ref));
     }
+    // The docs keyed by uid rather than stamped with it: the profile (name,
+    // email, referral code), that code's reverse lookup, and the month's AI
+    // spend. Plus ByteLabs signals, which carry `uid`. The privacy page
+    // promises everything goes, so all of these go too.
+    const userRef = db.collection("users").doc(uid);
+    const code = (await userRef.get()).get("referralCode") as string | undefined;
+    refs.push(userRef, db.collection("spend").doc(uid));
+    if (code) refs.push(db.collection("referralCodes").doc(code));
+    const signals = await db.collection("byteLabsSignals").where("uid", "==", uid).get();
+    signals.forEach((d) => refs.push(d.ref));
 
     // Delete in batches (Firestore caps a batch at 500 writes).
     for (let i = 0; i < refs.length; i += 400) {

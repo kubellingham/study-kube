@@ -1,146 +1,43 @@
-# Studying Kube 📚🧊
+# Studying Kube
 
-Your own AI study companion — turn **PDFs, typed notes, YouTube videos, and web
-articles** into:
+A student gives Kube their course documents: PDFs, slides, notes, past papers,
+photos. Kube builds each subject into a **ladder** of ordered units, or a
+**map** of topic clusters. Every topic is a circle taught in short lessons,
+with a practice gym, mock exams, a glossary, a mistakes book, flashcards and an
+in-lesson tutor around it.
 
-- **Summaries & key concepts**
-- **Flashcards** with spaced-repetition review (SM-2 lite)
-- **Multiple-choice quizzes** that grade you and explain every answer
-- An **AI tutor** you can chat with, grounded in _your_ material
+Live at **https://studying-kube.vercel.app**.
 
-Powered by your own **Claude API** key, with **Firebase** (Firestore + Auth +
-Storage) saving your materials and progress.
+**Start with [`KUBE_STATE.md`](KUBE_STATE.md).** It's the single source of truth:
+what the product is, the plans and what each gets, how a build works, models
+and spend limits, payments, security, env vars, workflow, and what's waiting.
+[`WALK.md`](WALK.md) is the running list of findings and decisions.
 
----
+## Stack
 
-## Tech stack
+- Next.js 16 (App Router) + React 19 + TypeScript + Tailwind CSS 4. This is
+  not the Next.js in most training data: read `node_modules/next/dist/docs/`
+  before changing framework code.
+- Firebase: Firestore and Auth. The server uses the Admin SDK and verifies ID
+  tokens with `jose`.
+- AI through OpenRouter (the build and chat models, plus a cheap picture
+  reader). Anthropic is used only for the owner's premium test path.
+- Stripe for subscriptions. Vercel for hosting.
 
-- **Next.js 16** (App Router) + React 19 + TypeScript + Tailwind CSS 4
-- **Claude API** (`@anthropic-ai/sdk`, model `claude-opus-4-8`) — called only on
-  the server, so your API key never reaches the browser
-- **Firebase** — Firestore (data) + Firebase Auth (login) on the free Spark
-  plan, with security rules so each user only sees their own data. Cloud Storage
-  (for retaining PDF originals) is optional and requires the Blaze plan.
-  Firebase's first-class Android/iOS SDKs make the planned mobile apps a natural
-  next step.
-
-Server API routes verify a Firebase **ID token** (`Authorization: Bearer …`) and
-use the Firebase **Admin SDK**; the browser reads/writes Firestore directly
-under the security rules.
-
----
-
-## Setup
-
-### 1. Install dependencies
+## Run it locally
 
 ```bash
 npm install
+cp .env.example .env.local   # fill in the values; never commit .env.local
+npm run dev                  # http://localhost:3000
 ```
 
-### 2. Create a Firebase project
+The values `.env.local` needs are listed in `.env.example` and in
+`KUBE_STATE.md` §8. Before any change, run `npx tsc --noEmit`,
+`npx eslint <changed files>` and `npm run build`.
 
-1. Go to the [Firebase Console](https://console.firebase.google.com/) → **Add
-   project** (free "Spark" plan is fine).
-2. **Build → Authentication → Get started → Sign-in method → Email/Password →
-   Enable.** (For the smoothest local testing you can leave email verification
-   off.)
-3. **Build → Firestore Database → Create database** (production mode).
-4. Add a **Web app** (Project settings → General → Your apps → `</>`). Copy the
-   config values into `.env.local` (next step).
-5. **Service account:** Project settings → **Service accounts** → *Generate new
-   private key*. You'll use `project_id`, `client_email`, and `private_key` from
-   the downloaded JSON in `.env.local`.
-6. **(Optional) Storage** — Cloud Storage only keeps a copy of uploaded PDF
-   originals, which the app never reads back, and it now requires the paid
-   **Blaze** plan. **You can skip it and stay on the free Spark plan** — leave
-   `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` blank and everything still works (PDF
-   text is extracted and stored in Firestore). Only enable **Build → Storage**
-   (and publish `storage.rules`) if you specifically want to retain originals.
+## Security rules
 
-### 3. Publish the security rules
-
-Copy [`firestore.rules`](firestore.rules) into **Firestore → Rules → Publish**.
-These restrict every document to its owner. (If — and only if — you enabled
-Storage above, also publish [`storage.rules`](storage.rules) under **Storage →
-Rules**.)
-
-(If you use the Firebase CLI, `firebase deploy --only firestore:rules,storage`
-works too.)
-
-### 4. Configure environment variables
-
-```bash
-cp .env.example .env.local
-```
-
-Fill in `.env.local`:
-
-| Variable | Where to find it |
-| --- | --- |
-| `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com/) → API Keys |
-| `NEXT_PUBLIC_FIREBASE_*` | Firebase → Project settings → General → Web app config |
-| `FIREBASE_PROJECT_ID` / `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY` | the service-account JSON you downloaded |
-
-> **`FIREBASE_PRIVATE_KEY`** must keep its `\n` escapes and be wrapped in double
-> quotes — see `.env.example`. `.env.local` is gitignored; never commit it.
-
-### 5. Run it
-
-```bash
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000), create an account, and add
-your first material.
-
----
-
-## How it works
-
-1. **Add material** (`POST /api/materials`) — a PDF (text extracted with
-   `unpdf`, original saved to Cloud Storage), pasted text, a YouTube link
-   (transcript via `youtube-transcript`), or an article URL (readable text via
-   `@extractus/article-extractor`). The normalized text is stored as a
-   `materials` document in Firestore.
-2. **Generate** — the Summary / Flashcards / Quiz tabs call `/api/summary`,
-   `/api/flashcards`, `/api/quiz`. These use Claude **structured outputs** so the
-   JSON is always valid, then persist the result to Firestore.
-3. **Tutor** (`/api/tutor`) — streams Claude's reply token-by-token. Your
-   material is placed in a **cached** system block so multi-turn chat over one
-   document stays cheap.
-4. **Reads** (lists, existing summaries/decks/quizzes/chat) happen directly from
-   the browser via the Firestore SDK, guarded by the security rules.
-
-Firestore collections: `materials`, `summaries` (doc id = material id), `decks`,
-`cards`, `quizzes`, `attempts`, `messages`.
-
----
-
-## Verifying end-to-end
-
-1. Sign up, then add a material three ways: a **PDF**, **pasted text**, and a
-   **YouTube link** + an **article URL**.
-2. Open a material and generate its **Summary**, **Flashcards** (flip + grade a
-   card), and **Quiz** (take it, check the graded results + explanations).
-3. Open the **Tutor** tab and ask a question answered from the material — the
-   reply should stream in, and the conversation should persist on reload.
-4. Sign in as a second account — you should not see the first user's materials
-   (Firestore security rules).
-
----
-
-## Roadmap / not yet built
-
-- **Public multi-user release:** this version uses your single server-side Claude
-  key. Before going public, add per-user keys or metered billing + rate limits.
-- **Lecture audio → transcript** (needs a speech-to-text step).
-- **Vector search / RAG** for very large document libraries.
-- **Native mobile / desktop apps** reusing this same API + Firebase project.
-
----
-
-## Deploy
-
-Deploys cleanly to [Vercel](https://vercel.com/new). Add the environment
-variables from `.env.example` in the Vercel project settings.
+`firestore.rules` is deny-by-default: the browser may only touch a student's
+own study records. Publish it from the Firebase console (Firestore → Rules) or
+with `firebase deploy --only firestore:rules`.
