@@ -24,4 +24,5 @@ export const USER_DATA_COLLECTIONS = [
   "studyPlan",
   "chatNotes",
   "learningEvents",
+  "shelfItems",
 ] as const;

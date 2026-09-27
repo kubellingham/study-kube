@@ -46,6 +46,19 @@ that joining a crew never lowers anyone's allowance. Worth resetting once the
 smoke test shows what a build really costs. Each is one Vercel variable
 (`ALLOWANCE_*_USD`): a redeploy, no code change.
 
+### 5. What the landing page promises (for the renovation)
+
+Not false enough to change without you, but worth deciding when the landing
+page is renovated:
+
+- **The free tier is invisible.** Every button says "Start today for $1" or
+  "From $1 a month", and "Build my first subject" leads to a plan. The 12 free
+  topics are only reachable by tapping "Sign in", then "Create account".
+- **Climb says "Unlimited subjects & uploads"** (plans page). The monthly
+  allowance (#51) now caps building each month.
+- **Summit says "Ask your tutor anything, anytime."** The tutor lives inside
+  a lesson and only answers about that lesson.
+
 ---
 
 ## Fixed
@@ -73,6 +86,11 @@ smoke test shows what a build really costs. Each is one Vercel variable
 | The retired /materials AI routes still answered anyone signed in | Summary, quiz, flashcards and tutor, with no plan check | #50 |
 | One account could cost more than it paid, month after month | Staying just under the per-minute limits, all day | #51 |
 | The whole old materials app was still shipped | /dashboard, /materials and five API routes nobody could reach | #52 |
+| "Forgot password?" did nothing | Sign-in panel: a student locked out had no way back in | #54 |
+| The landing page promised Kube reads lecture videos | "slides · notes · past papers · a lecture video" | #54 |
+| "Delete my account" left the name, email and more behind | Profile, referral code, month's spend, shelf, ByteLabs signals | #54 |
+| The privacy page had three wrong facts | "From your Google sign-in"; delete only by email; a "see below" to nothing | #54 |
+| The README described the deleted app | YouTube, articles, summaries, quizzes | #54 |
 
 ---
 
